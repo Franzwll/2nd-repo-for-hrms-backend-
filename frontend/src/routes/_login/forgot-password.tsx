@@ -72,8 +72,7 @@ function ForgotPasswordPage() {
             </div>
             <h2 className="font-display text-2xl font-semibold">Check your inbox</h2>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              A password reset link has been sent to {email.trim()}. It expires in
-              60 minutes.
+              A password reset link has been sent to {email.trim()}. It expires in 60 minutes.
             </p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Didn't receive it? Check your spam folder, or try again after a minute.
@@ -84,14 +83,13 @@ function ForgotPasswordPage() {
           </div>
         ) : (
           <>
-            <p className="eyebrow text-center">Staff Portal Access</p>
             <h2 className="mt-2 text-center font-display text-4xl font-semibold">
               Forgot password?
             </h2>
             <p className="mt-2 text-center text-sm text-muted-foreground">
               Enter your work email and we'll send you a secure link to set a new password.
             </p>
-            <div className="gold-rule my-7" />
+            <div className="my-7" />
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-1.5">
@@ -112,6 +110,10 @@ function ForgotPasswordPage() {
                 </p>
               )}
 
+              <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+                {submitting ? "Sending…" : "Send reset link"}
+              </Button>
+
               <div className="flex justify-center">
                 <Turnstile
                   onVerify={setCaptchaToken}
@@ -119,10 +121,6 @@ function ForgotPasswordPage() {
                   resetKey={captchaReset}
                 />
               </div>
-
-              <Button type="submit" size="lg" className="w-full" disabled={submitting}>
-                {submitting ? "Sending…" : "Send reset link"}
-              </Button>
             </form>
           </>
         )}

@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Redesign Directions (Review Only)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Oxford Suites Makati HRMS — "Crimson & Ivory" tokens
+   Copied 1:1 from frontend/src/styles.css so a chosen direction
+   ports directly into frontend/src/routes/_login/login.tsx
+   ============================================================ */
+:root{
+  --radius:0.375rem;
+  --font-display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --font-sans:"Jost",ui-sans-serif,system-ui,sans-serif;
+  --background:oklch(0.988 0.005 85);
+  --foreground:oklch(0.24 0.02 30);
+  --card:oklch(1 0 0);
+  --primary:oklch(0.427 0.166 22.5);
+  --primary-foreground:oklch(0.985 0.006 85);
+  --secondary:oklch(0.962 0.011 84);
+  --secondary-foreground:oklch(0.3 0.03 28);
+  --muted:oklch(0.945 0.013 84);
+  --muted-foreground:oklch(0.52 0.022 45);
+  --gold:oklch(0.72 0.104 85);
+  --gold-soft:oklch(0.955 0.032 88);
+  --destructive:oklch(0.535 0.187 26);
+  --success:oklch(0.505 0.114 152);
+  --border:oklch(0.9 0.012 80);
+  --ring:oklch(0.427 0.166 22.5);
+  --shadow-sm:0 1px 2px oklch(0.24 0.02 30 / 6%);
+  --shadow-md:0 4px 14px oklch(0.24 0.02 30 / 10%);
+  --shadow-lg:0 14px 34px oklch(0.24 0.02 30 / 16%);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+img{display:block;max-width:100%}
+body{background:var(--background);color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+h1,h2,h3,.display{font-family:var(--font-display);font-weight:600;letter-spacing:-0.015em;line-height:1.08}
+svg.icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+svg.icon.lg{width:19px;height:19px}
+svg.icon.xl{width:22px;height:22px}
+.eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-foreground)}
+.gold-rule{height:1px;width:100%;background:linear-gradient(90deg,transparent,var(--gold) 12%,var(--gold) 88%,transparent);opacity:.55}
+
+/* ============================================================
+   Mockup chrome only — delete when porting
+   ============================================================ */
+.mock-banner{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 20px;font-size:12.5px;line-height:1.4;text-align:center;background:linear-gradient(90deg,var(--gold-soft),oklch(0.972 0.014 30) 50%,var(--gold-soft));border-bottom:1px solid oklch(0.72 0.104 85 / 45%)}
+.mock-banner b{color:var(--primary);font-weight:600}
+.mock-banner .tagx{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--primary);color:var(--primary-foreground);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+.mock-bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px;background:oklch(1 0 0 / 92%);backdrop-filter:blur(12px);border:1px solid var(--border);box-shadow:var(--shadow-lg);max-width:calc(100vw - 24px)}
+.sw-btn{display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--muted-foreground);white-space:nowrap;transition:background .18s,color .18s}
+.sw-btn:hover{background:var(--secondary);color:var(--foreground)}
+.sw-btn .k{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--secondary);font-size:11px;font-weight:700;color:var(--secondary-foreground)}
+.sw-btn.on{background:var(--primary);color:var(--primary-foreground)}
+.sw-btn.on .k{background:oklch(1 0 0 / 18%);color:var(--primary-foreground)}
+.mock-bar .sep{width:1px;height:22px;background:var(--border);margin:0 2px}
+.err-toggle{display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;font-size:12.5px;color:var(--muted-foreground);cursor:pointer;user-select:none;white-space:nowrap}
+.err-toggle:hover{background:var(--secondary)}
+.err-toggle input{appearance:none;width:15px;height:15px;border:1.5px solid var(--border);border-radius:4px;display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s}
+.err-toggle input:checked{background:var(--primary);border-color:var(--primary)}
+.err-toggle input:checked::after{content:"";width:7px;height:4px;border-left:1.6px solid #fff;border-bottom:1.6px solid #fff;transform:rotate(-45deg) translateY(-1px)}
+@media (max-width:720px){.mock-bar{gap:2px;padding:5px}.sw-btn{padding:7px 10px;font-size:11.5px}.sw-btn .lbl{display:none}.err-toggle .lbl{display:none}}
+
+/* ============================================================
+   Shared form controls
+   ============================================================ */
+.field{position:relative}
+.field>svg.lead{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted-foreground);pointer-events:none;transition:color .18s}
+.field input{width:100%;height:52px;padding:19px 46px 7px 42px;font-family:var(--font-sans);font-size:14px;color:var(--foreground);background:var(--card);border:1px solid var(--border);border-radius:var(--radius);outline:none;transition:border-color .18s,box-shadow .18s,background .18s}
+.field input::placeholder{color:transparent}
+.field label{position:absolute;left:42px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--muted-foreground);pointer-events:none;transition:top .16s ease,font-size .16s ease,color .16s,letter-spacing .16s}
+.field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px oklch(0.427 0.166 22.5 / 12%)}
+.field input:focus~svg.lead,.field input:not(:placeholder-shown)~svg.lead{color:var(--primary)}
+.field input:focus+label,.field input:not(:placeholder-shown)+label{top:14px;transform:none;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--primary)}
+.field input:disabled{background:var(--muted);color:var(--muted-foreground);cursor:not-allowed}
+.field .peek{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:6px;display:grid;place-items:center;color:var(--muted-foreground);transition:color .15s,background .15s}
+.field .peek:hover{color:var(--foreground);background:var(--secondary)}
+.field .capswarn{display:none;align-items:center;gap:5px;margin-top:6px;font-size:11.5px;color:oklch(0.655 0.166 46)}
+.field.is-caps .capswarn{display:flex}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;height:50px;border-radius:var(--radius);font-size:13.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:var(--primary);color:var(--primary-foreground);transition:background .18s,transform .12s,box-shadow .18s;box-shadow:0 1px 2px oklch(0.24 0.02 30 / 12%)}
+.btn:hover{background:oklch(0.38 0.15 22.5)}
+.btn:active{transform:translateY(1px)}
+.btn svg{transition:transform .18s}
+.btn:hover svg{transform:translateX(3px)}
+
+.row-between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.link{color:var(--muted-foreground);font-size:13px;transition:color .15s}
+.link:hover{color:var(--primary);text-decoration:underline;text-underline-offset:3px}
+.link.strong{color:var(--primary);font-weight:500}
+
+.check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted-foreground);cursor:pointer;user-select:none}
+.check input{appearance:none;width:16px;height:16px;flex:none;border:1.5px solid var(--border);border-radius:4px;background:var(--card);display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s}
+.check input:checked{background:var(--primary);border-color:var(--primary)}
+.check input:checked::after{content:"";width:8px;height:4.5px;border-left:1.7px solid #fff;border-bottom:1.7px solid #fff;transform:rotate(-45deg) translateY(-1px)}
+
+.err{display:none;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:var(--radius);background:oklch(0.535 0.187 26 / 8%);border:1px solid oklch(0.535 0.187 26 / 22%);color:oklch(0.45 0.17 26);font-size:12.5px;line-height:1.45}
+.err svg{flex:none;margin-top:1px}
+.err .lock{display:block;margin-top:3px;font-weight:600;font-variant-numeric:tabular-nums}
+body.show-error .err{display:flex}
+
+.hint{display:flex;align-items:flex-start;gap:7px;font-size:11.5px;line-height:1.5;color:var(--muted-foreground)}
+.hint svg{flex:none;margin-top:1px;color:var(--gold)}
+
+.form-foot{font-size:12.5px;color:var(--muted-foreground);text-align:center}
+.form-foot a{color:var(--primary);font-weight:500}
+.form-foot a:hover{text-decoration:underline;text-underline-offset:3px}
+
+/* ============================================================
+   A — Refined split  (evolves the current page)
+   ============================================================ */
+.variant{display:none;min-height:calc(100vh - 37px)}
+.variant.active{display:grid}
+
+.v-a{grid-template-columns:minmax(0,1.05fr) minmax(400px,.95fr);background:var(--background)}
+.a-art{position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;padding:38px 44px;color:var(--primary-foreground);isolation:isolate}
+.a-art>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;transform:scale(1.03)}
+.a-art .veil{position:absolute;inset:0;z-index:-1;background:linear-gradient(178deg,oklch(0.3 0.1 22 / 58%) 0%,oklch(0.3 0.09 22 / 26%) 34%,oklch(0.24 0.08 20 / 74%) 100%)}
+.a-top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.a-top .lockup{display:flex;align-items:center;gap:11px}
+.a-top .lockup>img{height:38px;width:auto;filter:drop-shadow(0 1px 3px oklch(0 0 0 / 25%))}
+.a-top .lockup .txt{font-family:var(--font-display);font-size:17px;font-weight:600;line-height:1.1;letter-spacing:.01em;text-shadow:0 1px 6px oklch(0 0 0 / 22%)}
+.a-top .lockup .txt small{display:block;font-family:var(--font-sans);font-size:9px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:oklch(0.985 0.006 85 / 80%)}
+.a-top .est{padding:5px 12px;border-radius:999px;border:1px solid oklch(1 0 0 / 26%);background:oklch(0 0 0 / 16%);backdrop-filter:blur(6px);font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
+.a-copy{max-width:460px;padding-bottom:8px}
+.a-copy .eyebrow{color:var(--gold)}
+.a-copy .grule{height:1px;width:56px;background:var(--gold);opacity:.85;margin:16px 0 24px}
+.a-copy h1{font-size:clamp(40px,4.4vw,62px);font-weight:500;letter-spacing:-.02em;line-height:1.02;text-shadow:0 2px 18px oklch(0 0 0 / 22%)}
+.a-copy p{margin-top:16px;font-size:14.5px;line-height:1.6;color:oklch(0.985 0.006 85 / 86%);max-width:360px}
+.a-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:18px;border-top:1px solid oklch(1 0 0 / 18%);font-size:11.5px;color:oklch(0.985 0.006 85 / 78%)}
+.a-foot .who{display:flex;align-items:center;gap:7px}
+.a-foot .who svg{color:var(--gold)}
+.a-foot a:hover{color:#fff;text-decoration:underline;text-underline-offset:3px}
+
+.a-form{display:flex;align-items:center;justify-content:center;padding:52px 32px}
+.a-wrap{width:100%;max-width:400px}
+.a-wrap .brand-m{display:none;height:34px;width:auto;margin-bottom:28px}
+.a-wrap .eyebrow{color:var(--muted-foreground)}
+.a-wrap h2{margin-top:7px;font-size:40px;font-weight:600}
+.a-wrap .sub{margin-top:7px;font-size:13.5px;color:var(--muted-foreground)}
+.a-wrap .gold-rule{margin:26px 0 26px}
+.a-form form{display:flex;flex-direction:column;gap:16px}
+.a-form .row-between{margin-top:-2px}
+.a-wrap .hint{margin-top:22px;justify-content:center}
+.a-wrap .form-foot{margin-top:14px}
+.a-wrap .legal{margin-top:26px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:10px;font-size:11px;color:var(--muted-foreground)}
+.a-wrap .legal a:hover{color:var(--primary)}
+
+/* ============================================================
+   B — Minimal centered card
+   ============================================================ */
+.v-b{place-items:center;padding:54px 20px;background:
+  radial-gradient(680px 420px at 50% -8%,oklch(0.955 0.032 88 / 90%),transparent 62%),
+  radial-gradient(520px 360px at 88% 108%,oklch(0.955 0.032 88 / 45%),transparent 60%),
+  var(--background)}
+.b-card{width:min(424px,100%);background:var(--card);border:1px solid var(--border);border-radius:16px;padding:38px 34px 30px;box-shadow:0 24px 60px -24px oklch(0.24 0.02 30 / 22%),0 2px 6px oklch(0.24 0.02 30 / 4%)}
+.b-card>.mark{height:40px;width:auto;margin:0 auto 22px}
+.b-card h2{text-align:center;font-size:31px;font-weight:600}
+.b-card .sub{margin-top:6px;text-align:center;font-size:13px;color:var(--muted-foreground)}
+.b-card .gold-rule{margin:22px 0 24px;opacity:.4}
+.b-form{display:flex;flex-direction:column;gap:15px}
+.b-field>label{display:block;margin-bottom:7px;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-foreground)}
+.b-field .field input{height:50px;padding:0 44px 0 41px}
+.b-field .field label{display:none}
+.b-field .row-between{margin-top:-1px}
+.b-card .btn{height:49px;background:var(--primary)}
+.b-card .divider{display:flex;align-items:center;gap:12px;margin:4px 0;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-foreground)}
+.b-card .divider::before,.b-card .divider::after{content:"";height:1px;flex:1;background:var(--border)}
+.b-alt{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:46px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-weight:500;color:var(--foreground);transition:background .16s,border-color .16s}
+.b-alt:hover{background:var(--secondary);border-color:oklch(0.86 0.014 80)}
+.b-card .b-foot{margin-top:24px;padding-top:18px;border-top:1px solid var(--border);text-align:center;font-size:11.5px;color:var(--muted-foreground);display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap}
+.b-card .b-foot span{opacity:.45}
+.b-card .b-foot a:hover{color:var(--primary);text-decoration:underline}
+
+/* ============================================================
+   C — Editorial split
+   ============================================================ */
+.v-c{grid-template-columns:minmax(0,1fr) minmax(380px,470px);background:var(--background)}
+.c-left{display:flex;flex-direction:column;justify-content:space-between;padding:46px 60px 40px;position:relative}
+.c-left::before{content:"";position:absolute;right:0;top:46px;bottom:40px;width:1px;background:linear-gradient(180deg,transparent,var(--border) 15%,var(--border) 85%,transparent)}
+.c-top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.c-top .lockup{display:flex;align-items:center;gap:12px}
+.c-top .lockup img{height:32px;width:auto}
+.c-top .lockup .txt{font-family:var(--font-display);font-size:15px;font-weight:600;line-height:1.15;letter-spacing:.01em}
+.c-top .lockup .txt small{display:block;font-family:var(--font-sans);font-size:9.5px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--muted-foreground)}
+.c-top .tag{font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-foreground);padding:5px 11px;border:1px solid var(--border);border-radius:999px}
+.c-hero{padding:34px 0}
+.c-hero .eyebrow{color:var(--gold)}
+.c-hero h1{margin-top:16px;font-size:clamp(52px,6.4vw,88px);font-weight:500;line-height:.94;letter-spacing:-.03em;max-width:9ch}
+.c-hero h1 em{font-style:italic;color:var(--primary)}
+.c-hero p{margin-top:22px;max-width:390px;font-size:14.5px;line-height:1.65;color:var(--muted-foreground)}
+.c-hero .sig{margin-top:26px;display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-foreground)}
+.c-hero .sig .dash{width:34px;height:1px;background:var(--gold)}
+.c-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.c-stats{display:flex;gap:34px}
+.c-stats div{border-top:1px solid var(--border);padding-top:10px;min-width:76px}
+.c-stats b{display:block;font-family:var(--font-display);font-size:22px;font-weight:600;line-height:1.1}
+.c-stats span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-foreground)}
+.c-thumb{position:relative;flex:none}
+.c-thumb img{width:104px;height:76px;object-fit:cover;border:1px solid var(--border);border-radius:3px}
+.c-thumb .cap{position:absolute;left:-1px;bottom:-1px;background:var(--card);padding:3px 7px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-foreground);border:1px solid var(--border);border-left:0;border-bottom:0}
+
+.c-form{position:relative;background:linear-gradient(158deg,oklch(0.37 0.135 23) 0%,oklch(0.30 0.115 21) 58%,oklch(0.265 0.1 20) 100%);color:var(--primary-foreground);display:flex;flex-direction:column;justify-content:center;padding:52px 44px;overflow:hidden}
+.c-form::after{content:"";position:absolute;inset:0;background:radial-gradient(420px 260px at 112% -6%,oklch(0.72 0.104 85 / 16%),transparent 70%);pointer-events:none}
+.c-form form,.c-form .c-head,.c-form .c-tail{position:relative;z-index:1}
+.c-head .eyebrow{color:oklch(0.72 0.104 85)}
+.c-head h2{margin-top:8px;font-size:34px;font-weight:500;color:#fff}
+.c-head p{margin-top:6px;font-size:12.5px;color:oklch(0.985 0.006 85 / 68%)}
+.c-form form{display:flex;flex-direction:column;gap:14px;margin-top:26px}
+.c-form .field input{background:oklch(1 0 0 / 7%);border-color:oklch(1 0 0 / 20%);color:#fff}
+.c-form .field input:focus{border-color:var(--gold);box-shadow:0 0 0 3px oklch(0.72 0.104 85 / 18%);background:oklch(1 0 0 / 10%)}
+.c-form .field label{color:oklch(0.985 0.006 85 / 62%)}
+.c-form .field input:focus+label,.c-form .field input:not(:placeholder-shown)+label{color:var(--gold)}
+.c-form .field>svg.lead{color:oklch(0.985 0.006 85 / 58%)}
+.c-form .field input:focus~svg.lead,.c-form .field input:not(:placeholder-shown)~svg.lead{color:var(--gold)}
+.c-form .field .peek{color:oklch(0.985 0.006 85 / 62%)}
+.c-form .field .peek:hover{color:#fff;background:oklch(1 0 0 / 10%)}
+.c-form .check{color:oklch(0.985 0.006 85 / 74%)}
+.c-form .check input{background:oklch(1 0 0 / 10%);border-color:oklch(1 0 0 / 32%)}
+.c-form .check input:checked{background:var(--gold);border-color:var(--gold)}
+.c-form .check input:checked::after{border-color:oklch(0.265 0.1 20)}
+.c-form .link{color:oklch(0.985 0.006 85 / 70%)}
+.c-form .link:hover{color:var(--gold)}
+.c-form .btn{background:var(--gold);color:oklch(0.265 0.1 20);box-shadow:0 6px 18px -6px oklch(0.72 0.104 85 / 55%)}
+.c-form .btn:hover{background:oklch(0.79 0.108 86)}
+.c-form .err{background:oklch(0.985 0.006 85 / 10%);border-color:oklch(0.72 0.104 85 / 34%);color:oklch(0.94 0.05 60)}
+.c-form .hint{color:oklch(0.985 0.006 85 / 55%)}
+.c-form .hint svg{color:var(--gold)}
+.c-tail{margin-top:26px;padding-top:18px;border-top:1px solid oklch(1 0 0 / 14%);display:flex;flex-direction:column;gap:12px;font-size:11.5px;color:oklch(0.985 0.006 85 / 58%)}
+.c-tail .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.c-tail a:hover{color:#fff;text-decoration:underline;text-underline-offset:3px}
+.c-tail .secure{display:flex;align-items:center;gap:6px}
+.c-tail .secure svg{color:var(--gold)}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width:1040px){
+  .v-a{grid-template-columns:1fr}
+  .a-art{min-height:270px;padding:26px 28px;justify-content:space-between}
+  .a-copy{padding:0}
+  .a-copy h1{font-size:38px}
+  .a-copy p,.a-copy .grule{display:none}
+  .a-foot{display:none}
+  .a-form{padding:40px 24px 64px}
+  .a-wrap .brand-m{display:block}
+
+  .v-c{grid-template-columns:1fr}
+  .c-left{padding:32px 24px 26px}
+  .c-left::before{display:none}
+  .c-hero{padding:26px 0 0}
+  .c-hero h1{font-size:clamp(44px,11vw,64px);max-width:none}
+  .c-hero p{margin-top:14px;font-size:13.5px;max-width:100%}
+  .c-hero .sig,.c-bottom{display:none}
+  .c-form{padding:36px 24px 44px}
+}
+@media (max-width:560px){
+  .a-art{min-height:190px;padding:20px}
+  .a-top img{height:24px}
+  .a-top .est{display:none}
+  .a-copy h1{font-size:31px}
+  .a-form{padding:30px 18px 56px}
+  .a-wrap h2{font-size:32px}
+  .b-card{padding:30px 22px 24px;border-radius:14px}
+  .b-card h2{font-size:27px}
+  .c-left{padding:24px 18px 20px}
+  .c-top .lockup .txt{font-size:13px}
+  .c-form{padding:30px 20px 40px}
+  .c-head h2{font-size:29px}
+  .c-tail .row{flex-direction:column;align-items:flex-start;gap:6px}
+}
+</style>
+</head>
+<body>
+
+<!-- icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3 7.5 9 5.6 9-5.6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3.5" y="10.5" width="17" height="10.5" rx="2.5"/><path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5"/><path d="M12 15v2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.2 12S5.9 5.2 12 5.2 21.8 12 21.8 12 18.1 18.8 12 18.8 2.2 12 2.2 12Z"/><circle cx="12" cy="12" r="2.9"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="m3 3 18 18"/><path d="M10.6 5.4A11 11 0 0 1 12 5.2c6.1 0 9.8 6.8 9.8 6.8a17.7 17.7 0 0 1-3.3 4.1"/><path d="M6.4 6.7A17.3 17.3 0 0 0 2.2 12S5.9 18.8 12 18.8a11 11 0 0 0 4.2-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 21.5s7.6-3.8 7.6-9.5V5.4L12 2.5 4.4 5.4V12c0 5.7 7.6 9.5 7.6 9.5Z"/><path d="m9 11.8 2.1 2.1 4-4"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4.5 12h15"/><path d="m13 5.5 6.5 6.5-6.5 6.5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2"/><path d="M12 7.6v5.2"/><path d="M12 16.4h.01"/></symbol>
+  <symbol id="i-caps" viewBox="0 0 24 24"><path d="M12 3.5 5 11h4v4h6v-4h4L12 3.5Z"/><path d="M8.5 20h7"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.7 2.2c-.7.4-1.1 1-1.1 1.8v.4"/><path d="M12 17.2h.01"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2.8 14 9l6.2 2-6.2 2-2 6.2-2-6.2L3.8 11 10 9l2-6.2Z"/></symbol>
+</svg>
+
+<div class="mock-banner">
+  <span class="tagx">Review only</span>
+  <span>Static login mockup — not wired to the API. <b>Pick a direction</b>, then I'll port it into <code>login.tsx</code>.</span>
+</div>
+
+<!-- ============================== A ============================== -->
+<section class="variant v-a active" id="v-a" aria-label="Direction A — Refined split">
+  <aside class="a-art">
+    <img src="../../frontend/src/assets/oxford-suite-makati-interior1.png" alt="Oxford Suites Makati interior">
+    <div class="veil"></div>
+
+    <div class="a-top">
+      <div class="lockup">
+        <img src="../../frontend/src/assets/oxford-mark-white.png" alt="">
+        <div class="txt">Oxford Suites<small>Makati</small></div>
+      </div>
+      <span class="est">Est. 1995</span>
+    </div>
+
+    <div class="a-copy">
+      <p class="eyebrow">Staff Portal</p>
+      <div class="grule"></div>
+      <h1>Welcome back.</h1>
+      <p>Schedules, payroll, and requests — all in one place.</p>
+    </div>
+
+    <footer class="a-foot">
+      <span class="who"><svg class="icon"><use href="#i-shield"/></svg> Authorized staff only</span>
+      <a href="#">Need help? Contact IT</a>
+    </footer>
+  </aside>
+
+  <main class="a-form">
+    <div class="a-wrap">
+      <img class="brand-m" src="../../frontend/src/assets/oxford-mark-maroon.png" alt="Oxford Suites Makati">
+      <p class="eyebrow">Staff Portal Access</p>
+      <h2>Sign in</h2>
+      <p class="sub">Use your Oxford work credentials.</p>
+      <div class="gold-rule"></div>
+
+      <form>
+        <div class="field">
+          <svg class="icon lead"><use href="#i-mail"/></svg>
+          <input id="a-email" type="email" placeholder=" " autocomplete="username" value="maria.santos@oxfordsuites.com.ph">
+          <label for="a-email">Work email</label>
+        </div>
+
+        <div class="field" data-caps>
+          <svg class="icon lead"><use href="#i-lock"/></svg>
+          <input id="a-pass" type="password" placeholder=" " autocomplete="current-password" value="oxfordsuites">
+          <label for="a-pass">Password</label>
+          <button class="peek" type="button" aria-label="Show password"><svg class="icon"><use href="#i-eye"/></svg></button>
+          <span class="capswarn"><svg class="icon" style="width:12px;height:12px"><use href="#i-caps"/></svg> Caps Lock is on</span>
+        </div>
+
+        <div class="row-between">
+          <label class="check"><input type="checkbox" checked> Remember this device</label>
+          <a class="link" href="#">Forgot password?</a>
+        </div>
+
+        <div class="err" role="alert">
+          <svg class="icon"><use href="#i-alert"/></svg>
+          <span>Incorrect email or password. You have 2 attempts remaining.
+            <b class="lock">Locked for 04:58 after 3 failed attempts</b>
+          </span>
+        </div>
+
+        <button class="btn" type="submit">Sign in <svg class="icon"><use href="#i-arrow"/></svg></button>
+
+        <div class="hint"><svg class="icon" style="width:13px;height:13px"><use href="#i-shield"/></svg> Protected by two-step verification</div>
+      </form>
+
+      <p class="form-foot" style="margin-top:14px">Looking for work? <a href="#">Browse job openings</a></p>
+
+      <div class="legal">
+        <span>© 2026 Oxford Suites Makati</span><span>·</span><a href="#">Privacy</a><span>·</span><a href="#">Terms</a>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- ============================== B ============================== -->
+<section class="variant v-b" id="v-b" aria-label="Direction B — Minimal card">
+  <div class="b-card">
+    <img class="mark" src="../../frontend/src/assets/oxford-mark-maroon.png" alt="Oxford Suites Makati">
+    <h2>Sign in</h2>
+    <p class="sub">Oxford Suites Makati · Staff Portal</p>
+    <div class="gold-rule"></div>
+
+    <form class="b-form">
+      <div class="b-field">
+        <label for="b-email">Work email</label>
+        <div class="field">
+          <svg class="icon lead"><use href="#i-mail"/></svg>
+          <input id="b-email" type="email" placeholder=" " autocomplete="username" value="maria.santos@oxfordsuites.com.ph">
+          <label for="b-email">Work email</label>
+        </div>
+      </div>
+
+      <div class="b-field">
+        <label for="b-pass">Password</label>
+        <div class="field">
+          <svg class="icon lead"><use href="#i-lock"/></svg>
+          <input id="b-pass" type="password" placeholder=" " autocomplete="current-password" value="oxfordsuites">
+          <label for="b-pass">Password</label>
+          <button class="peek" type="button" aria-label="Show password"><svg class="icon"><use href="#i-eye"/></svg></button>
+        </div>
+        <div class="row-between" style="margin-top:11px">
+          <label class="check"><input type="checkbox"> Keep me signed in</label>
+          <a class="link strong" href="#">Forgot password?</a>
+        </div>
+      </div>
+
+      <div class="err" role="alert">
+        <svg class="icon"><use href="#i-alert"/></svg>
+        <span>Incorrect email or password. You have 2 attempts remaining.
+          <b class="lock">Locked for 04:58 after 3 failed attempts</b>
+        </span>
+      </div>
+
+      <button class="btn" type="submit">Sign in <svg class="icon"><use href="#i-arrow"/></svg></button>
+
+      <div class="divider">or</div>
+      <a class="b-alt" href="#"><svg class="icon"><use href="#i-spark"/></svg> Browse open positions</a>
+    </form>
+
+    <div class="b-foot">
+      <a href="#">Privacy</a><span>·</span><a href="#">Terms</a><span>·</span><a href="#">Support</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== C ============================== -->
+<section class="variant v-c" id="v-c" aria-label="Direction C — Editorial split">
+  <div class="c-left">
+    <div class="c-top">
+      <div class="lockup">
+        <img src="../../frontend/src/assets/oxford-mark-maroon.png" alt="">
+        <div class="txt">Oxford Suites<small>Makati</small></div>
+      </div>
+      <span class="tag">Human Resources</span>
+    </div>
+
+    <div class="c-hero">
+      <p class="eyebrow">Staff Portal</p>
+      <h1>Welcome <em>back.</em></h1>
+      <p>Your shift, your records, your requests — in one place, from any device.</p>
+      <div class="sig"><span class="dash"></span> Est. 1995 · Makati City</div>
+    </div>
+
+    <div class="c-bottom">
+      <div class="c-stats">
+        <div><b>24/7</b><span>Access</span></div>
+        <div><b>2-step</b><span>Verified</span></div>
+        <div><b>1995</b><span>Established</span></div>
+      </div>
+      <div class="c-thumb">
+        <img src="../../frontend/src/assets/login-hospitality.jpg" alt="Oxford Suites Makati">
+        <span class="cap">Makati</span>
+      </div>
+    </div>
+  </div>
+
+  <main class="c-form">
+    <div class="c-head">
+      <p class="eyebrow">Staff Access</p>
+      <h2>Sign in</h2>
+      <p>Oxford work email and password.</p>
+    </div>
+
+    <form>
+      <div class="field">
+        <svg class="icon lead"><use href="#i-mail"/></svg>
+        <input id="c-email" type="email" placeholder=" " autocomplete="username" value="maria.santos@oxfordsuites.com.ph">
+        <label for="c-email">Work email</label>
+      </div>
+
+      <div class="field">
+        <svg class="icon lead"><use href="#i-lock"/></svg>
+        <input id="c-pass" type="password" placeholder=" " autocomplete="current-password" value="oxfordsuites">
+        <label for="c-pass">Password</label>
+        <button class="peek" type="button" aria-label="Show password"><svg class="icon"><use href="#i-eye"/></svg></button>
+      </div>
+
+      <div class="row-between">
+        <label class="check"><input type="checkbox"> Remember me</label>
+        <a class="link" href="#">Forgot password?</a>
+      </div>
+
+      <div class="err" role="alert">
+        <svg class="icon"><use href="#i-alert"/></svg>
+        <span>Incorrect email or password. You have 2 attempts remaining.
+          <b class="lock">Locked for 04:58 after 3 failed attempts</b>
+        </span>
+      </div>
+
+      <button class="btn" type="submit">Sign in <svg class="icon"><use href="#i-arrow"/></svg></button>
+
+      <div class="hint"><svg class="icon" style="width:13px;height:13px"><use href="#i-shield"/></svg> Two-step verification protects this account</div>
+    </form>
+
+    <div class="c-tail">
+      <div class="row">
+        <a href="#">Browse job openings</a>
+        <span class="secure"><svg class="icon" style="width:13px;height:13px"><use href="#i-lock"/></svg> Encrypted</span>
+      </div>
+      <div>© 2026 Oxford Suites Makati · <a href="#">Privacy</a></div>
+    </div>
+  </main>
+</section>
+
+<!-- switcher -->
+<div class="mock-bar" role="tablist" aria-label="Design direction">
+  <button class="sw-btn on" data-target="v-a" role="tab" aria-selected="true"><span class="k">A</span><span class="lbl">Refined split</span></button>
+  <button class="sw-btn" data-target="v-b" role="tab" aria-selected="false"><span class="k">B</span><span class="lbl">Minimal card</span></button>
+  <button class="sw-btn" data-target="v-c" role="tab" aria-selected="false"><span class="k">C</span><span class="lbl">Editorial</span></button>
+  <span class="sep"></span>
+  <label class="err-toggle"><input type="checkbox" id="err-toggle"><span class="lbl">Error state</span></label>
+</div>
+
+<script>
+(function(){
+  var variants = Array.prototype.slice.call(document.querySelectorAll('.variant'));
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.sw-btn'));
+
+  function show(id){
+    variants.forEach(function(v){ v.classList.toggle('active', v.id === id); });
+    buttons.forEach(function(b){
+      var on = b.dataset.target === id;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.body.dataset.variant = id;
+    window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+  }
+
+  buttons.forEach(function(b){ b.addEventListener('click', function(){ show(b.dataset.target); }); });
+  show('v-a');
+
+  document.getElementById('err-toggle').addEventListener('change', function(e){
+    document.body.classList.toggle('show-error', e.target.checked);
+  });
+
+  // password visibility
+  document.querySelectorAll('.peek').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var input = btn.parentElement.querySelector('input');
+      var reveal = input.type === 'password';
+      input.type = reveal ? 'text' : 'password';
+      btn.querySelector('use').setAttribute('href', reveal ? '#i-eye-off' : '#i-eye');
+      btn.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+    });
+  });
+
+  // caps lock detection
+  document.querySelectorAll('.field[data-caps] input').forEach(function(input){
+    var field = input.closest('.field');
+    input.addEventListener('keyup', function(e){
+      if (typeof e.getModifierState === 'function') field.classList.toggle('is-caps', e.getModifierState('CapsLock'));
+    });
+    input.addEventListener('blur', function(){ field.classList.remove('is-caps'); });
+  });
+
+  // mockup: don't actually submit
+  document.querySelectorAll('form').forEach(function(f){
+    f.addEventListener('submit', function(e){ e.preventDefault(); });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Timer } from "lucide-react";
+import { Timer } from "lucide-react";
 import { toast } from "sonner";
 
 import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
@@ -15,8 +15,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { authApi, mfaApi } from "@/lib/api";
-import { setToken, setUser } from "@/lib/auth";
 import { useLightOnly } from "@/lib/theme";
+import { setToken, setUser } from "@/lib/auth";
 import { clearLoginContext, getLoginContext, persistLoginContext } from "./login";
 
 export const Route = createFileRoute("/_login/otp")({
@@ -361,13 +361,34 @@ function OTPPage() {
       </Link>
 
       <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/20 bg-card/95 px-8 py-10 shadow-2xl backdrop-blur-md">
+        {/* Verified — same "Preparing your workspace" loading as the login preloader */}
         {verified ? (
-          <div className="flex flex-col items-center gap-4 py-4 text-center">
-            <div className="flex h-14 w-14 items-center justify-center">
-              <CheckCircle2 className="h-7 w-7 text-success" />
+          <div className="flex flex-col items-center gap-5 py-6 text-center">
+            <div className="flex flex-col items-center gap-6 sm:flex-row sm:gap-8">
+              <img
+                src={oxfordMarkMaroon}
+                alt="Oxford Suites Makati"
+                className="h-20 sm:h-24 w-auto object-contain shrink-0"
+              />
+
+              <div className="flex flex-col items-center sm:items-start space-y-2">
+                <div className="flex flex-col leading-tight font-display font-semibold uppercase tracking-[0.15em] text-xl sm:text-2xl text-primary">
+                  <span>Oxford Suites</span>
+                  <span>Makati</span>
+                </div>
+
+                <div className="h-px w-full max-w-[200px] bg-primary/20" />
+
+                <p className="text-[11px] tracking-[0.22em] font-semibold uppercase text-gold">
+                  Preparing your workspace
+                </p>
+
+                {/* Clean Gold Progress Bar */}
+                <div className="mt-1 h-1.5 w-52 sm:w-60 overflow-hidden rounded-full bg-primary/15">
+                  <span className="hero-progress block h-full w-1/3 bg-gold" />
+                </div>
+              </div>
             </div>
-            <h2 className="font-display text-2xl font-semibold">Verified!</h2>
-            <p className="text-sm text-muted-foreground">Redirecting you to the portal…</p>
           </div>
         ) : (
           <>
@@ -376,26 +397,38 @@ function OTPPage() {
               <h1 className="font-display text-2xl font-semibold">
                 {isTotp ? "Authenticator Code" : "OTP Verification"}
               </h1>
-<p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-2 text-sm text-muted-foreground">
                 {isTotp ? (
                   <>
                     Open your authenticator app and enter the 6-digit code for{" "}
-                    <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
+                    <span className="font-medium text-foreground">
+                      {maskEmail(loginCtx?.email)}
+                    </span>
+                    .
                   </>
                 ) : (
                   <>
                     We've sent a 6-digit code to{" "}
-                    <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
+                    <span className="font-medium text-foreground">
+                      {maskEmail(loginCtx?.email)}
+                    </span>
+                    .
+                    <br />
                     Enter it below to continue.
                   </>
                 )}
                 {import.meta.env.DEV && loginCtx?.debug_otp && (
-                  <div className="mt-3 p-3 bg-primary/5 border-primary/20 rounded-md text-center" title="Click to copy">
+                  <div
+                    className="mt-3 p-3 bg-primary/5 border-primary/20 rounded-md text-center"
+                    title="Click to copy"
+                  >
                     <div className="font-medium text-primary">Dev debug OTP:</div>
                     <div className="mt-1 font-mono text-lg font-semibold text-primary">
                       {loginCtx.debug_otp}
                     </div>
-                    <div className="text-xs text-primary/80 mt-1">Copy to auto-fill or enter manually</div>
+                    <div className="text-xs text-primary/80 mt-1">
+                      Copy to auto-fill or enter manually
+                    </div>
                   </div>
                 )}
               </p>
@@ -438,101 +471,102 @@ function OTPPage() {
                 </button>
               </div>
             ) : (
-            <>
-            {/* OTP boxes */}
-            <div
-              className="flex justify-center gap-2"
-              role="group"
-              aria-label="One-time password input"
-            >
-              {digits.map((d, idx) => (
-                <input
-                  key={idx}
-                  ref={(el) => {
-                    inputRefs.current[idx] = el;
-                  }}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={d}
-                  id={`otp-digit-${idx + 1}`}
-                  aria-label={`OTP digit ${idx + 1}`}
-                  onChange={(e) => handleChange(idx, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(idx, e)}
-                  onPaste={handlePaste}
-                  className={cn(
-                    "h-12 min-w-0 flex-1 max-w-9 rounded-md border text-center text-lg font-semibold transition-all outline-none",
-                    "border-border bg-muted/40 text-foreground",
-                    "focus:border-primary focus:ring-2 focus:ring-primary/25",
-                    d ? "border-primary/50 bg-primary/5" : "",
-                    error ? "border-destructive" : "",
-                  )}
-                />
-              ))}
-            </div>
-
-            {/* Error */}
-            {error && <p className="mt-3 text-center text-xs text-destructive">{error}</p>}
-
-            {/* Timer / resend (email codes only — app codes refresh themselves) */}
-            {!isTotp && (
-              <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <Timer className="h-3.5 w-3.5" />
-                {timeLeft > 0 ? (
-                  <span>
-                    Code expires in {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
-                    {!resendDisabled && (
-                      <>
-                        {" · "}
-                        <button
-                          type="button"
-                          onClick={handleResend}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          Resend OTP
-                        </button>
-                      </>
-                    )}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleResend}
-                    className="font-medium text-primary hover:underline"
-                  >
-                    Code expired — send a new one
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Verify button */}
-            <Button
-              className="mt-6 w-full cursor-pointer"
-              size="lg"
-              onClick={handleVerify}
-              disabled={digits.join("").length < OTP_LENGTH || submitting}
-              id="otp-verify-btn"
-            >
-              {submitting ? "Verifying…" : "Verify & Sign In"}
-            </Button>
-
-            {isTotp && (
-              <p className="mt-3 text-center text-sm text-muted-foreground">
-                Lost your phone?{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecoveryMode(true);
-                    setError("");
-                  }}
-                  className="font-medium text-primary hover:underline cursor-pointer"
+              <>
+                {/* OTP boxes */}
+                <div
+                  className="flex justify-center gap-2"
+                  role="group"
+                  aria-label="One-time password input"
                 >
-                  Use a recovery code
-                </button>
-              </p>
-            )}
-            </>
+                  {digits.map((d, idx) => (
+                    <input
+                      key={idx}
+                      ref={(el) => {
+                        inputRefs.current[idx] = el;
+                      }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={d}
+                      id={`otp-digit-${idx + 1}`}
+                      aria-label={`OTP digit ${idx + 1}`}
+                      onChange={(e) => handleChange(idx, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(idx, e)}
+                      onPaste={handlePaste}
+                      className={cn(
+                        "h-12 min-w-0 flex-1 max-w-9 rounded-md border text-center text-lg font-semibold transition-all outline-none",
+                        "border-border bg-muted/40 text-foreground",
+                        "focus:border-primary focus:ring-2 focus:ring-primary/25",
+                        d ? "border-primary/50 bg-primary/5" : "",
+                        error ? "border-destructive" : "",
+                      )}
+                    />
+                  ))}
+                </div>
+
+                {/* Error */}
+                {error && <p className="mt-3 text-center text-xs text-destructive">{error}</p>}
+
+                {/* Timer / resend (email codes only — app codes refresh themselves) */}
+                {!isTotp && (
+                  <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                    <Timer className="h-3.5 w-3.5" />
+                    {timeLeft > 0 ? (
+                      <span>
+                        Code expires in {Math.floor(timeLeft / 60)}:
+                        {String(timeLeft % 60).padStart(2, "0")}
+                        {!resendDisabled && (
+                          <>
+                            {" · "}
+                            <button
+                              type="button"
+                              onClick={handleResend}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              Resend OTP
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResend}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        Code expired — send a new one
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Verify button */}
+                <Button
+                  className="mt-6 w-full cursor-pointer"
+                  size="lg"
+                  onClick={handleVerify}
+                  disabled={digits.join("").length < OTP_LENGTH || submitting}
+                  id="otp-verify-btn"
+                >
+                  {submitting ? "Verifying…" : "Verify & Sign In"}
+                </Button>
+
+                {isTotp && (
+                  <p className="mt-3 text-center text-sm text-muted-foreground">
+                    Lost your phone?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecoveryMode(true);
+                        setError("");
+                      }}
+                      className="font-medium text-primary hover:underline cursor-pointer"
+                    >
+                      Use a recovery code
+                    </button>
+                  </p>
+                )}
+              </>
             )}
 
             {/* Back link */}

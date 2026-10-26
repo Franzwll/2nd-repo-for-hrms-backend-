@@ -156,6 +156,8 @@ function RootComponent() {
 
   useEffect(() => {
     const p = window.location.pathname;
+    // Only the authenticated portals follow the user's theme choice; the
+    // auth pages and the public landing site stay light-only.
     const portal =
       p.indexOf("/admin") === 0 || p.indexOf("/superadmin") === 0 || p.indexOf("/employee") === 0;
     if (portal) applyInitialTheme();

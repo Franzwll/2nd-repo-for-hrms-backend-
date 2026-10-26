@@ -710,7 +710,7 @@ export function EssRecognitionTab() {
                 onClick={() => setCreatePostOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground font-medium transition-colors cursor-pointer"
               >
-                <Sparkles className="h-4 w-4 text-amber-500" />
+                <Sparkles className="h-4 w-4 text-amber-500 dark:text-amber-400" />
                 <span>Give Kudos</span>
               </button>
               <button
@@ -726,7 +726,7 @@ export function EssRecognitionTab() {
                 onClick={() => setCreatePostOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground font-medium transition-colors cursor-pointer"
               >
-                <Heart className="h-4 w-4 text-rose-500" />
+                <Heart className="h-4 w-4 text-rose-500 dark:text-rose-400" />
                 <span>Peer Shoutout</span>
               </button>
             </div>
@@ -1282,8 +1282,8 @@ export function EssRecognitionTab() {
                   >
                     {copiedLink ? (
                       <>
-                        <Check className="h-3 w-3 text-emerald-600" />
-                        <span className="text-emerald-600 font-medium text-[11px]">Copied</span>
+                        <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium text-[11px]">Copied</span>
                       </>
                     ) : (
                       <>
@@ -1302,8 +1302,8 @@ export function EssRecognitionTab() {
                   >
                     {copiedQuote ? (
                       <>
-                        <Check className="h-3 w-3 text-emerald-600" />
-                        <span className="text-emerald-600 font-medium text-[11px]">Copied Citation</span>
+                        <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium text-[11px]">Copied Citation</span>
                       </>
                     ) : (
                       <>

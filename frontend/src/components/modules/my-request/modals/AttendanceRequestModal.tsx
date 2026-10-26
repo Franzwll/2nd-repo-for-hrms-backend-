@@ -245,7 +245,7 @@ export function AttendanceRequestModal({
                 <span className="text-muted-foreground">After filing:</span>
                 <span
                   className={
-                    isBalanceExceeded ? "font-bold text-rose-600" : "font-bold text-emerald-600"
+                    isBalanceExceeded ? "font-bold text-rose-600 dark:text-rose-400" : "font-bold text-emerald-600 dark:text-emerald-400"
                   }
                 >
                   {remainingAfterApproval} day(s)

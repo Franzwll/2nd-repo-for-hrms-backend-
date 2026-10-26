@@ -130,7 +130,7 @@ export function EssScheduleTab() {
       <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-primary/[0.04] shadow-sm">
         {/* Ambient Decorative Lighting */}
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
-        <div className="pointer-events-none absolute -left-24 -bottom-24 h-72 w-72 rounded-full bg-amber-500/5 blur-3xl" />
+        <div className="pointer-events-none absolute -left-24 -bottom-24 h-72 w-72 rounded-full bg-amber-500/5 dark:bg-amber-400/10 blur-3xl" />
 
         {/* Hero Top Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/60 bg-muted/30 px-6 py-4">
@@ -153,19 +153,19 @@ export function EssScheduleTab() {
               Station Active
             </Badge>
             {currentDutyStatus === "clocked_in" && (
-              <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+              <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:bg-emerald-400/10 dark:border-emerald-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                 Currently On Duty
               </Badge>
             )}
             {currentDutyStatus === "on_break" && (
-              <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+              <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 dark:bg-amber-400/10 dark:border-amber-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
                 On Lunch / Meal Break
               </Badge>
             )}
             {currentDutyStatus === "clocked_out" && (
-              <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+              <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 dark:bg-slate-400/10 dark:border-slate-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                 Shift Completed / Clocked Out
               </Badge>
             )}
@@ -217,7 +217,7 @@ export function EssScheduleTab() {
                   type="button"
                   onClick={handleBreakOut}
                   variant="outline"
-                  className="h-10 text-xs font-bold border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 shadow-2xs gap-1.5 cursor-pointer active:scale-95 transition-all"
+                  className="h-10 text-xs font-bold border-amber-500/40 dark:border-amber-400/20 text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-400/10 hover:bg-amber-500/20 dark:hover:bg-amber-400/15 shadow-2xs gap-1.5 cursor-pointer active:scale-95 transition-all"
                 >
                   <Coffee className="h-3.5 w-3.5" />
                   <span>Break Out</span>
@@ -227,7 +227,7 @@ export function EssScheduleTab() {
                   type="button"
                   onClick={handleBreakIn}
                   variant="outline"
-                  className="h-10 text-xs font-bold border-teal-500/40 text-teal-600 dark:text-teal-400 bg-teal-500/10 hover:bg-teal-500/20 shadow-2xs gap-1.5 cursor-pointer active:scale-95 transition-all"
+                  className="h-10 text-xs font-bold border-teal-500/40 dark:border-teal-400/20 text-teal-600 dark:text-teal-400 bg-teal-500/10 hover:bg-teal-500/20 dark:bg-teal-400/10 dark:hover:bg-teal-400/15 shadow-2xs gap-1.5 cursor-pointer active:scale-95 transition-all"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   <span>Break In</span>

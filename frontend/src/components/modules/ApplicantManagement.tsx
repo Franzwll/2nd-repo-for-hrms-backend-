@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -170,11 +178,7 @@ import {
 } from "@/data/applicants";
 import { departments, positions, type NewHire } from "@/data/hr";
 import { reportedEntitiesStore, type ReportedEntityType } from "@/data/reported-entities";
-import {
-  DEFAULT_ACCOUNT_PASSWORD,
-  hireStore,
-  useHires,
-} from "@/data/hires";
+import { DEFAULT_ACCOUNT_PASSWORD, hireStore, useHires } from "@/data/hires";
 import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn, downloadTextFile } from "@/lib/utils";
@@ -343,7 +347,8 @@ function offerStateLabel(s: OfferState): string {
 }
 
 /** Mock resume screening result — used until real screening data exists for an applicant. */
-function screeningResultFor(a: Applicant) {  if (a.entities.length > 0) return { entities: a.entities, score: a.score };
+function screeningResultFor(a: Applicant) {
+  if (a.entities.length > 0) return { entities: a.entities, score: a.score };
   const keywords = keywordLibrary[a.position] ?? [];
   return {
     entities: keywords.map((k, i) => ({
@@ -686,6 +691,7 @@ function DoorIcon({ highlighted, className }: { highlighted: boolean; className?
         height="64"
         rx="2"
         fill={highlighted ? "#15803d" : "transparent"}
+        className={highlighted ? "dark:fill-green-500" : undefined}
         stroke="currentColor"
         strokeWidth="2.5"
       />
@@ -801,12 +807,7 @@ const parseTimeToMinutes = (t: string) => {
 };
 
 /** Start-window state of one interview booking against the wall clock. */
-export type InterviewWindowState =
-  | "future-day"
-  | "upcoming"
-  | "live"
-  | "ended"
-  | "past-day";
+export type InterviewWindowState = "future-day" | "upcoming" | "live" | "ended" | "past-day";
 
 /** Parses an interview time label ("10:30 AM", "10:30", "10:30:00") into
  *  minutes-from-midnight. Null when the label is unparseable. */
@@ -1960,7 +1961,8 @@ function reportAllUnrecognized(
     }),
   );
   toast.success(`${unique.size} unrecognized entr${unique.size === 1 ? "y" : "ies"} reported`, {
-    description: "Process them in Recruitment Management → Screening Setup → Reported Entities.",
+    description:
+      "Process them in Recruitment Management → Screening Setup → Reported Entities.",
   });
 }
 
@@ -3508,8 +3510,8 @@ export function ScreeningReferenceManager() {
                   ) : rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                        No reference entries yet — add one above, or bulk-upload a file from the Add
-                        Reference Entry dialog.
+                        No reference entries yet — add one above, or bulk-upload a file from the
+                        Add Reference Entry dialog.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -3673,7 +3675,9 @@ export function ScreeningReferenceManager() {
                   void handleBulkUpload(e.dataTransfer.files?.[0]);
                 }}
               >
-                <Label className="text-xs">Bulk upload entries — drag &amp; drop a .csv / .txt file here</Label>
+                <Label className="text-xs">
+                  Bulk upload entries — drag &amp; drop a .csv / .txt file here
+                </Label>
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
                     type="file"
@@ -4925,14 +4929,7 @@ export function ScreeningResumeDocsMatchDetail({
    and Resume & Documents. Activity history lives in Current Stage.
    ============================================================================ */
 
-type ViewPanel =
-  | "current"
-  | "details"
-  | "resume"
-  | "interview"
-  | "test"
-  | "practical"
-  | "final";
+type ViewPanel = "current" | "details" | "resume" | "interview" | "test" | "practical" | "final";
 
 type ViewScreenDoc = {
   docType: VerificationDocType;
@@ -5031,7 +5028,6 @@ const departmentOf = (position: string) =>
   jobs.find((j) => j.title === position)?.department ??
   "—";
 
-
 function ApplicantViewScreen({
   a,
   docs,
@@ -5083,17 +5079,14 @@ function ApplicantViewScreen({
   const practical = practicalTests[0];
   const final = finalEvaluations[0];
   /** Ready-checks mirror the removed Interview / Test / Practical / Final tabs. */
-  const readyForTest =
-    a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
+  const readyForTest = a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
   const readyForPractical =
-    ((requiresTest
+    (requiresTest
       ? a.stage === "Assessment Test" && test?.result === "Passed"
-      : a.stage === "Assessed" && assessment?.result === "Passed") &&
-      requiresPrac);
+      : a.stage === "Assessed" && assessment?.result === "Passed") && requiresPrac;
   const readyForFinal =
     ((requiresTest
-      ? (a.stage === "Practical Test" || a.stage === "Assessment Test") &&
-        test?.result === "Passed"
+      ? (a.stage === "Practical Test" || a.stage === "Assessment Test") && test?.result === "Passed"
       : a.stage === "Assessed" && assessment?.result === "Passed") &&
       (!requiresPrac || practical?.result === "Passed")) ||
     (!requiresTest &&
@@ -5132,8 +5125,7 @@ function ApplicantViewScreen({
     const states: StageProgressState[] = staged.map((s) => (s ? "done" : "pending"));
     // A stage the role skips is never "worked on": leave it out when locating
     // the current stage, then show it green once the applicant is past it.
-    const applicable = (i: number) =>
-      (requiresTest || i !== 2) && (requiresPrac || i !== 3);
+    const applicable = (i: number) => (requiresTest || i !== 2) && (requiresPrac || i !== 3);
     const currentIdx = states.findIndex((s, i) => applicable(i) && s === "pending");
     if (!requiresTest && (currentIdx === -1 || currentIdx > 2)) states[2] = "done";
     if (!requiresPrac && (currentIdx === -1 || currentIdx > 3)) states[3] = "done";
@@ -5440,19 +5432,15 @@ function ApplicantViewScreen({
             )}
           </div>
           {historyLoading ? (
-            <div
-              className="space-y-2"
-              aria-busy="true"
-              aria-label="Loading application history"
-            >
+            <div className="space-y-2" aria-busy="true" aria-label="Loading application history">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-3/4" />
             </div>
           ) : history?.cooldown ? (
-            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed">
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 dark:border-amber-400/20 dark:bg-amber-400/10 px-3 py-2 text-xs leading-relaxed">
               Eligible to re-apply on{" "}
-              <span className="font-semibold">{history.cooldown.eligible_after_label}</span>{" "}
-              ({history.cooldown.days_left} day(s) left).
+              <span className="font-semibold">{history.cooldown.eligible_after_label}</span> (
+              {history.cooldown.days_left} day(s) left).
             </p>
           ) : (
             <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs">
@@ -6024,36 +6012,39 @@ function ApplicantViewScreen({
                                               {serverDocsLoading && (
                                                 <TableRowsSkeleton cols={3} rows={5} />
                                               )}
-                                              {!serverDocsLoading && group.map((d) => (
-                                                <TableRow key={`${d.docType}-${d.fileName}`}>
-                                                  <TableCell>
-                                                    <p className="text-sm font-medium">{d.title}</p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                      {d.fileName}
-                                                    </p>
-                                                  </TableCell>
-                                                  <TableCell>
-                                                    {d.originalCopy ? (
-                                                      <Badge
-                                                        variant="outline"
-                                                        className="border-success/30 bg-success/10 text-success"
-                                                      >
-                                                        Original
-                                                      </Badge>
-                                                    ) : (
-                                                      <Badge
-                                                        variant="outline"
-                                                        className="border-caution/30 bg-caution/10 text-caution"
-                                                      >
-                                                        Copy
-                                                      </Badge>
-                                                    )}
-                                                  </TableCell>
-                                                  <TableCell className="text-xs text-muted-foreground">
-                                                    {d.uploadedAt}
-                                                  </TableCell>
-                                                </TableRow>
-                                              ))}
+                                              {!serverDocsLoading &&
+                                                group.map((d) => (
+                                                  <TableRow key={`${d.docType}-${d.fileName}`}>
+                                                    <TableCell>
+                                                      <p className="text-sm font-medium">
+                                                        {d.title}
+                                                      </p>
+                                                      <p className="text-xs text-muted-foreground">
+                                                        {d.fileName}
+                                                      </p>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {d.originalCopy ? (
+                                                        <Badge
+                                                          variant="outline"
+                                                          className="border-success/30 bg-success/10 text-success"
+                                                        >
+                                                          Original
+                                                        </Badge>
+                                                      ) : (
+                                                        <Badge
+                                                          variant="outline"
+                                                          className="border-caution/30 bg-caution/10 text-caution"
+                                                        >
+                                                          Copy
+                                                        </Badge>
+                                                      )}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground">
+                                                      {d.uploadedAt}
+                                                    </TableCell>
+                                                  </TableRow>
+                                                ))}
                                             </TableBody>
                                           </Table>
                                         </div>
@@ -6350,7 +6341,9 @@ function ApplicantViewScreen({
 
                       {!requiresTest ? (
                         <div className="mt-4">
-                          {emptyNote("This position does not require an assessment test (Core HCM).")}
+                          {emptyNote(
+                            "This position does not require an assessment test (Core HCM).",
+                          )}
                         </div>
                       ) : test ? (
                         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
@@ -7084,7 +7077,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       });
   }, []);
 
-
   /** Test & answers being reviewed from the result dialog. */
   const [viewingTestAnswers, setViewingTestAnswers] = useState<AssessmentTestRow | null>(null);
   const [viewMonth, setViewMonth] = useState<Date>(() => {
@@ -7147,8 +7139,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       DEFAULT_SLOT_SETTINGS.slotCount,
     )[0]!;
     const startMins = parseTimeToMinutes(DEFAULT_SLOT_SETTINGS.startTime);
-    const endMins =
-      (startMins + Math.max(5, DEFAULT_SLOT_SETTINGS.intervalMinutes)) % (24 * 60);
+    const endMins = (startMins + Math.max(5, DEFAULT_SLOT_SETTINGS.intervalMinutes)) % (24 * 60);
     return {
       applicant: "",
       date: TODAY_ISO,
@@ -8119,7 +8110,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         actionType: "Offer Email Sent",
         target: a.name,
         module: "Applicant Management",
-        details: "Offer emailed to the applicant — 7-day response window before the offer is treated as declined.",
+        details:
+          "Offer emailed to the applicant — 7-day response window before the offer is treated as declined.",
       });
       toast.success(`Offer email sent to ${a.name}`, {
         description:
@@ -8660,7 +8652,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           await el.play().catch(() => undefined);
         }
       } catch {
-        if (!cancelled) toast.error("Camera unavailable — you can still join via the Zoom links.");
+        if (!cancelled)
+          toast.error("Camera unavailable — you can still join via the Zoom links.");
       }
     })();
     return () => {
@@ -10196,7 +10189,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             . No response within 7 days is treated as a declined applicant.
           </span>
         ) : offer.status === "Pending" ? (
-          <span>No response within the 7-day window — treated as a declined applicant (Failed).</span>
+          <span>
+            No response within the 7-day window — treated as a declined applicant (Failed).
+          </span>
         ) : offer.status === "Accepted" ? (
           <span>
             Offer accepted
@@ -10207,8 +10202,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         ) : (
           <span>
             Offer declined
-            {a.offerResponseChannel ? ` — replied via ${a.offerResponseChannel}` : ""} — recorded
-            as Failed in the Pipeline Overview.
+            {a.offerResponseChannel ? ` — replied via ${a.offerResponseChannel}` : ""} —
+            recorded as Failed in the Pipeline Overview.
           </span>
         )}
       </div>
@@ -10229,9 +10224,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       <div className="space-y-2">
         <p className="eyebrow">Applicant's reply to the offer</p>
         <p className="text-xs text-muted-foreground">
-          HR records the applicant's reply here and how it arrived (Email, SMS, call or in
-          person). Accepting also asks for the start-of-work date — it anchors the New Hire
-          Onboarding days-of-work count.
+          HR records the applicant's reply here and how it arrived (Email, SMS, call or in person).
+          Accepting also asks for the start-of-work date — it anchors the New Hire Onboarding
+          days-of-work count.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -10276,8 +10271,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       <div className="space-y-2">
         <p className="eyebrow">HR decision</p>
         <p className="text-xs text-muted-foreground">
-          Passed and Recommend email the offer — the applicant has 7 days to reply, otherwise
-          they are treated as declined. Not Passed fails the candidate in the pipeline.
+          Passed and Recommend email the offer — the applicant has 7 days to reply, otherwise they
+          are treated as declined. Not Passed fails the candidate in the pipeline.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -10666,10 +10661,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         const readyForTest =
           a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
         const readyForPractical =
-          ((requiresTest
+          (requiresTest
             ? a.stage === "Assessment Test" && test?.result === "Passed"
-            : a.stage === "Assessed" && assessment?.result === "Passed") &&
-            requiresPrac);
+            : a.stage === "Assessed" && assessment?.result === "Passed") && requiresPrac;
         const readyForFinal =
           ((requiresTest
             ? (a.stage === "Practical Test" || a.stage === "Assessment Test") &&
@@ -10906,8 +10900,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           <DialogHeader>
             <DialogTitle>Re-apply cooldown</DialogTitle>
             <DialogDescription>
-              Failed applicants may re-apply for any open position after this many days.
-              Decliners (offer declined) are always welcome back — no waiting period.
+              Failed applicants may re-apply for any open position after this many days. Decliners
+              (offer declined) are always welcome back — no waiting period.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
@@ -11150,7 +11144,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             {/* Sticky sub-header: pinned right below the 64px portal header so
                 the page's top bar (tabs) stays visible while the long ranking
                 and applicant list scrolls. */}
-            <div className="sticky top-16 z-20 border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+            <div className="sticky top-16 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
               <TabsList className="py-2">
                 <TabsTrigger
                   className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
@@ -11914,7 +11908,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               count > 0 &&
                                 !selected &&
                                 !full &&
-                                "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm",
+                                "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
                               selected &&
                                 free &&
                                 "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
@@ -11934,7 +11928,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     ? "bg-red-900"
                                     : selected && free
                                       ? "bg-foreground"
-                                      : "bg-[oklch(0.427_0.166_22.5)]",
+                                      : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
                                 )}
                               >
                                 {count}
@@ -11955,7 +11949,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         booked)
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-[oklch(0.427_0.166_22.5)]" />{" "}
+                        <span className="h-2 w-2 rounded-full bg-[oklch(0.427_0.166_22.5)] dark:bg-primary" />{" "}
                         Booked
                       </span>
                       <span className="flex items-center gap-1.5">
@@ -12728,7 +12722,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           count > 0 &&
                                             !selected &&
                                             !full &&
-                                            "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm",
+                                            "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
                                           selected &&
                                             free &&
                                             "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
@@ -12748,7 +12742,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 ? "bg-red-900"
                                                 : selected && free
                                                   ? "bg-foreground"
-                                                  : "bg-[oklch(0.427_0.166_22.5)]",
+                                                  : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
                                             )}
                                           >
                                             {count}
@@ -12830,7 +12824,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                   <span
                                                     className={cn(
                                                       count > 0
-                                                        ? "text-green-700"
+                                                        ? "text-green-700 dark:text-green-400"
                                                         : "text-foreground",
                                                     )}
                                                   >
@@ -12876,7 +12870,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                   className={cn(
                                                     "flex h-16 w-24 items-center justify-center rounded-lg border-2",
                                                     virtualCount > 0
-                                                      ? "border-green-700 bg-green-700/15 text-green-700"
+                                                      ? "border-green-700 bg-green-700/15 text-green-700 dark:border-green-400/20 dark:bg-green-400/10 dark:text-green-400"
                                                       : "border-foreground/70 text-foreground",
                                                   )}
                                                 >
@@ -13481,7 +13475,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       count > 0 &&
                                         !selected &&
                                         !full &&
-                                        "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm",
+                                        "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
                                       selected &&
                                         free &&
                                         "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
@@ -13501,7 +13495,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                             ? "bg-red-900"
                                             : selected && free
                                               ? "bg-foreground"
-                                              : "bg-[oklch(0.427_0.166_22.5)]",
+                                              : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
                                         )}
                                       >
                                         {count}
@@ -13662,7 +13656,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           <span className="relative">
                                             <span
                                               className={cn(
-                                                count > 0 ? "text-green-700" : "text-foreground",
+                                                count > 0
+                                                  ? "text-green-700 dark:text-green-400"
+                                                  : "text-foreground",
                                               )}
                                             >
                                               <DoorIcon
@@ -13719,7 +13715,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                             className={cn(
                                               "flex h-12 w-20 items-center justify-center rounded-lg border-2",
                                               virtualCount > 0
-                                                ? "border-green-700 bg-green-700/15 text-green-700"
+                                                ? "border-green-700 bg-green-700/15 text-green-700 dark:border-green-400/20 dark:bg-green-400/10 dark:text-green-400"
                                                 : "border-foreground/70 text-foreground",
                                             )}
                                           >
@@ -13920,7 +13916,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         value={customTime}
                                         onChange={(e) => applyCustomRange("start", e.target.value)}
                                       />
-                                      <span className="text-center text-xs text-muted-foreground">to</span>
+                                      <span className="text-center text-xs text-muted-foreground">
+                                        to
+                                      </span>
                                       <Input
                                         type="time"
                                         aria-label="Custom end time"
@@ -13956,13 +13954,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       <Select
                                         value={schedule.mode}
                                         onValueChange={(v) =>
-                                setSchedule({
-                                  ...schedule,
-                                  mode: v,
-                                  // Virtual needs no room — drop any picked facility.
-                                  facilityId: v === "Virtual" ? "" : schedule.facilityId,
-                                })
-                              }
+                                          setSchedule({
+                                            ...schedule,
+                                            mode: v,
+                                            // Virtual needs no room — drop any picked facility.
+                                            facilityId: v === "Virtual" ? "" : schedule.facilityId,
+                                          })
+                                        }
                                       >
                                         <SelectTrigger>
                                           <SelectValue />
@@ -13998,7 +13996,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     <div className="space-y-2">
                                       <Label className="text-sm">
                                         <span className="text-primary">6.</span>{" "}
-                                        {schedule.mode === "On-site" ? "Request Facility" : "Facility"}
+                                        {schedule.mode === "On-site"
+                                          ? "Request Facility"
+                                          : "Facility"}
                                       </Label>
                                       {schedule.mode === "On-site" ? (
                                         <Select
@@ -14026,8 +14026,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           <span>
                                             No facility request needed — Virtual interviews are
                                             held over Zoom. The applicant is emailed the{" "}
-                                            <b>1st Join link</b>, <b>2nd Continue link</b>,
-                                            password and interviewer name.
+                                            <b>1st Join link</b>, <b>2nd Continue link</b>, password
+                                            and interviewer name.
                                           </span>
                                         </div>
                                       )}
@@ -14047,9 +14047,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     }
                                   >
                                     <Mail className="mr-2 h-4 w-4" />{" "}
-                                     {schedule.mode === "On-site"
-                                       ? "Request Facility to Scheduled"
-                                       : "Schedule Interview"}
+                                    {schedule.mode === "On-site"
+                                      ? "Request Facility to Scheduled"
+                                      : "Schedule Interview"}
                                   </Button>
                                   {bookingMissingFields.length > 0 && (
                                     <p className="text-center text-xs text-muted-foreground">
@@ -14344,746 +14344,755 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </TableHeader>
                         <TableBody>
                           {loading && <TableRowsSkeleton cols={9} rows={5} />}
-                          {!loading && pipelinePage.pageItems.map(
-                            ({
-                              a,
-                              interview,
-                              liveInterview,
-                              assessment,
-                              test,
-                              practical,
-                              final,
-                              requiresPrac,
-                              requiresTest,
-                              needsSchedule,
-                              readyForTest,
-                              readyForPractical,
-                              readyForFinal,
-                            }) => {
-                              const isHired = a.stage === "Hired";
-                              const isRejected = a.stage === "Rejected";
-                              const canProgress = !isHired && !isRejected;
-                              // 1 · Accept & schedule — any Screened applicant with no
-                              // booked interview and no assessment yet can be
-                              // accepted straight from the pipeline.
-                              const showAccept =
-                                a.stage === "Screened" &&
-                                !liveInterview &&
-                                !interview &&
-                                !assessment &&
-                                canProgress;
-                              const showSchedule = needsSchedule && canProgress;
-                              // 3 · Re-book — Cancelled interviews stay re-bookable,
-                              // and Rejected applicants can be re-booked (with or
-                              // without a prior interview) as long as the interview
-                              // was never completed (no assessment record).
-                              const showRebookCancelled =
-                                !!interview &&
-                                !assessment &&
-                                !isHired &&
-                                interview.status === "Cancelled";
-                              const showRebookRejected = isRejected && !isHired && !assessment;
-                              const showRebook = showRebookCancelled || showRebookRejected;
-                              const showStart =
-                                !!interview &&
-                                !assessment &&
-                                canProgress &&
-                                interview.status !== "Cancelled" &&
-                                !isRejected;
-                              // Facility verification gate — mirrors the Interview
-                              // Scheduling rule that a booking is only confirmed once
-                              // its facility request is approved: while approval is
-                              // still pending, the interview cannot be started.
-                              // Virtual interviews reserve no facility, so the gate
-                              // never applies to them.
-                              const bookingForFacility = liveInterview ?? interview;
-                              const facilityPending =
-                                !!bookingForFacility?.facilityName &&
-                                bookingForFacility.mode === "On-site" &&
-                                (facilityStatuses[bookingForFacility.id] ??
-                                  bookingForFacility.facilityStatus) ===
-                                  "Waiting for Facility Approval";
-                              // 2 · Reschedule — any live booking that is not done
-                              // yet (no assessment record) can be moved to a new
-                              // slot. A stale "Completed" without an assessment
-                              // counts as still open.
-                              const showReschedule =
-                                !!liveInterview &&
-                                !assessment &&
-                                canProgress &&
-                                liveInterview.status !== "Cancelled" &&
-                                !isInterviewLocked(liveInterview);
-                              // Cancel — only while still Scheduled (or stale
-                              // "Completed" with no assessment) and not yet
-                              // interviewed. Cancelled / No Show / truly-done
-                              // rows never show Cancel.
-                              const showCancel =
-                                !!liveInterview &&
-                                !assessment &&
-                                canProgress &&
-                                (liveInterview.status === "Scheduled" ||
-                                  liveInterview.status === "Completed") &&
-                                !isInterviewLocked(liveInterview);
-                              const startWindow = showStart
-                                ? getInterviewWindow(
-                                    liveInterview?.date ?? interview?.date ?? "",
-                                    liveInterview?.time ?? interview?.time ?? "",
-                                    interviewDurationMinutes(
+                          {!loading &&
+                            pipelinePage.pageItems.map(
+                              ({
+                                a,
+                                interview,
+                                liveInterview,
+                                assessment,
+                                test,
+                                practical,
+                                final,
+                                requiresPrac,
+                                requiresTest,
+                                needsSchedule,
+                                readyForTest,
+                                readyForPractical,
+                                readyForFinal,
+                              }) => {
+                                const isHired = a.stage === "Hired";
+                                const isRejected = a.stage === "Rejected";
+                                const canProgress = !isHired && !isRejected;
+                                // 1 · Accept & schedule — any Screened applicant with no
+                                // booked interview and no assessment yet can be
+                                // accepted straight from the pipeline.
+                                const showAccept =
+                                  a.stage === "Screened" &&
+                                  !liveInterview &&
+                                  !interview &&
+                                  !assessment &&
+                                  canProgress;
+                                const showSchedule = needsSchedule && canProgress;
+                                // 3 · Re-book — Cancelled interviews stay re-bookable,
+                                // and Rejected applicants can be re-booked (with or
+                                // without a prior interview) as long as the interview
+                                // was never completed (no assessment record).
+                                const showRebookCancelled =
+                                  !!interview &&
+                                  !assessment &&
+                                  !isHired &&
+                                  interview.status === "Cancelled";
+                                const showRebookRejected = isRejected && !isHired && !assessment;
+                                const showRebook = showRebookCancelled || showRebookRejected;
+                                const showStart =
+                                  !!interview &&
+                                  !assessment &&
+                                  canProgress &&
+                                  interview.status !== "Cancelled" &&
+                                  !isRejected;
+                                // Facility verification gate — mirrors the Interview
+                                // Scheduling rule that a booking is only confirmed once
+                                // its facility request is approved: while approval is
+                                // still pending, the interview cannot be started.
+                                // Virtual interviews reserve no facility, so the gate
+                                // never applies to them.
+                                const bookingForFacility = liveInterview ?? interview;
+                                const facilityPending =
+                                  !!bookingForFacility?.facilityName &&
+                                  bookingForFacility.mode === "On-site" &&
+                                  (facilityStatuses[bookingForFacility.id] ??
+                                    bookingForFacility.facilityStatus) ===
+                                    "Waiting for Facility Approval";
+                                // 2 · Reschedule — any live booking that is not done
+                                // yet (no assessment record) can be moved to a new
+                                // slot. A stale "Completed" without an assessment
+                                // counts as still open.
+                                const showReschedule =
+                                  !!liveInterview &&
+                                  !assessment &&
+                                  canProgress &&
+                                  liveInterview.status !== "Cancelled" &&
+                                  !isInterviewLocked(liveInterview);
+                                // Cancel — only while still Scheduled (or stale
+                                // "Completed" with no assessment) and not yet
+                                // interviewed. Cancelled / No Show / truly-done
+                                // rows never show Cancel.
+                                const showCancel =
+                                  !!liveInterview &&
+                                  !assessment &&
+                                  canProgress &&
+                                  (liveInterview.status === "Scheduled" ||
+                                    liveInterview.status === "Completed") &&
+                                  !isInterviewLocked(liveInterview);
+                                const startWindow = showStart
+                                  ? getInterviewWindow(
+                                      liveInterview?.date ?? interview?.date ?? "",
                                       liveInterview?.time ?? interview?.time ?? "",
-                                      liveInterview?.endTime ?? interview?.endTime,
-                                      slotSettings.intervalMinutes,
-                                    ),
-                                    new Date(nowMs),
-                                  )
-                                : "past-day";
-                              // Startable only inside the slot window
-                              // ([start, start + duration)) — not the whole day.
-                              const startToday = startWindow === "live";
-                              const showStartTest = !test && readyForTest && canProgress;
-                              const showStartPractical =
-                                requiresPrac && !practical && readyForPractical && canProgress;
-                              const showCompleteFinal = !final && readyForFinal && canProgress;
-                              const decided = isHired || isRejected;
-                              // Offer workflow — the 7-day response window and
-                              // the HR-recorded reply drive the Final
-                              // Evaluation column and the offer actions.
-                              const offer = offerStateOf(a);
-                              const offerAnswered =
-                                offer !== null &&
-                                (offer.status === "Accepted" ||
-                                  offer.status === "Declined" ||
-                                  offer.expired);
-                              const canAcceptApplicant =
-                                !!final &&
-                                final.recommendation !== "Not Recommended" &&
-                                !decided &&
-                                !offerAnswered;
-                              const canDeclineApplicant = !!final && !isHired && offer?.status !== "Declined";
-                              const showSendOffer =
-                                !!final &&
-                                final.recommendation !== "Not Recommended" &&
-                                !decided &&
-                                (offer === null || (offer.status === "Pending" && !offer.expired));
-                              const hasStageActions =
-                                showAccept ||
-                                showSchedule ||
-                                showStart ||
-                                showRebook ||
-                                showReschedule ||
-                                showCancel ||
-                                showStartTest ||
-                                showStartPractical ||
-                                showCompleteFinal ||
-                                showSendOffer;
-                              const hasViews = !!assessment || !!test || !!practical || !!final;
-                              const hasMore = hasStageActions || hasViews;
-                              return (
-                                <TableRow
-                                  key={a.id}
-                                  data-highlight-id={a.dbId ?? a.id}
-                                  className={`hover:bg-muted/30 ${highlightRowClass(
-                                    !!highlightId &&
-                                      (String(a.dbId ?? "") === highlightId ||
-                                        a.id === highlightId),
-                                  )}`}
-                                >
-                                  <TableCell className="max-w-0">
-                                    <div className="flex min-w-0 items-start gap-2">
-                                      <Avatar className="h-7 w-7 shrink-0">
-                                        <AvatarFallback className="bg-secondary text-[0.65rem]">
-                                          {initials(a.name)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <div className="min-w-0 flex-1">
-                                        <p className="truncate font-medium" title={a.name}>
-                                          {a.name}
-                                        </p>
-                                        <p
-                                          className="truncate text-muted-foreground"
-                                          title={`${a.id} · ${a.position}`}
-                                        >
-                                          {a.id} · {a.position}
-                                        </p>
-                                        {a.email ? (
+                                      interviewDurationMinutes(
+                                        liveInterview?.time ?? interview?.time ?? "",
+                                        liveInterview?.endTime ?? interview?.endTime,
+                                        slotSettings.intervalMinutes,
+                                      ),
+                                      new Date(nowMs),
+                                    )
+                                  : "past-day";
+                                // Startable only inside the slot window
+                                // ([start, start + duration)) — not the whole day.
+                                const startToday = startWindow === "live";
+                                const showStartTest = !test && readyForTest && canProgress;
+                                const showStartPractical =
+                                  requiresPrac && !practical && readyForPractical && canProgress;
+                                const showCompleteFinal = !final && readyForFinal && canProgress;
+                                const decided = isHired || isRejected;
+                                // Offer workflow — the 7-day response window and
+                                // the HR-recorded reply drive the Final
+                                // Evaluation column and the offer actions.
+                                const offer = offerStateOf(a);
+                                const offerAnswered =
+                                  offer !== null &&
+                                  (offer.status === "Accepted" ||
+                                    offer.status === "Declined" ||
+                                    offer.expired);
+                                const canAcceptApplicant =
+                                  !!final &&
+                                  final.recommendation !== "Not Recommended" &&
+                                  !decided &&
+                                  !offerAnswered;
+                                const canDeclineApplicant =
+                                  !!final && !isHired && offer?.status !== "Declined";
+                                const showSendOffer =
+                                  !!final &&
+                                  final.recommendation !== "Not Recommended" &&
+                                  !decided &&
+                                  (offer === null ||
+                                    (offer.status === "Pending" && !offer.expired));
+                                const hasStageActions =
+                                  showAccept ||
+                                  showSchedule ||
+                                  showStart ||
+                                  showRebook ||
+                                  showReschedule ||
+                                  showCancel ||
+                                  showStartTest ||
+                                  showStartPractical ||
+                                  showCompleteFinal ||
+                                  showSendOffer;
+                                const hasViews = !!assessment || !!test || !!practical || !!final;
+                                const hasMore = hasStageActions || hasViews;
+                                return (
+                                  <TableRow
+                                    key={a.id}
+                                    data-highlight-id={a.dbId ?? a.id}
+                                    className={`hover:bg-muted/30 ${highlightRowClass(
+                                      !!highlightId &&
+                                        (String(a.dbId ?? "") === highlightId ||
+                                          a.id === highlightId),
+                                    )}`}
+                                  >
+                                    <TableCell className="max-w-0">
+                                      <div className="flex min-w-0 items-start gap-2">
+                                        <Avatar className="h-7 w-7 shrink-0">
+                                          <AvatarFallback className="bg-secondary text-[0.65rem]">
+                                            {initials(a.name)}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate font-medium" title={a.name}>
+                                            {a.name}
+                                          </p>
                                           <p
                                             className="truncate text-muted-foreground"
-                                            title={a.email}
+                                            title={`${a.id} · ${a.position}`}
                                           >
-                                            {a.email}
+                                            {a.id} · {a.position}
                                           </p>
-                                        ) : null}
-                                        {a.phone ? (
-                                          <p
-                                            className="truncate text-muted-foreground"
-                                            title={a.phone}
-                                          >
-                                            {a.phone}
-                                          </p>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="max-w-0">
-                                    {(() => {
-                                      const shown = displayAppliedAt(a.appliedAt);
-                                      const [d, ...rest] = shown.split(" ");
-                                      const t = rest.join(" ");
-                                      return (
-                                        <>
-                                          <p className="truncate font-medium" title={shown}>
-                                            {d || "—"}
-                                          </p>
-                                          {t ? (
-                                            <p className="truncate text-muted-foreground">{t}</p>
+                                          {a.email ? (
+                                            <p
+                                              className="truncate text-muted-foreground"
+                                              title={a.email}
+                                            >
+                                              {a.email}
+                                            </p>
                                           ) : null}
-                                        </>
-                                      );
-                                    })()}
-                                  </TableCell>
-                                  <TableCell className="max-w-0">
-                                    {(() => {
-                                      const step = pipelineStepOf(a.stage);
-                                      return step ? (
-                                        <>
+                                          {a.phone ? (
+                                            <p
+                                              className="truncate text-muted-foreground"
+                                              title={a.phone}
+                                            >
+                                              {a.phone}
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      {(() => {
+                                        const shown = displayAppliedAt(a.appliedAt);
+                                        const [d, ...rest] = shown.split(" ");
+                                        const t = rest.join(" ");
+                                        return (
+                                          <>
+                                            <p className="truncate font-medium" title={shown}>
+                                              {d || "—"}
+                                            </p>
+                                            {t ? (
+                                              <p className="truncate text-muted-foreground">{t}</p>
+                                            ) : null}
+                                          </>
+                                        );
+                                      })()}
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      {(() => {
+                                        const step = pipelineStepOf(a.stage);
+                                        return step ? (
+                                          <>
+                                            <p className="truncate font-medium" title={a.stage}>
+                                              {a.stage}
+                                            </p>
+                                            <p className="truncate text-muted-foreground">{step}</p>
+                                          </>
+                                        ) : (
                                           <p className="truncate font-medium" title={a.stage}>
                                             {a.stage}
                                           </p>
-                                          <p className="truncate text-muted-foreground">{step}</p>
-                                        </>
-                                      ) : (
-                                        <p className="truncate font-medium" title={a.stage}>
-                                          {a.stage}
-                                        </p>
-                                      );
-                                    })()}
-                                  </TableCell>
-                                  <TableCell className="max-w-0">
-                                    <p className="font-display text-sm font-semibold">{a.score}%</p>
-                                    <p
-                                      className={cn(
-                                        "truncate text-xs font-semibold",
-                                        a.stage === "Rejected"
-                                          ? "text-destructive"
-                                          : a.score >= passing
-                                            ? "text-success"
-                                            : "text-caution",
-                                      )}
-                                    >
-                                      {a.stage === "Rejected"
-                                        ? "Rejected"
-                                        : a.score >= passing
-                                          ? "Passed"
-                                          : "Below passing"}
-                                    </p>
-                                    {(a.docCount ?? 0) > 0 ? (
-                                      <p
-                                        className="truncate text-xs font-medium text-primary"
-                                        title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
-                                      >
-                                        {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
+                                        );
+                                      })()}
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      <p className="font-display text-sm font-semibold">
+                                        {a.score}%
                                       </p>
-                                    ) : null}
-                                    {/* Screening verdict — below the supporting
-                                        documents, or right below Passed / Below
-                                        passing when no documents were uploaded. */}
-                                    <p
-                                      className={cn(
-                                        "mt-1 inline-flex rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold",
-                                        statusMeta[a.status].className,
-                                      )}
-                                      title={statusMeta[a.status].label}
-                                    >
-                                      {statusMeta[a.status].label}
-                                    </p>
-                                  </TableCell>
-                                  <TableCell className="max-w-0">
-                                    {needsSchedule &&
-                                    a.stage !== "Hired" &&
-                                    a.stage !== "Rejected" ? (
-                                      <>
-                                        <p className="truncate text-muted-foreground">
-                                          Accepted — no date yet
-                                        </p>
-                                      </>
-                                    ) : !interview ? (
-                                      <p className="truncate text-muted-foreground">
-                                        {a.stage === "Rejected"
-                                          ? "Rejected"
-                                          : a.stage === "Hired"
-                                            ? "Hired"
-                                            : "Need to Schedule"}
-                                      </p>
-                                    ) : (
-                                      <>
-                                        <p
-                                          className="truncate font-medium"
-                                          title={`${interview.date} · ${interview.time} · ${interview.mode} · ${interview.interviewer}${interview.facilityName ? ` · ${interview.facilityName}` : ""}`}
-                                        >
-                                          {interview.date} · {interview.time}
-                                        </p>
-                                        <p className="truncate text-muted-foreground">
-                                          {interview.mode} · {interview.interviewer}
-                                        </p>
-                                        {interview.interview_notes &&
-                                          interview.interview_notes.trim() !== "" && (
-                                            <p
-                                              className="mt-0.5 flex items-center gap-1 truncate text-[0.7rem] font-medium text-primary"
-                                              title={`Interview notes: ${interview.interview_notes}`}
-                                            >
-                                              <FileText className="h-3 w-3 shrink-0" /> Notes saved
-                                            </p>
-                                          )}
-                                        {(() => {
-                                          // An interview only counts as done when its
-                                          // assessment record exists. A stale
-                                          // "Completed" without assessment is still an
-                                          // open booking → Scheduled colors.
-                                          const done = !!assessment;
-                                          const liveDay = liveInterview?.date ?? interview.date;
-                                          const isToday = liveDay === TODAY_ISO;
-                                          const label = done
-                                            ? `${assessment.result} · ${assessment.total}%`
-                                            : interview.status === "Cancelled"
-                                              ? "Cancelled"
-                                              : interview.status === "No Show"
-                                                ? "No Show"
-                                                : isToday
-                                                  ? "Scheduled Today"
-                                                  : "Scheduled";
-                                          const tone = done
-                                            ? assessment.result === "Passed"
-                                              ? "text-success"
-                                              : "text-destructive"
-                                            : interview.status === "Cancelled" ||
-                                                interview.status === "No Show"
-                                              ? "text-destructive"
-                                              : "text-primary";
-                                          return (
-                                            <>
-                                              <p
-                                                className={cn(
-                                                  "truncate text-xs font-semibold",
-                                                  tone,
-                                                )}
-                                              >
-                                                {label}
-                                              </p>
-                                              {facilityPending &&
-                                              !done &&
-                                              interview.status !== "Cancelled" &&
-                                              interview.status !== "No Show" ? (
-                                                <p
-                                                  className="truncate text-[0.7rem] font-medium text-caution"
-                                                  title="The facility request for this booking is still awaiting approval — the schedule is confirmed once approved"
-                                                >
-                                                  Awaiting facility approval
-                                                </p>
-                                              ) : null}
-                                            </>
-                                          );
-                                        })()}
-                                      </>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="max-w-0">
-                                    {!requiresTest ? (
-                                      /* Roles that skip the assessment test: the stage reads
-                                         as completed (green) once the interview is passed. */
                                       <p
                                         className={cn(
-                                          "truncate",
-                                          assessment?.result === "Passed" || milestoneIndexOf(a) > 2
-                                            ? "text-xs font-semibold text-success"
-                                            : "text-muted-foreground",
-                                        )}
-                                        title="This position skips the assessment test (Core HCM)"
-                                      >
-                                        {assessment?.result === "Passed" || milestoneIndexOf(a) > 2
-                                          ? "Not required — Completed"
-                                          : "Not required"}
-                                      </p>
-                                    ) : test ? (
-                                      <>
-                                        <p className="font-display text-sm font-semibold">
-                                          {test.total}%
-                                        </p>
-                                        <p
-                                          className={cn(
-                                            "truncate text-xs font-semibold",
-                                            test.result === "Passed"
+                                          "truncate text-xs font-semibold",
+                                          a.stage === "Rejected"
+                                            ? "text-destructive"
+                                            : a.score >= passing
                                               ? "text-success"
-                                              : "text-destructive",
-                                          )}
-                                        >
-                                          {test.result}
-                                        </p>
+                                              : "text-caution",
+                                        )}
+                                      >
+                                        {a.stage === "Rejected"
+                                          ? "Rejected"
+                                          : a.score >= passing
+                                            ? "Passed"
+                                            : "Below passing"}
+                                      </p>
+                                      {(a.docCount ?? 0) > 0 ? (
                                         <p
-                                          className="truncate text-muted-foreground"
-                                          title={test.title}
+                                          className="truncate text-xs font-medium text-primary"
+                                          title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
                                         >
-                                          {test.title}
+                                          {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
                                         </p>
-                                      </>
-                                    ) : readyForTest &&
+                                      ) : null}
+                                      {/* Screening verdict — below the supporting
+                                        documents, or right below Passed / Below
+                                        passing when no documents were uploaded. */}
+                                      <p
+                                        className={cn(
+                                          "mt-1 inline-flex rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold",
+                                          statusMeta[a.status].className,
+                                        )}
+                                        title={statusMeta[a.status].label}
+                                      >
+                                        {statusMeta[a.status].label}
+                                      </p>
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      {needsSchedule &&
                                       a.stage !== "Hired" &&
                                       a.stage !== "Rejected" ? (
-                                      <>
+                                        <>
+                                          <p className="truncate text-muted-foreground">
+                                            Accepted — no date yet
+                                          </p>
+                                        </>
+                                      ) : !interview ? (
                                         <p className="truncate text-muted-foreground">
-                                          Ready for test — start from Actions
+                                          {a.stage === "Rejected"
+                                            ? "Rejected"
+                                            : a.stage === "Hired"
+                                              ? "Hired"
+                                              : "Need to Schedule"}
                                         </p>
-                                      </>
-                                    ) : a.stage === "Rejected" ? (
-                                      <p className="truncate text-xs font-semibold text-destructive">
-                                        Rejected
-                                      </p>
-                                    ) : a.stage === "Hired" ? (
-                                      <p className="truncate text-muted-foreground">Hired</p>
-                                    ) : (
-                                      <p className="truncate text-muted-foreground">
-                                        Waiting for interview
-                                      </p>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="max-w-0">
-                                    {!requiresPrac ? (
-                                      /* Roles that skip the practical: the stage reads
+                                      ) : (
+                                        <>
+                                          <p
+                                            className="truncate font-medium"
+                                            title={`${interview.date} · ${interview.time} · ${interview.mode} · ${interview.interviewer}${interview.facilityName ? ` · ${interview.facilityName}` : ""}`}
+                                          >
+                                            {interview.date} · {interview.time}
+                                          </p>
+                                          <p className="truncate text-muted-foreground">
+                                            {interview.mode} · {interview.interviewer}
+                                          </p>
+                                          {interview.interview_notes &&
+                                            interview.interview_notes.trim() !== "" && (
+                                              <p
+                                                className="mt-0.5 flex items-center gap-1 truncate text-[0.7rem] font-medium text-primary"
+                                                title={`Interview notes: ${interview.interview_notes}`}
+                                              >
+                                                <FileText className="h-3 w-3 shrink-0" /> Notes
+                                                saved
+                                              </p>
+                                            )}
+                                          {(() => {
+                                            // An interview only counts as done when its
+                                            // assessment record exists. A stale
+                                            // "Completed" without assessment is still an
+                                            // open booking → Scheduled colors.
+                                            const done = !!assessment;
+                                            const liveDay = liveInterview?.date ?? interview.date;
+                                            const isToday = liveDay === TODAY_ISO;
+                                            const label = done
+                                              ? `${assessment.result} · ${assessment.total}%`
+                                              : interview.status === "Cancelled"
+                                                ? "Cancelled"
+                                                : interview.status === "No Show"
+                                                  ? "No Show"
+                                                  : isToday
+                                                    ? "Scheduled Today"
+                                                    : "Scheduled";
+                                            const tone = done
+                                              ? assessment.result === "Passed"
+                                                ? "text-success"
+                                                : "text-destructive"
+                                              : interview.status === "Cancelled" ||
+                                                  interview.status === "No Show"
+                                                ? "text-destructive"
+                                                : "text-primary";
+                                            return (
+                                              <>
+                                                <p
+                                                  className={cn(
+                                                    "truncate text-xs font-semibold",
+                                                    tone,
+                                                  )}
+                                                >
+                                                  {label}
+                                                </p>
+                                                {facilityPending &&
+                                                !done &&
+                                                interview.status !== "Cancelled" &&
+                                                interview.status !== "No Show" ? (
+                                                  <p
+                                                    className="truncate text-[0.7rem] font-medium text-caution"
+                                                    title="The facility request for this booking is still awaiting approval — the schedule is confirmed once approved"
+                                                  >
+                                                    Awaiting facility approval
+                                                  </p>
+                                                ) : null}
+                                              </>
+                                            );
+                                          })()}
+                                        </>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      {!requiresTest ? (
+                                        /* Roles that skip the assessment test: the stage reads
+                                         as completed (green) once the interview is passed. */
+                                        <p
+                                          className={cn(
+                                            "truncate",
+                                            assessment?.result === "Passed" ||
+                                              milestoneIndexOf(a) > 2
+                                              ? "text-xs font-semibold text-success"
+                                              : "text-muted-foreground",
+                                          )}
+                                          title="This position skips the assessment test (Core HCM)"
+                                        >
+                                          {assessment?.result === "Passed" ||
+                                          milestoneIndexOf(a) > 2
+                                            ? "Not required — Completed"
+                                            : "Not required"}
+                                        </p>
+                                      ) : test ? (
+                                        <>
+                                          <p className="font-display text-sm font-semibold">
+                                            {test.total}%
+                                          </p>
+                                          <p
+                                            className={cn(
+                                              "truncate text-xs font-semibold",
+                                              test.result === "Passed"
+                                                ? "text-success"
+                                                : "text-destructive",
+                                            )}
+                                          >
+                                            {test.result}
+                                          </p>
+                                          <p
+                                            className="truncate text-muted-foreground"
+                                            title={test.title}
+                                          >
+                                            {test.title}
+                                          </p>
+                                        </>
+                                      ) : readyForTest &&
+                                        a.stage !== "Hired" &&
+                                        a.stage !== "Rejected" ? (
+                                        <>
+                                          <p className="truncate text-muted-foreground">
+                                            Ready for test — start from Actions
+                                          </p>
+                                        </>
+                                      ) : a.stage === "Rejected" ? (
+                                        <p className="truncate text-xs font-semibold text-destructive">
+                                          Rejected
+                                        </p>
+                                      ) : a.stage === "Hired" ? (
+                                        <p className="truncate text-muted-foreground">Hired</p>
+                                      ) : (
+                                        <p className="truncate text-muted-foreground">
+                                          Waiting for interview
+                                        </p>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      {!requiresPrac ? (
+                                        /* Roles that skip the practical: the stage reads
                                          as completed (green) once the applicant has
                                          moved past it — the assessment test is the
                                          step right before it there. */
-                                      <p
-                                        className={cn(
-                                          "truncate",
-                                          test?.result === "Passed" || milestoneIndexOf(a) > 3
-                                            ? "text-xs font-semibold text-success"
-                                            : "text-muted-foreground",
-                                        )}
-                                        title="This position skips the practical stage"
-                                      >
-                                        {test?.result === "Passed" || milestoneIndexOf(a) > 3
-                                          ? "Not required — Completed"
-                                          : "Not required"}
-                                      </p>
-                                    ) : practical ? (
-                                      <>
-                                        <p className="font-display text-sm font-semibold">
-                                          {practical.total}%
-                                        </p>
                                         <p
                                           className={cn(
-                                            "truncate text-xs font-semibold",
-                                            practical.result === "Passed"
-                                              ? "text-success"
-                                              : "text-destructive",
+                                            "truncate",
+                                            test?.result === "Passed" || milestoneIndexOf(a) > 3
+                                              ? "text-xs font-semibold text-success"
+                                              : "text-muted-foreground",
                                           )}
+                                          title="This position skips the practical stage"
                                         >
-                                          {practical.result}
+                                          {test?.result === "Passed" || milestoneIndexOf(a) > 3
+                                            ? "Not required — Completed"
+                                            : "Not required"}
                                         </p>
-                                        <p
-                                          className="truncate text-muted-foreground"
-                                          title={practical.taskTitle}
-                                        >
-                                          {practical.taskTitle}
-                                        </p>
-                                      </>
-                                    ) : readyForPractical &&
-                                      a.stage !== "Hired" &&
-                                      a.stage !== "Rejected" ? (
-                                      <>
-                                        <p className="truncate text-muted-foreground">
-                                          Ready for practical — start from Actions
-                                        </p>
-                                      </>
-                                    ) : a.stage === "Rejected" ? (
-                                      <p className="truncate text-xs font-semibold text-destructive">
-                                        Rejected
-                                      </p>
-                                    ) : a.stage === "Hired" ? (
-                                      <p className="truncate text-muted-foreground">Hired</p>
-                                    ) : (
-                                      <p className="truncate text-muted-foreground">
-                                        {test?.result === "Passed"
-                                          ? "Up next — record it"
-                                          : "Waiting for assessment"}
-                                      </p>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="max-w-0">
-                                    {final ? (
-                                      <>
-                                        <p
-                                          className={cn(
-                                            "truncate text-xs font-semibold",
-                                            final.recommendation === "Recommended for Hire"
-                                              ? "text-success"
-                                              : final.recommendation === "For Another Position"
-                                                ? "text-warning"
-                                                : "text-destructive",
-                                          )}
-                                          title={final.recommendation}
-                                        >
-                                          {final.recommendation}
-                                        </p>
-                                        <p className="truncate text-muted-foreground">
-                                          {final.date}
-                                        </p>
-                                        <p
-                                          className={cn(
-                                            "truncate text-xs font-semibold",
-                                            offer === null
-                                              ? final.recommendation === "Not Recommended"
-                                                ? "text-destructive"
-                                                : "text-warning"
-                                              : offer.status === "Accepted"
+                                      ) : practical ? (
+                                        <>
+                                          <p className="font-display text-sm font-semibold">
+                                            {practical.total}%
+                                          </p>
+                                          <p
+                                            className={cn(
+                                              "truncate text-xs font-semibold",
+                                              practical.result === "Passed"
                                                 ? "text-success"
-                                                : offer.status === "Pending" && !offer.expired
+                                                : "text-destructive",
+                                            )}
+                                          >
+                                            {practical.result}
+                                          </p>
+                                          <p
+                                            className="truncate text-muted-foreground"
+                                            title={practical.taskTitle}
+                                          >
+                                            {practical.taskTitle}
+                                          </p>
+                                        </>
+                                      ) : readyForPractical &&
+                                        a.stage !== "Hired" &&
+                                        a.stage !== "Rejected" ? (
+                                        <>
+                                          <p className="truncate text-muted-foreground">
+                                            Ready for practical — start from Actions
+                                          </p>
+                                        </>
+                                      ) : a.stage === "Rejected" ? (
+                                        <p className="truncate text-xs font-semibold text-destructive">
+                                          Rejected
+                                        </p>
+                                      ) : a.stage === "Hired" ? (
+                                        <p className="truncate text-muted-foreground">Hired</p>
+                                      ) : (
+                                        <p className="truncate text-muted-foreground">
+                                          {test?.result === "Passed"
+                                            ? "Up next — record it"
+                                            : "Waiting for assessment"}
+                                        </p>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      {final ? (
+                                        <>
+                                          <p
+                                            className={cn(
+                                              "truncate text-xs font-semibold",
+                                              final.recommendation === "Recommended for Hire"
+                                                ? "text-success"
+                                                : final.recommendation === "For Another Position"
                                                   ? "text-warning"
                                                   : "text-destructive",
-                                          )}
-                                          title={
-                                            offer
+                                            )}
+                                            title={final.recommendation}
+                                          >
+                                            {final.recommendation}
+                                          </p>
+                                          <p className="truncate text-muted-foreground">
+                                            {final.date}
+                                          </p>
+                                          <p
+                                            className={cn(
+                                              "truncate text-xs font-semibold",
+                                              offer === null
+                                                ? final.recommendation === "Not Recommended"
+                                                  ? "text-destructive"
+                                                  : "text-warning"
+                                                : offer.status === "Accepted"
+                                                  ? "text-success"
+                                                  : offer.status === "Pending" && !offer.expired
+                                                    ? "text-warning"
+                                                    : "text-destructive",
+                                            )}
+                                            title={
+                                              offer
+                                                ? offerStateLabel(offer)
+                                                : final.recommendation === "Not Recommended"
+                                                  ? "Not passed — recorded as Failed in the pipeline"
+                                                  : "No offer email sent yet — use Actions → Send offer email"
+                                            }
+                                          >
+                                            {offer
                                               ? offerStateLabel(offer)
                                               : final.recommendation === "Not Recommended"
-                                                ? "Not passed — recorded as Failed in the pipeline"
-                                                : "No offer email sent yet — use Actions → Send offer email"
-                                          }
-                                        >
-                                          {offer
-                                            ? offerStateLabel(offer)
-                                            : final.recommendation === "Not Recommended"
-                                              ? "Failed — not passed"
-                                              : "Offer not sent"}
-                                        </p>
-                                      </>
-                                    ) : readyForFinal &&
-                                      a.stage !== "Hired" &&
-                                      a.stage !== "Rejected" ? (
-                                      <>
+                                                ? "Failed — not passed"
+                                                : "Offer not sent"}
+                                          </p>
+                                        </>
+                                      ) : readyForFinal &&
+                                        a.stage !== "Hired" &&
+                                        a.stage !== "Rejected" ? (
+                                        <>
+                                          <p className="truncate text-muted-foreground">
+                                            Ready to evaluate — start from Actions
+                                          </p>
+                                        </>
+                                      ) : a.stage === "Rejected" ? (
+                                        <p className="truncate text-muted-foreground">Rejected</p>
+                                      ) : a.stage === "Hired" ? (
+                                        <p className="truncate text-muted-foreground">Hired</p>
+                                      ) : (
                                         <p className="truncate text-muted-foreground">
-                                          Ready to evaluate — start from Actions
+                                          Waiting for earlier stages
                                         </p>
-                                      </>
-                                    ) : a.stage === "Rejected" ? (
-                                      <p className="truncate text-muted-foreground">Rejected</p>
-                                    ) : a.stage === "Hired" ? (
-                                      <p className="truncate text-muted-foreground">Hired</p>
-                                    ) : (
-                                      <p className="truncate text-muted-foreground">
-                                        Waiting for earlier stages
-                                      </p>
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex flex-nowrap items-center justify-start gap-1.5">
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 w-7 shrink-0 cursor-pointer px-0"
-                                            title="Stage actions"
-                                          >
-                                            <MoreHorizontal className="h-3.5 w-3.5" />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-52">
-                                          {showAccept ? (
-                                            <DropdownMenuItem onClick={() => openReview(a)}>
-                                              Accept &amp; schedule
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {showSchedule ? (
-                                            <DropdownMenuItem onClick={() => openReview(a)}>
-                                              Schedule interview
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {showRebook ? (
-                                            <DropdownMenuItem
-                                              onClick={() =>
-                                                interview
-                                                  ? rebookInterview(interview)
-                                                  : rebookRejectedApplicant(a)
-                                              }
+                                      )}
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="flex flex-nowrap items-center justify-start gap-1.5">
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="h-7 w-7 shrink-0 cursor-pointer px-0"
+                                              title="Stage actions"
                                             >
-                                              Re-book interview
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {showStart && interview ? (
-                                            // Wrapper carries the tooltip: a disabled menu item
-                                            // has pointer-events disabled, so a `title` on the
-                                            // item itself would never surface on hover.
-                                            <span
-                                              className="block"
-                                              title={
-                                                facilityPending
-                                                  ? "Waiting for facility approval — the interview can start once the facility request is approved"
-                                                  : startWindow === "live"
-                                                    ? undefined
-                                                    : startWindow === "upcoming"
-                                                      ? `Starts at ${liveInterview?.time ?? interview?.time} (${interviewDurationMinutes(
-                                                          liveInterview?.time ?? interview?.time ?? "",
-                                                          liveInterview?.endTime ?? interview?.endTime,
-                                                          slotSettings.intervalMinutes,
-                                                        )} min)`
-                                                      : startWindow === "future-day"
-                                                        ? "Available on interview day"
-                                                        : "Interview window has passed"
-                                              }
-                                            >
+                                              <MoreHorizontal className="h-3.5 w-3.5" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end" className="w-52">
+                                            {showAccept ? (
+                                              <DropdownMenuItem onClick={() => openReview(a)}>
+                                                Accept &amp; schedule
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {showSchedule ? (
+                                              <DropdownMenuItem onClick={() => openReview(a)}>
+                                                Schedule interview
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {showRebook ? (
                                               <DropdownMenuItem
-                                                disabled={!startToday || facilityPending}
-                                                onClick={
-                                                  startToday && !facilityPending
-                                                    ? () =>
-                                                        interview?.mode === "Virtual"
-                                                          ? openZoomRoom(a)
-                                                          : startInterviewFor(a)
-                                                    : undefined
+                                                onClick={() =>
+                                                  interview
+                                                    ? rebookInterview(interview)
+                                                    : rebookRejectedApplicant(a)
                                                 }
                                               >
-                                                {interview?.mode === "Virtual" ? (
-                                                  <span className="flex items-center gap-1.5">
-                                                    <Video className="h-3.5 w-3.5" /> Start Zoom
-                                                    interview
-                                                  </span>
-                                                ) : (
-                                                  "Start interview"
-                                                )}
+                                                Re-book interview
                                               </DropdownMenuItem>
-                                            </span>
-                                          ) : null}
-                                          {showReschedule && liveInterview ? (
-                                            <DropdownMenuItem
-                                              onClick={() => rescheduleInterview(liveInterview)}
-                                            >
-                                              Reschedule interview
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {showCancel && liveInterview ? (
-                                            <DropdownMenuItem
-                                              className="text-destructive focus:text-destructive"
-                                              onClick={() =>
-                                                setCancelInterview(
-                                                  interviews.find(
-                                                    (x) => x.id === liveInterview.id,
-                                                  ) ?? liveInterview,
-                                                )
-                                              }
-                                            >
-                                              <X className="mr-2 h-3.5 w-3.5" /> Cancel interview
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {showStartTest ? (
-                                            <>
-                                              <DropdownMenuItem
-                                                onClick={() => openAssessmentTest(a)}
+                                            ) : null}
+                                            {showStart && interview ? (
+                                              // Wrapper carries the tooltip: a disabled menu item
+                                              // has pointer-events disabled, so a `title` on the
+                                              // item itself would never surface on hover.
+                                              <span
+                                                className="block"
+                                                title={
+                                                  facilityPending
+                                                    ? "Waiting for facility approval — the interview can start once the facility request is approved"
+                                                    : startWindow === "live"
+                                                      ? undefined
+                                                      : startWindow === "upcoming"
+                                                        ? `Starts at ${liveInterview?.time ?? interview?.time} (${interviewDurationMinutes(
+                                                            liveInterview?.time ??
+                                                              interview?.time ??
+                                                              "",
+                                                            liveInterview?.endTime ??
+                                                              interview?.endTime,
+                                                            slotSettings.intervalMinutes,
+                                                          )} min)`
+                                                        : startWindow === "future-day"
+                                                          ? "Available on interview day"
+                                                          : "Interview window has passed"
+                                                }
                                               >
-                                                Start assessment test
-                                              </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                  disabled={!startToday || facilityPending}
+                                                  onClick={
+                                                    startToday && !facilityPending
+                                                      ? () =>
+                                                          interview?.mode === "Virtual"
+                                                            ? openZoomRoom(a)
+                                                            : startInterviewFor(a)
+                                                      : undefined
+                                                  }
+                                                >
+                                                  {interview?.mode === "Virtual" ? (
+                                                    <span className="flex items-center gap-1.5">
+                                                      <Video className="h-3.5 w-3.5" /> Start Zoom
+                                                      interview
+                                                    </span>
+                                                  ) : (
+                                                    "Start interview"
+                                                  )}
+                                                </DropdownMenuItem>
+                                              </span>
+                                            ) : null}
+                                            {showReschedule && liveInterview ? (
                                               <DropdownMenuItem
-                                                disabled={inviteBusyId === a.id}
-                                                onClick={() => void copyApplicantTestLink(a)}
+                                                onClick={() => rescheduleInterview(liveInterview)}
                                               >
-                                                Copy applicant test link
+                                                Reschedule interview
                                               </DropdownMenuItem>
-                                            </>
-                                          ) : null}
-                                          {showStartPractical ? (
-                                            <DropdownMenuItem onClick={() => openPractical(a)}>
-                                              Start practical test
+                                            ) : null}
+                                            {showCancel && liveInterview ? (
+                                              <DropdownMenuItem
+                                                className="text-destructive focus:text-destructive"
+                                                onClick={() =>
+                                                  setCancelInterview(
+                                                    interviews.find(
+                                                      (x) => x.id === liveInterview.id,
+                                                    ) ?? liveInterview,
+                                                  )
+                                                }
+                                              >
+                                                <X className="mr-2 h-3.5 w-3.5" /> Cancel interview
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {showStartTest ? (
+                                              <>
+                                                <DropdownMenuItem
+                                                  onClick={() => openAssessmentTest(a)}
+                                                >
+                                                  Start assessment test
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                  disabled={inviteBusyId === a.id}
+                                                  onClick={() => void copyApplicantTestLink(a)}
+                                                >
+                                                  Copy applicant test link
+                                                </DropdownMenuItem>
+                                              </>
+                                            ) : null}
+                                            {showStartPractical ? (
+                                              <DropdownMenuItem onClick={() => openPractical(a)}>
+                                                Start practical test
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {showCompleteFinal ? (
+                                              <DropdownMenuItem
+                                                onClick={() => openFinalEvaluation(a)}
+                                              >
+                                                Complete final evaluation
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {showSendOffer ? (
+                                              <DropdownMenuItem
+                                                onClick={() => void sendOfferEmail(a)}
+                                              >
+                                                {offer?.status === "Pending"
+                                                  ? "Resend offer email"
+                                                  : "Send offer email"}
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {canAcceptApplicant ? (
+                                              <DropdownMenuItem onClick={() => openAcceptOffer(a)}>
+                                                Record acceptance
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {canDeclineApplicant ? (
+                                              <DropdownMenuItem onClick={() => openDeclineOffer(a)}>
+                                                Record decline
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {hasStageActions && hasViews ? (
+                                              <DropdownMenuSeparator />
+                                            ) : null}
+                                            <DropdownMenuItem onClick={() => openReview(a, true)}>
+                                              <FileText className="mr-2 h-3.5 w-3.5" /> Review
+                                              screening
                                             </DropdownMenuItem>
-                                          ) : null}
-                                          {showCompleteFinal ? (
-                                            <DropdownMenuItem
-                                              onClick={() => openFinalEvaluation(a)}
-                                            >
-                                              Complete final evaluation
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {showSendOffer ? (
-                                            <DropdownMenuItem
-                                              onClick={() => void sendOfferEmail(a)}
-                                            >
-                                              {offer?.status === "Pending"
-                                                ? "Resend offer email"
-                                                : "Send offer email"}
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {canAcceptApplicant ? (
-                                            <DropdownMenuItem onClick={() => openAcceptOffer(a)}>
-                                              Record acceptance
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {canDeclineApplicant ? (
-                                            <DropdownMenuItem
-                                              onClick={() => openDeclineOffer(a)}
-                                            >
-                                              Record decline
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {hasStageActions && hasViews ? (
-                                            <DropdownMenuSeparator />
-                                          ) : null}
-                                          <DropdownMenuItem onClick={() => openReview(a, true)}>
-                                            <FileText className="mr-2 h-3.5 w-3.5" /> Review
-                                            screening
-                                          </DropdownMenuItem>
-                                          {assessment ? (
-                                            <DropdownMenuItem
-                                              onClick={() => setViewingInterview(assessment)}
-                                            >
-                                              <Eye className="mr-2 h-3.5 w-3.5" /> View interview
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {test ? (
-                                            <DropdownMenuItem
-                                              onClick={() => setViewingAssessmentTest(test)}
-                                            >
-                                              <Eye className="mr-2 h-3.5 w-3.5" /> View assessment
-                                              test
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {practical ? (
-                                            <DropdownMenuItem
-                                              onClick={() => setViewingPractical(practical)}
-                                            >
-                                              <Eye className="mr-2 h-3.5 w-3.5" /> View practical
-                                              test
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {final ? (
-                                            <DropdownMenuItem
-                                              onClick={() => setViewingFinal(final)}
-                                            >
-                                              <Eye className="mr-2 h-3.5 w-3.5" /> View final
-                                              evaluation
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {/* Last item of the View section. */}
-                                          {interview ? (
-                                            <DropdownMenuItem
-                                              onClick={() => viewScheduledInCalendar(a)}
-                                            >
-                                              <CalendarDays className="mr-2 h-3.5 w-3.5" /> View
-                                              scheduled in calendar
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 shrink-0 cursor-pointer whitespace-nowrap px-2"
-                                        title="Open this applicant's View screen — interview, tests and evaluation"
-                                        onClick={() => setViewingApplicant(a)}
-                                      >
-                                        <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
-                                      </Button>
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            },
-                          )}
+                                            {assessment ? (
+                                              <DropdownMenuItem
+                                                onClick={() => setViewingInterview(assessment)}
+                                              >
+                                                <Eye className="mr-2 h-3.5 w-3.5" /> View interview
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {test ? (
+                                              <DropdownMenuItem
+                                                onClick={() => setViewingAssessmentTest(test)}
+                                              >
+                                                <Eye className="mr-2 h-3.5 w-3.5" /> View assessment
+                                                test
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {practical ? (
+                                              <DropdownMenuItem
+                                                onClick={() => setViewingPractical(practical)}
+                                              >
+                                                <Eye className="mr-2 h-3.5 w-3.5" /> View practical
+                                                test
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {final ? (
+                                              <DropdownMenuItem
+                                                onClick={() => setViewingFinal(final)}
+                                              >
+                                                <Eye className="mr-2 h-3.5 w-3.5" /> View final
+                                                evaluation
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                            {/* Last item of the View section. */}
+                                            {interview ? (
+                                              <DropdownMenuItem
+                                                onClick={() => viewScheduledInCalendar(a)}
+                                              >
+                                                <CalendarDays className="mr-2 h-3.5 w-3.5" /> View
+                                                scheduled in calendar
+                                              </DropdownMenuItem>
+                                            ) : null}
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 shrink-0 cursor-pointer whitespace-nowrap px-2"
+                                          title="Open this applicant's View screen — interview, tests and evaluation"
+                                          onClick={() => setViewingApplicant(a)}
+                                        >
+                                          <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              },
+                            )}
                           {pipelinePage.pageItems.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={9} className="py-10 text-center">
@@ -15315,37 +15324,41 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </TableHeader>
                         <TableBody>
                           {auditLoading && <TableRowsSkeleton cols={8} rows={5} />}
-                          {!auditLoading && auditPage.pageItems.map((e) => (
-                            <TableRow key={e.id}>
-                              <TableCell className="whitespace-nowrap text-xs">
-                                <span className="font-medium">{e.date}</span>
-                                <span className="block text-muted-foreground">{e.time}</span>
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap text-sm font-medium">
-                                {e.actorName}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                                {e.actorPosition}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                                {e.actorDepartment}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap">
-                                <Badge variant="outline" className={auditBadgeClass(e.actionType)}>
-                                  {e.actionType}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap text-sm">
-                                {e.target}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                                {e.module}
-                              </TableCell>
-                              <TableCell className="min-w-[18rem] text-xs text-muted-foreground">
-                                {e.details}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {!auditLoading &&
+                            auditPage.pageItems.map((e) => (
+                              <TableRow key={e.id}>
+                                <TableCell className="whitespace-nowrap text-xs">
+                                  <span className="font-medium">{e.date}</span>
+                                  <span className="block text-muted-foreground">{e.time}</span>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-sm font-medium">
+                                  {e.actorName}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                                  {e.actorPosition}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                                  {e.actorDepartment}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap">
+                                  <Badge
+                                    variant="outline"
+                                    className={auditBadgeClass(e.actionType)}
+                                  >
+                                    {e.actionType}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-sm">
+                                  {e.target}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                                  {e.module}
+                                </TableCell>
+                                <TableCell className="min-w-[18rem] text-xs text-muted-foreground">
+                                  {e.details}
+                                </TableCell>
+                              </TableRow>
+                            ))}
                           {!auditLoading && auditLog.length === 0 && (
                             <TableRow>
                               <TableCell
@@ -15433,8 +15446,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </DialogTitle>
                 <DialogDescription>
                   {recommendFor.name} will be evaluated as "For Another Position" — the offer
-                  email is sent for the chosen position and the applicant has 7 days to
-                  respond.
+                  email is sent for the chosen position and the applicant has 7 days to respond.
                 </DialogDescription>
               </DialogHeader>
               <div className="max-h-[50vh] space-y-2 overflow-y-auto">
@@ -15491,9 +15503,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     askConfirm({
                       title: "Recommend this candidate for another position?",
                       description: `${recommendFor.name} will be evaluated as "For Another Position" for ${
-                        dbJobPosts.find(
-                          (j) => String(j.job_post_id) === String(recommendJobPostId),
-                        )?.title ?? "the chosen position"
+                        dbJobPosts.find((j) => String(j.job_post_id) === String(recommendJobPostId))
+                          ?.title ?? "the chosen position"
                       } — the offer email will be sent with a 7-day response window.`,
                       confirmLabel: "Yes, recommend & send offer",
                       onConfirm: () =>
@@ -15792,7 +15803,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
                       <Info className="h-4 w-4 shrink-0" />
                       This applicant is already at the{" "}
-                      <span className="font-semibold text-foreground">{review.stage}</span> stage —
+                      <span className="font-semibold text-foreground">{review.stage}</span> stage
+                      —
                       {review.stage === "Accepted"
                         ? " use Schedule interview to book them in."
                         : " no further accept, reject or referral actions can be taken here."}
@@ -15896,7 +15908,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </Badge>
                         </span>
                         <span className="block text-xs text-muted-foreground">
-                          {p.department} — {p.headcount - p.filled} seat(s) open — {p.salaryBand}
+                          {p.department} — {p.headcount - p.filled} seat(s) open —{" "}
+                          {p.salaryBand}
                         </span>
                         <span className="mt-1 block text-[0.7rem] text-muted-foreground">
                           {fit.total > 0
@@ -16130,9 +16143,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       size="sm"
                       variant={zoomCamOn ? "outline" : "destructive"}
                       onClick={toggleZoomCam}
-                      title={
-                        zoomCamOn ? "Stop your camera" : "Start your camera (video preview)"
-                      }
+                      title={zoomCamOn ? "Stop your camera" : "Start your camera (video preview)"}
                     >
                       {zoomCamOn ? (
                         <Video className="h-3.5 w-3.5" />
@@ -16295,9 +16306,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </p>
                       {zoomRoom.interview.zoomJoinUrl ? (
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="shrink-0 font-medium text-foreground">
-                            Join:
-                          </span>
+                          <span className="shrink-0 font-medium text-foreground">Join:</span>
                           <a
                             href={zoomRoom.interview.zoomJoinUrl}
                             target="_blank"
@@ -16335,9 +16344,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       )}
                       {zoomRoom.interview.zoomContinueUrl && (
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="shrink-0 font-medium text-foreground">
-                            Continue:
-                          </span>
+                          <span className="shrink-0 font-medium text-foreground">Continue:</span>
                           <a
                             href={zoomRoom.interview.zoomContinueUrl}
                             target="_blank"
@@ -16485,9 +16492,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() =>
-                          copyZoomText(zoomNotes, "Interview notes")
-                        }
+                        onClick={() => copyZoomText(zoomNotes, "Interview notes")}
                         disabled={zoomNotes.trim() === ""}
                       >
                         <Copy className="mr-1 h-3 w-3" /> Copy
@@ -16509,8 +16514,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       aria-label="Interview notes"
                     />
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Notes are saved to the interview record and reload next time you open
-                      this room. Use <kbd className="px-1.5 py-0.5 rounded bg-muted border">Ctrl+S</kbd> or click Save.
+                      Notes are saved to the interview record and reload next time you open this
+                      room. Use <kbd className="px-1.5 py-0.5 rounded bg-muted border">Ctrl+S</kbd>{" "}
+                      or click Save.
                     </p>
                   </div>
                 </div>
@@ -16561,8 +16567,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                   <p className="mt-1 text-xs text-muted-foreground">
                     {testingTest.name} — {testingTest.position} · {testTitle} · Passing{" "}
-                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all are
-                    answered.
+                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all
+                    are answered.
                   </p>
 
                   {/* Question */}
@@ -16661,8 +16667,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </div>
                   {!allAnswered && (
                     <p className="mt-2 text-right text-xs text-muted-foreground">
-                      {totalQ - answeredCount} question(s) left — the test auto-checks once all are
-                      answered.
+                      {totalQ - answeredCount} question(s) left — the test auto-checks once all
+                      are answered.
                     </p>
                   )}
                 </>
@@ -16966,7 +16972,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               `Assessment Test ${assessmentOk ? "Passed" : "Not Passed"}`,
                             )
                           ) : (
-                            <Badge variant="outline" className="border-border text-muted-foreground">
+                            <Badge
+                              variant="outline"
+                              className="border-border text-muted-foreground"
+                            >
                               Assessment Test Not Required
                             </Badge>
                           )}
@@ -16976,7 +16985,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               `Practical Test ${practicalOk ? "Passed" : "Not Passed"}`,
                             )
                           ) : (
-                            <Badge variant="outline" className="border-border text-muted-foreground">
+                            <Badge
+                              variant="outline"
+                              className="border-border text-muted-foreground"
+                            >
                               Practical Test Not Required
                             </Badge>
                           )}
@@ -17092,8 +17104,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <DialogHeader>
                     <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                     <DialogDescription>
-                      {row.name} — {row.position} · evaluated {row.date}. The recorded decision is
-                      locked; the applicant's offer reply is recorded on the right.
+                      {row.name} — {row.position} · evaluated {row.date}. The recorded decision
+                      is locked; the applicant's offer reply is recorded on the right.
                     </DialogDescription>
                   </DialogHeader>
 
@@ -17194,8 +17206,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <DialogTitle className="font-display text-2xl">Record acceptance</DialogTitle>
                 <DialogDescription>
                   {acceptOfferFor.name} accepted the offer for {acceptOfferFor.position}. Record how
-                  the reply arrived and the start-of-work date — it becomes the day-count anchor for
-                  New Hire Onboarding ("Days of Work").
+                  the reply arrived and the start-of-work date — it becomes the day-count anchor
+                  for New Hire Onboarding ("Days of Work").
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">

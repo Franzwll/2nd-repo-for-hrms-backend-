@@ -149,7 +149,7 @@ export function EssDocumentsTab() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Documents on File</p>
-              <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+              <div className="rounded-lg bg-emerald-500/10 dark:bg-emerald-400/10 p-2 text-emerald-600 dark:text-emerald-400">
                 <FileCheck className="h-4 w-4" />
               </div>
             </div>
@@ -163,13 +163,13 @@ export function EssDocumentsTab() {
           type="button"
           onClick={() => setDocStatusFilter((f) => (f === "Missing" ? "all" : "Missing"))}
           title={docStatusFilter === "Missing" ? "Clear missing filter" : "Show missing documents"}
-          className={`text-left rounded-xl outline-none transition-all cursor-pointer ${docStatusFilter === "Missing" ? "ring-2 ring-amber-500/70" : ""}`}
+          className={`text-left rounded-xl outline-none transition-all cursor-pointer ${docStatusFilter === "Missing" ? "ring-2 ring-amber-500/70 dark:ring-amber-400/60" : ""}`}
         >
-          <Card className={`border-border/70 shadow-xs transition-all group hover:-translate-y-0.5 hover:border-amber-500/50 hover:shadow-md ${docStatusFilter === "Missing" ? "border-amber-500/50" : ""}`}>
+          <Card className={`border-border/70 shadow-xs transition-all group hover:-translate-y-0.5 hover:border-amber-500/50 dark:hover:border-amber-400/25 hover:shadow-md ${docStatusFilter === "Missing" ? "border-amber-500/50 dark:border-amber-400/25" : ""}`}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Action Needed</p>
-                <div className="rounded-lg bg-amber-500/10 p-2 text-amber-600 dark:text-amber-400">
+                <div className="rounded-lg bg-amber-500/10 dark:bg-amber-400/10 p-2 text-amber-600 dark:text-amber-400">
                   <AlertTriangle className="h-4 w-4" />
                 </div>
               </div>
@@ -187,7 +187,7 @@ export function EssDocumentsTab() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Expiring Soon</p>
-              <div className="rounded-lg bg-sky-500/10 p-2 text-sky-600 dark:text-sky-400">
+              <div className="rounded-lg bg-sky-500/10 dark:bg-sky-400/10 p-2 text-sky-600 dark:text-sky-400">
                 <CalendarClock className="h-4 w-4" />
               </div>
             </div>
@@ -297,7 +297,7 @@ export function EssDocumentsTab() {
                               setSelectedDoc(doc);
                               setViewerOpen(true);
                             }}
-                            className={`group/doc relative flex flex-col justify-between rounded-xl border bg-card p-4 text-left shadow-2xs cursor-pointer ${missing ? "border-dashed border-amber-500/50" : "border-border/70"}`}
+                            className={`group/doc relative flex flex-col justify-between rounded-xl border bg-card p-4 text-left shadow-2xs cursor-pointer ${missing ? "border-dashed border-amber-500/50 dark:border-amber-400/25" : "border-border/70"}`}
                           >
                             <div className="flex items-start justify-between gap-2">
                               {/* Doc icon like reference: white tile, folded corner, red doc glyph */}
@@ -309,7 +309,7 @@ export function EssDocumentsTab() {
                                 {missing && (
                                   <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
                                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white" />
+                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white dark:ring-border" />
                                   </span>
                                 )}
                               </div>
@@ -370,7 +370,7 @@ export function EssDocumentsTab() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 px-2 text-xs border-amber-500/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1 font-medium"
+                            className="h-6 px-2 text-xs border-amber-500/40 dark:border-amber-400/20 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1 font-medium"
                             onClick={() => openUploadForDoc(doc.title)}
                           >
                             <Upload className="h-3.5 w-3.5" /> Upload Now

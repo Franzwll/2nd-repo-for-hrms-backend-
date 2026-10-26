@@ -1023,7 +1023,7 @@ export function UserManagement() {
                           <TableCell className="text-sm font-medium align-top pt-4">
                             {roleLabels[role]}
                             {isProtected && (
-                              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400">
                                 System
                               </span>
                             )}

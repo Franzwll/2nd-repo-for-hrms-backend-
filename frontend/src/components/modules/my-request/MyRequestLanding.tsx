@@ -22,7 +22,6 @@ export function MyRequestLanding() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Employee Self-Service"
         title="My Request"
         description="File and track your requests. Every submission routes directly to the right HR team."
       />

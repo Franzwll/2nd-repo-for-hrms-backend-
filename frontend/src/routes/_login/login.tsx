@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
@@ -20,8 +20,8 @@ import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/turnstile";
 import { cn } from "@/lib/utils";
 
 import { authApi } from "@/lib/api";
-import { setToken, setUser } from "@/lib/auth";
 import { useLightOnly } from "@/lib/theme";
+import { setToken, setUser } from "@/lib/auth";
 
 const LOGIN_CONTEXT_KEY = "oxford_hrms_login";
 
@@ -274,7 +274,7 @@ function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen grid-rows-[auto_1fr] lg:grid-cols-[1.1fr_1fr] lg:grid-rows-none">
+    <div className="flex min-h-screen flex-col lg:grid lg:grid-cols-[1.1fr_1fr] lg:grid-rows-none">
       {/* Preloader screen until first image frame decodes */}
       {!ready && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white">
@@ -308,8 +308,10 @@ function LoginPage() {
         </div>
       )}
 
-      {/* Property panel with omni-directional slow-motion montage edit */}
-      <div className="login-hero relative flex flex-col justify-between gap-4 overflow-hidden bg-primary px-5 py-3 text-primary-foreground lg:gap-0 lg:px-12 lg:py-10">
+      {/* Property panel with omni-directional slow-motion montage edit.
+          Below lg this is a minimal light strip with the maroon logo + label;
+          at lg+ it keeps the original maroon montage hero. */}
+      <div className="login-hero relative mt-auto flex flex-col justify-between gap-4 overflow-hidden bg-background px-5 py-3 text-primary lg:mt-0 lg:gap-0 lg:bg-primary lg:px-12 lg:py-10 lg:text-primary-foreground">
         {/* Montage Slideshow Container — desktop (lg+) only; smaller screens get the logo strip */}
         <div className="absolute inset-0 z-0 hidden overflow-hidden lg:block">
           {montageImages.map((img, index) => (
@@ -329,18 +331,23 @@ function LoginPage() {
 
         {/* Lightened Maroon Foreshadow Background Overlay (image frames only) */}
         <div className="absolute inset-0 z-10 hidden bg-primary/45 mix-blend-multiply transition-colors duration-700 lg:block" />
-        <div className="absolute inset-0 z-10 bg-gradient-to-t from-foreground/80 via-foreground/25 to-foreground/45" />
+        <div className="absolute inset-0 z-10 hidden bg-gradient-to-t from-foreground/80 via-foreground/25 to-foreground/45 lg:block" />
         {/* Localized vignette keeps the headline legible over bright frames */}
-        <div className="absolute inset-0 z-10 bg-[radial-gradient(78%_62%_at_18%_58%,rgb(0_0_0/0.55),transparent_72%)]" />
+        <div className="absolute inset-0 z-10 hidden bg-[radial-gradient(78%_62%_at_18%_58%,rgb(0_0_0/0.55),transparent_72%)] lg:block" />
 
         <div
           className={cn(
-            "relative z-20 flex items-center justify-between gap-4",
+            "relative z-20 flex items-center justify-center gap-4 lg:justify-between",
             enter("delay-100"),
           )}
         >
           <Link to="/" className="flex min-w-0 items-center gap-3">
-            <div className="origin-left scale-100 lg:scale-170">
+            {/* Small screens: maroon logo + label on the light strip */}
+            <div className="origin-left scale-100 lg:hidden">
+              <Logo tone="primary" />
+            </div>
+            {/* Desktop (lg+): original white logo on the maroon montage hero */}
+            <div className="origin-left scale-100 lg:scale-170 hidden lg:block">
               <Logo mark="white" tone="invert" />
             </div>
           </Link>
@@ -349,24 +356,16 @@ function LoginPage() {
           </span>
         </div>
 
-        {/* Hero copy — lg+ only (smaller screens show just the logo strip) */}
-        <div className="relative z-20 hidden max-w-2xl lg:block">
-          <p
-            className={cn(
-              "text-sm font-medium uppercase leading-none tracking-[0.2em] text-gold drop-shadow-md",
-              enter("delay-100"),
-            )}
-          >
-            Staff Portal
-          </p>
-          <div className={cn("mt-5 h-0.5 w-24 origin-left bg-gold/70", enter("delay-200"))} />
+        {/* Hero copy — lg+ only (smaller screens show just the maroon logo strip).
+            Flex-fills the hero so "Welcome back" sits vertically centered. */}
+        <div className="relative z-20 hidden max-w-2xl flex-1 lg:flex lg:flex-col lg:justify-center">
           <h1
             className={cn(
-              "mt-7 font-display text-[3.75rem] font-semibold leading-[1.05] drop-shadow-lg lg:text-[4.25rem]",
+              "font-display text-[3.75rem] font-semibold leading-[1.05] drop-shadow-lg lg:text-[4.25rem]",
               enter("delay-200"),
             )}
           >
-            Welcome back<span className="text-gold">.</span>
+            Welcome back
           </h1>
           <p
             className={cn(
@@ -377,50 +376,17 @@ function LoginPage() {
             The pleasure is ours.
           </p>
         </div>
-
-        <div
-          className={cn(
-            "relative z-20 hidden flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-primary-foreground/20 pt-5 text-xs text-primary-foreground/80 lg:flex",
-            enter("delay-700"),
-          )}
-        >
-          <span className="flex items-center gap-2">
-            <ShieldCheck className="h-3.5 w-3.5 text-gold" />
-            Authorized staff only
-          </span>
-
-          {/* Slide progress dots */}
-          <div className="flex items-center gap-1.5">
-            {montageImages.map((img, index) => (
-              <button
-                key={img.src}
-                type="button"
-                onClick={() => setCurrentSlide(index)}
-                aria-label={`Show ${img.title}`}
-                aria-current={index === currentSlide}
-                className="group cursor-pointer rounded-full p-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold"
-              >
-                <span
-                  className={cn(
-                    "block h-1 rounded-full transition-all duration-500 ease-out",
-                    index === currentSlide
-                      ? "w-8 bg-gold"
-                      : "w-3 bg-primary-foreground/30 group-hover:bg-primary-foreground/60",
-                  )}
-                />
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
-      {/* Credential panel */}
-      <div className="flex items-center justify-center bg-background px-5 py-9 sm:px-10 sm:py-12">
+      {/* Credential panel — mobile: starts right under the logo strip, the
+          whole group vertically centered; lg+: side-by-side, vertically centered */}
+      <div className="mb-auto flex items-start justify-center bg-background px-5 pt-3 pb-9 sm:px-10 lg:mb-0 lg:items-center lg:px-12 lg:py-12">
         <div className="w-full max-w-md sm:max-w-lg lg:max-w-md">
-          <p className="eyebrow">Staff Portal Access</p>
-          <h2 className="mt-2 font-display text-4xl font-semibold">Sign in</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Sign in with your work credentials.</p>
-          <div className="gold-rule my-7" />
+          <h2 className="mt-2 text-center font-display text-4xl font-semibold">Sign in</h2>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            Sign in with your work credentials.
+          </p>
+          <div className="my-7" />
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">
@@ -463,7 +429,11 @@ function LoginPage() {
               </p>
             )}
 
-            <div className="flex items-center justify-end gap-3">
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+              {submitting ? "Signing in…" : "Sign in"}
+            </Button>
+
+            <div className="flex items-center justify-center gap-3">
               <button
                 type="button"
                 className="text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
@@ -472,10 +442,6 @@ function LoginPage() {
                 Forgot password?
               </button>
             </div>
-
-            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
-              {submitting ? "Signing in…" : "Sign in"}
-            </Button>
 
             <div className="flex justify-center">
               <Turnstile

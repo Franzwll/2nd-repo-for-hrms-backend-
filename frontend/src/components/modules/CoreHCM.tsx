@@ -2537,7 +2537,7 @@ function EmployeeListManager({
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
                   No pending performance evaluation on file. A completed HR3 evaluation is required
                   before promoting.
                 </div>
@@ -2621,7 +2621,7 @@ function EmployeeListManager({
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
                   No pending performance evaluation on file. A completed HR3 evaluation is required
                   before regularization.
                 </div>
@@ -2709,7 +2709,7 @@ function EmployeeListManager({
               />
             </div>
 
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
               ⚠️ <strong>Security Action</strong>: Confirming exit status will instantly revoke user
               credentials in User Management.
             </div>
@@ -2775,7 +2775,7 @@ function EmployeeListManager({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-amber-600">Unsaved Changes</AlertDialogTitle>
+            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">Unsaved Changes</AlertDialogTitle>
             <AlertDialogDescription>
               You have unsaved changes in this form. Are you sure you want to exit without saving?
             </AlertDialogDescription>
@@ -2811,7 +2811,7 @@ function EmployeeListManager({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-amber-600">Unsaved Changes</AlertDialogTitle>
+            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">Unsaved Changes</AlertDialogTitle>
             <AlertDialogDescription>
               You have unsaved changes in this form. Are you sure you want to exit without saving?
             </AlertDialogDescription>
@@ -3340,11 +3340,11 @@ function LifecycleLogsViewer() {
       case "Promotion":
         return "border-primary/40 bg-primary/10 text-primary";
       case "Resignation":
-        return "border-amber-500/40 bg-amber-500/10 text-amber-600";
+        return "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-400";
       case "Termination":
         return "border-destructive/40 bg-destructive/10 text-destructive";
       case "Retirement":
-        return "border-purple-500/40 bg-purple-500/10 text-purple-600";
+        return "border-purple-500/40 bg-purple-500/10 text-purple-600 dark:border-purple-400/25 dark:bg-purple-400/10 dark:text-purple-400";
       default:
         return "border-border text-muted-foreground";
     }
@@ -4408,7 +4408,7 @@ function DepartmentAndPositionManager({
                     </SelectContent>
                   </Select>
                 ) : (
-                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-700">
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-400">
                     No active employees currently assigned to <strong>{editingDept.name}</strong>.
                     Add or assign positions to this department first to designate a department head.
                   </div>
@@ -4692,7 +4692,7 @@ function DepartmentAndPositionManager({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-amber-600">Discard Unsaved Changes?</AlertDialogTitle>
+            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">Discard Unsaved Changes?</AlertDialogTitle>
             <AlertDialogDescription>
               You have modified fields in this modal. Are you sure you want to exit without saving?
             </AlertDialogDescription>
@@ -5361,7 +5361,7 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
                     variant="outline"
                     className={
                       r.urgency === "Urgent" || r.urgency === "High"
-                        ? "border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px]"
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px] dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-400"
                         : "border-border text-muted-foreground text-[10px]"
                     }
                   >

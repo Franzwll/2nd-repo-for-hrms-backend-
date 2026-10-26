@@ -1987,7 +1987,7 @@ const AI_LIMIT_CODES = new Set(["quota_day", "rate_minute", "daily_limit", "quot
 const AI_TONE_CLASS = {
   ready: "border-success/30 bg-success/10 text-success",
   busy: "border-primary/30 bg-primary/10 text-primary",
-  limit: "border-amber-500/40 bg-amber-500/10 text-amber-600",
+  limit: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-400",
   off: "border-border bg-muted text-muted-foreground",
   muted: "border-border bg-muted text-muted-foreground",
 } as const;
@@ -7587,7 +7587,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                           className="flex items-start gap-1.5 text-[0.68rem] leading-relaxed text-muted-foreground"
                                         >
                                           {p.blocked ? (
-                                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500 dark:text-amber-400" />
                                           ) : (
                                             <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-success" />
                                           )}
@@ -7604,7 +7604,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                       ))}
                                     </ul>
                                     {aiUsage.blocked_until && aiBlockedSeconds > 0 && (
-                                      <p className="text-[0.68rem] font-medium text-amber-600">
+                                      <p className="text-[0.68rem] font-medium text-amber-600 dark:text-amber-400">
                                         Limit reached — ready again in{" "}
                                         {aiCountdown(aiBlockedSeconds)}.
                                       </p>

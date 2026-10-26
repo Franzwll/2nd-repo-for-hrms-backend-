@@ -91,9 +91,9 @@ function getShiftVisual(shift: string, time: string) {
       type: "rest" as const,
       label: "Rest Day",
       tag: "Off Duty",
-      themeBorder: "border-slate-500/25",
+      themeBorder: "border-slate-500/25 dark:border-slate-400/20",
       themeBg: "bg-muted/30",
-      themeAccent: "from-slate-500/10 to-transparent",
+      themeAccent: "from-slate-500/10 to-transparent dark:from-slate-400/10",
       badgeColor: "bg-muted text-muted-foreground border-border/80",
       iconSvg: (
         <div className="p-3 rounded-2xl bg-muted/60 text-muted-foreground border border-border/70 shadow-2xs">
@@ -131,12 +131,12 @@ function getShiftVisual(shift: string, time: string) {
       type: "night" as const,
       label: "Night Shift",
       tag: "Evening / Night",
-      themeBorder: "border-indigo-500/35",
-      themeBg: "bg-indigo-500/5",
-      themeAccent: "from-indigo-500/15 via-purple-500/5 to-transparent",
-      badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
+      themeBorder: "border-indigo-500/35 dark:border-indigo-400/25",
+      themeBg: "bg-indigo-500/5 dark:bg-indigo-400/10",
+      themeAccent: "from-indigo-500/15 via-purple-500/5 to-transparent dark:from-indigo-400/10 dark:via-purple-400/5",
+      badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30 dark:bg-indigo-400/10 dark:border-indigo-400/20",
       iconSvg: (
-        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shadow-xs">
+        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shadow-xs dark:bg-indigo-400/10 dark:border-indigo-400/20">
           <svg
             className="h-8 w-8 text-indigo-400 drop-shadow-sm"
             viewBox="0 0 24 24"
@@ -165,14 +165,14 @@ function getShiftVisual(shift: string, time: string) {
       type: "mid" as const,
       label: "Mid Shift",
       tag: "Afternoon",
-      themeBorder: "border-orange-500/35",
-      themeBg: "bg-orange-500/5",
-      themeAccent: "from-orange-500/15 via-amber-500/5 to-transparent",
-      badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30",
+      themeBorder: "border-orange-500/35 dark:border-orange-400/25",
+      themeBg: "bg-orange-500/5 dark:bg-orange-400/10",
+      themeAccent: "from-orange-500/15 via-amber-500/5 to-transparent dark:from-orange-400/10 dark:via-amber-400/5",
+      badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30 dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20",
       iconSvg: (
-        <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-xs">
+        <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-xs dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20">
           <svg
-            className="h-8 w-8 text-orange-500 drop-shadow-sm"
+            className="h-8 w-8 text-orange-500 dark:text-orange-400 drop-shadow-sm"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -199,14 +199,14 @@ function getShiftVisual(shift: string, time: string) {
     type: "day" as const,
     label: "Day Shift",
     tag: "Morning / AM",
-    themeBorder: "border-amber-500/35",
-    themeBg: "bg-amber-500/5",
-    themeAccent: "from-amber-500/15 via-primary/5 to-transparent",
-    badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30",
+    themeBorder: "border-amber-500/35 dark:border-amber-400/25",
+    themeBg: "bg-amber-500/5 dark:bg-amber-400/10",
+    themeAccent: "from-amber-500/15 via-primary/5 to-transparent dark:from-amber-400/10",
+    badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30 dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20",
     iconSvg: (
-      <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-xs">
+      <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-xs dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20">
         <svg
-          className="h-8 w-8 text-amber-500 drop-shadow-sm"
+          className="h-8 w-8 text-amber-500 dark:text-amber-400 drop-shadow-sm"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -383,19 +383,19 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                   Station Active
                 </Badge>
                 {currentDutyStatus === "clocked_in" && (
-                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:bg-emerald-400/10 dark:border-emerald-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     Currently On Duty
                   </Badge>
                 )}
                 {currentDutyStatus === "on_break" && (
-                  <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                  <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 dark:bg-amber-400/10 dark:border-amber-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                     <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
                     On Lunch / Meal Break
                   </Badge>
                 )}
                 {currentDutyStatus === "clocked_out" && (
-                  <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                  <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 dark:bg-slate-400/10 dark:border-slate-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                     Shift Completed / Clocked Out
                   </Badge>
                 )}
@@ -471,7 +471,7 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                       <h4 className="font-display text-sm font-semibold text-foreground">
                         Station Verification &amp; Shift Info
                       </h4>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-400/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 dark:border-emerald-400/20">
                         Verified
                       </span>
                     </div>

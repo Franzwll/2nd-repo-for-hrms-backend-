@@ -297,7 +297,7 @@ export function AuditLogs() {
                       : actionType === "Delete"
                         ? "border-destructive/40 bg-destructive/10 text-destructive"
                         : actionType === "Security"
-                          ? "border-amber-500/40 bg-amber-500/10 text-amber-600"
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-400"
                           : "border-primary/40 bg-primary/10 text-primary";
 
                   return (
