@@ -5,6 +5,7 @@ import { CheckCircle2, FileText, ThumbsDown, ThumbsUp, Upload, X } from "lucide-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { API_BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /**
@@ -62,13 +63,13 @@ async function classifyOne(file: File, isFirst: boolean): Promise<ClassifyResult
     // Accept: application/json forces Laravel to answer validation failures
     // as JSON (422) instead of an HTML redirect the browser would follow and
     // misread as an empty result.
-    res = await fetch("/api/v1/landing/classify-document", {
+    res = await fetch(`${API_BASE_URL}/landing/classify-document`, {
       method: "POST",
       body: fd,
       headers: { Accept: "application/json" },
     });
   } catch {
-    throw new Error("Cannot reach backend (:8000). Is `php artisan serve` running?");
+    throw new Error("Could not reach the document recognition service.");
   }
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok || json.success === false) {
