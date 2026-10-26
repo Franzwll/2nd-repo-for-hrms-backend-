@@ -10,12 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
+  AlertTriangle,
   ArrowRight,
   BookOpen,
   CheckCircle2,
   Clock,
   FileText,
   Loader2,
+  Lock,
   RotateCcw,
   ShieldCheck,
   XCircle,
@@ -31,11 +33,12 @@ import { essApi } from "@/lib/api";
  * server re-checks that gate on both GET and POST, so this is a convenience
  * mirror of the real rule (`409 reading_required`).
  *
- * Grading happens server-side; the answer key never reaches the browser until
- * the review returned *after* a submission.
+ * Grading happens server-side and the answer key never reaches the browser.
+ * The post-submit review only shows the employee's own answers. A failed
+ * attempt is final, so the quiz is locked rather than offered as a retake.
  */
 
-type Stage = "loading" | "reading" | "quiz" | "result" | "gated" | "error";
+type Stage = "loading" | "reading" | "confirm" | "quiz" | "result" | "locked" | "gated" | "error";
 
 interface LmsMaterial {
   course: {
@@ -73,14 +76,13 @@ interface LmsResult {
   status: string;
   certificate_eligible: boolean;
   already_completed?: boolean;
+  retake_allowed?: boolean;
   review: {
     id: number;
     question: string;
     options: string[];
-    correct_index: number;
     your_index: number | null;
     is_correct: boolean;
-    explanation: string;
   }[];
 }
 
@@ -98,7 +100,7 @@ interface LmsActivityPlayerProps {
    * quiz, without the handbook → assessment stepper or cross-stage CTA.
    */
   mode?: "handbook" | "quiz";
-  /** Fired after a pass so the tab can refetch the course list. */
+  /** Fired after a submission (pass or fail) so the tab can refetch the list. */
   onCompleted?: (courseId: string) => void;
   /** Fired by "View certificate" — the tab closes the player and opens the cert. */
   onViewCertificate?: (courseId: string) => void;
@@ -174,6 +176,7 @@ export function LmsActivityPlayer({
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [lockedScore, setLockedScore] = useState<number | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [showFile, setShowFile] = useState(false);
 
@@ -201,20 +204,32 @@ export function LmsActivityPlayer({
     setStage(res ? "reading" : "error");
   }, [loadMaterial]);
 
+  // Loads the quiz bank but does not start the attempt. A fresh attempt lands
+  // on the confirmation panel; the countdown only starts from startQuiz().
   const openQuiz = useCallback(async () => {
     setStage("loading");
     setErrorMsg(null);
+    setLockedScore(null);
     setBusy(true);
     try {
       const res = await essApi.learningQuiz(courseId);
       setQuiz(res);
       setAnswers({});
       setResult(null);
-      setSecondsLeft(res.time_limit_seconds ?? null);
-      setStage("quiz");
+      setSecondsLeft(null);
+      // Already-passed modules keep the terminal panel instead of confirming.
+      setStage(res.already_passed ? "quiz" : "confirm");
     } catch (e) {
-      const err = e as Error & { code?: string; status?: number };
-      if (err?.code === "reading_required" || err?.status === 409) {
+      const err = e as Error & {
+        code?: string;
+        status?: number;
+        payload?: { score?: number | string };
+      };
+      if (err?.code === "retake_not_allowed") {
+        setLockedScore(err.payload?.score != null ? Math.round(Number(err.payload.score)) : null);
+        setErrorMsg(err.message || "You did not pass this assessment. Retakes are not allowed.");
+        setStage("locked");
+      } else if (err?.code === "reading_required" || err?.status === 409) {
         setErrorMsg("Finish the handbook before taking the assessment.");
         setStage("gated");
       } else {
@@ -226,6 +241,13 @@ export function LmsActivityPlayer({
     }
   }, [courseId]);
 
+  const startQuiz = () => {
+    if (!quiz || quiz.already_passed) return;
+    setAnswers({});
+    setSecondsLeft(quiz.time_limit_seconds ?? null);
+    setStage("quiz");
+  };
+
   // Reset + open on the requested stage whenever the modal opens.
   useEffect(() => {
     if (!open) {
@@ -235,6 +257,7 @@ export function LmsActivityPlayer({
       setResult(null);
       setAnswers({});
       setErrorMsg(null);
+      setLockedScore(null);
       setSecondsLeft(null);
       setShowFile(false);
       return;
@@ -256,12 +279,14 @@ export function LmsActivityPlayer({
         setStage("result");
         if (res.passed) {
           toast.success(`Passed with ${res.score}% — "${courseTitle}" completed.`);
-          onCompleted?.(courseId);
         } else {
           toast.error(
-            `Score ${res.score}% — ${res.pass_mark}% is needed to pass. You can retake it.`,
+            `Score ${res.score}% — ${res.pass_mark}% is needed to pass. This assessment cannot be retaken.`,
           );
         }
+        // Refresh the card after either outcome so a failed attempt is shown
+        // as locked instead of "Ready to take".
+        onCompleted?.(courseId);
       } catch (e) {
         toast.error((e as Error)?.message || "Could not submit the assessment.");
       } finally {
@@ -333,13 +358,28 @@ export function LmsActivityPlayer({
   const readingMinutes = material?.course.estimated_reading_minutes ?? null;
   const materialsUrl = essApi.learningMaterialUrl(courseId);
 
+  const stageLabel = (() => {
+    if (mode === "handbook") return "Handbook";
+    if (mode === "quiz") {
+      if (stage === "result" || stage === "locked") return "Result";
+      if (stage === "confirm") return "Quiz confirmation";
+      return "Quiz";
+    }
+    if (stage === "result" || stage === "locked") return "Result";
+    if (stage === "confirm" || stage === "quiz") return "Step 2 of 2 · Assessment";
+    return "Step 1 of 2 · Handbook";
+  })();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[900px]">
         <DialogHeader>
           <div className="flex items-start gap-2">
             <div className="rounded-md bg-primary/10 p-2 text-primary">
-              {stage === "quiz" || stage === "result" ? (
+              {stage === "confirm" ||
+              stage === "quiz" ||
+              stage === "result" ||
+              stage === "locked" ? (
                 <ShieldCheck className="h-5 w-5" />
               ) : (
                 <BookOpen className="h-5 w-5" />
@@ -350,19 +390,7 @@ export function LmsActivityPlayer({
               <DialogDescription className="flex items-center gap-2">
                 <span>{category ?? material?.course.category ?? "Learning module"}</span>
                 <span aria-hidden>·</span>
-                <span className="font-semibold text-primary">
-                  {mode === "handbook"
-                    ? "Handbook"
-                    : mode === "quiz"
-                      ? stage === "result"
-                        ? "Result"
-                        : "Quiz"
-                      : stage === "result"
-                        ? "Result"
-                        : stage === "quiz"
-                          ? "Step 2 of 2 · Assessment"
-                          : "Step 1 of 2 · Handbook"}
-                </span>
+                <span className="font-semibold text-primary">{stageLabel}</span>
               </DialogDescription>
             </div>
           </div>
@@ -384,7 +412,7 @@ export function LmsActivityPlayer({
             <span className="h-px w-6 bg-border" />
             <span
               className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
-                stage === "quiz" || stage === "result"
+                stage === "confirm" || stage === "quiz" || stage === "result" || stage === "locked"
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-dashed border-border/70 text-muted-foreground"
               }`}
@@ -452,6 +480,99 @@ export function LmsActivityPlayer({
                   No handbook content is on record for this course yet.
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ---------------- quiz confirmation ---------------- */}
+          {stage === "confirm" && quiz && (
+            <div className="flex min-h-[260px] flex-col items-center justify-center gap-4 p-6 text-center">
+              <div className="rounded-full bg-primary/10 p-3 text-primary">
+                <ShieldCheck className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-foreground">Ready to take the assessment?</p>
+                <p className="max-w-md text-xs text-muted-foreground">
+                  The quiz starts as soon as you confirm. Make sure you have enough time to finish
+                  it in one sitting.
+                </p>
+              </div>
+
+              <div className="grid w-full max-w-sm gap-2 rounded-lg border border-border/70 bg-muted/20 p-3 text-left text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Questions</span>
+                  <span className="font-semibold text-foreground">{quiz.total_items}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Pass mark</span>
+                  <span className="font-semibold text-foreground">{quiz.pass_mark}%</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Time limit</span>
+                  <span className="font-semibold text-foreground">
+                    {formatClock(quiz.time_limit_seconds)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex max-w-md items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-left text-[11px] text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  You get <strong>one attempt</strong>. If you do not reach the {quiz.pass_mark}%
+                  pass mark, this assessment cannot be retaken.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs"
+                  onClick={() => (mode === "quiz" ? onOpenChange(false) : void openReading())}
+                >
+                  {mode === "quiz" ? "Cancel" : "Back to handbook"}
+                </Button>
+                <Button size="sm" className="gap-1.5 text-xs" onClick={startQuiz}>
+                  <ShieldCheck className="h-3.5 w-3.5" /> Start assessment
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ---------------- failed attempt / locked ---------------- */}
+          {stage === "locked" && (
+            <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 p-6 text-center">
+              <div className="rounded-full bg-amber-500/10 p-3 text-amber-600">
+                <Lock className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">Assessment not passed</p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                {errorMsg || "You did not pass this assessment. Retakes are not allowed."}
+              </p>
+              {lockedScore != null && (
+                <p className="text-xs text-muted-foreground">
+                  Your score: <strong className="text-foreground">{lockedScore}%</strong>
+                </p>
+              )}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => {
+                    if (mode === "quiz" && onOpenHandbook) onOpenHandbook();
+                    else void openReading();
+                  }}
+                >
+                  <BookOpen className="h-3.5 w-3.5" /> Review handbook
+                </Button>
+              </div>
             </div>
           )}
 
@@ -616,13 +737,18 @@ export function LmsActivityPlayer({
                 </div>
                 <div>
                   <p className="text-sm font-bold text-foreground">
-                    {result.passed ? "Assessment passed" : "Not passed yet"}
+                    {result.passed ? "Assessment passed" : "Assessment not passed"}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Score <strong className="text-foreground">{result.score}%</strong> ·{" "}
                     {result.correct_count} of {result.total_count} correct · pass mark{" "}
                     {result.pass_mark}%
                   </p>
+                  {!result.passed && (
+                    <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                      This was your only attempt — retakes are not allowed.
+                    </p>
+                  )}
                 </div>
                 <div className="ml-auto flex items-center gap-2">
                   {result.passed ? (
@@ -639,12 +765,21 @@ export function LmsActivityPlayer({
                       </Button>
                     )
                   ) : (
-                    <Button size="sm" className="gap-1.5 text-xs" onClick={() => void openQuiz()}>
-                      <RotateCcw className="h-3.5 w-3.5" /> Retake assessment
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs"
+                      onClick={() => onOpenChange(false)}
+                    >
+                      Close
                     </Button>
                   )}
                 </div>
               </div>
+
+              <p className="text-[11px] text-muted-foreground">
+                Your answers are shown below. Correct answers are not disclosed.
+              </p>
 
               <div className="space-y-2">
                 {result.review.map((item, index) => (
@@ -670,33 +805,19 @@ export function LmsActivityPlayer({
                         <p className="text-xs font-semibold text-foreground">
                           {index + 1}. {item.question}
                         </p>
-                        <div className="mt-1.5 space-y-1">
-                          {item.options.map((option, optionIndex) => {
-                            const isCorrect = optionIndex === item.correct_index;
-                            const isYourWrong = optionIndex === item.your_index && !isCorrect;
-                            return (
-                              <p
-                                key={optionIndex}
-                                className={`rounded px-2 py-1 text-[11px] ${
-                                  isCorrect
-                                    ? "bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-400"
-                                    : isYourWrong
-                                      ? "bg-red-500/10 text-red-700 line-through dark:text-red-400"
-                                      : "text-muted-foreground"
-                                }`}
-                              >
-                                {String.fromCharCode(65 + optionIndex)}. {option}
-                                {isCorrect ? " ✓" : ""}
-                                {isYourWrong ? " (your answer)" : ""}
-                              </p>
-                            );
-                          })}
-                        </div>
-                        {item.explanation && (
-                          <p className="mt-1.5 text-[11px] italic text-muted-foreground">
-                            {item.explanation}
-                          </p>
-                        )}
+                        <p
+                          className={`mt-1.5 rounded px-2 py-1 text-[11px] ${
+                            item.is_correct
+                              ? "bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-400"
+                              : "bg-red-500/10 text-red-700 dark:text-red-400"
+                          }`}
+                        >
+                          {item.your_index != null
+                            ? `Your answer: ${String.fromCharCode(65 + item.your_index)}. ${
+                                item.options[item.your_index] ?? ""
+                              }`
+                            : "No answer selected."}
+                        </p>
                       </div>
                     </div>
                   </div>

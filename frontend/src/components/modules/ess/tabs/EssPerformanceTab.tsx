@@ -172,6 +172,8 @@ export function EssPerformanceTab() {
       estimated_reading_minutes: c.estimated_reading_minutes ?? null,
       estimated_pages: c.estimated_pages ?? null,
       mandatory: Boolean(c.mandatory),
+      // A failed quiz is final: the card must stop advertising "Ready to take".
+      quiz_failed: Boolean(c.quiz_failed),
     }));
 
   const applyPerformance = (res: any) => {
@@ -350,6 +352,7 @@ export function EssPerformanceTab() {
                   .toLowerCase()
                   .includes("complet");
                 const read = Boolean(course.reading_completed_at);
+                const quizFailed = Boolean(course.quiz_failed) && !done;
 
                 return (
                   <div key={course.id}>
@@ -443,15 +446,21 @@ export function EssPerformanceTab() {
                               <p className="mt-1 text-xs italic text-muted-foreground">
                                 {done
                                   ? "Assessment completed. Open your result and certificate."
-                                  : read
-                                    ? "Answer the assessment to complete this module."
-                                    : "Locked — read the handbook first to unlock the quiz."}
+                                  : quizFailed
+                                    ? "Assessment not passed. Retakes are not allowed — the handbook stays available for review."
+                                    : read
+                                      ? "Answer the assessment to complete this module."
+                                      : "Locked — read the handbook first to unlock the quiz."}
                               </p>
                               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                                 {done ? (
                                   <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
                                     <CheckCircle2 className="h-3 w-3" /> Passed
                                     {course.score !== "—" ? ` · ${course.score}` : ""}
+                                  </span>
+                                ) : quizFailed ? (
+                                  <span className="inline-flex items-center gap-1 font-semibold text-amber-600">
+                                    <Lock className="h-3 w-3" /> Not passed · Retakes locked
                                   </span>
                                 ) : read ? (
                                   <span className="inline-flex items-center gap-1 font-semibold text-primary">

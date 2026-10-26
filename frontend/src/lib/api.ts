@@ -2807,6 +2807,8 @@ export const essApi = {
         estimated_reading_minutes?: number | null;
         estimated_pages?: number | null;
         mandatory?: boolean;
+        /** A failed attempt is final — the quiz stays locked. */
+        quiz_failed?: boolean;
       }[];
     }>("/ess/my-performance"),
   updateLearningProgress: (data: { course_code: string }) =>
@@ -2877,14 +2879,15 @@ export const essApi = {
       status: string;
       certificate_eligible: boolean;
       already_completed?: boolean;
+      /** Failed attempts are final, so this is always false in the current policy. */
+      retake_allowed?: boolean;
       review: {
         id: number;
         question: string;
         options: string[];
-        correct_index: number;
+        // The answer key (correct_index / explanation) is never sent.
         your_index: number | null;
         is_correct: boolean;
-        explanation: string;
       }[];
     }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`, {
       method: "POST",

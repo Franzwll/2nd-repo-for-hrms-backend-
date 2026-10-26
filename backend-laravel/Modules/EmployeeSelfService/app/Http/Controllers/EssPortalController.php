@@ -1422,12 +1422,24 @@ class EssPortalController extends Controller
             ->where('employee_id', $employee->employee_id)
             ->get();
 
+        // A failed attempt is final, so the card needs to know about it even
+        // though employee_learning.status stays 'In Progress'.
+        $failedCourseIds = DB::table('employee_learning_attempts')
+            ->where('employee_id', $employee->employee_id)
+            ->where('passed', false)
+            ->pluck('course_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->all();
+
         // Real curriculum: every catalog course with this employee's progress
         // joined in (Assigned when no row exists yet).
         $byCourse = $userLearning->keyBy('course_id');
-        $courseList = $courses->map(function ($c) use ($byCourse) {
+        $courseList = $courses->map(function ($c) use ($byCourse, $failedCourseIds) {
             $row = $byCourse->get($c->course_id);
             $status = $row?->status ?? 'Assigned';
+            $quizFailed = $status !== 'Completed'
+                && in_array((int) $c->course_id, $failedCourseIds, true);
             // Text courses may not have been opened yet; derive the badge from
             // their content rather than showing a hand-typed (or missing) value.
             $meta = filled($c->content_text)
@@ -1453,6 +1465,7 @@ class EssPortalController extends Controller
                 'estimated_pages' => $c->estimated_pages !== null
                     ? (int) $c->estimated_pages : $meta['pages'],
                 'mandatory' => (bool) ($c->mandatory ?? false),
+                'quiz_failed' => $quizFailed,
             ];
         })->values()->all();
 
@@ -1925,6 +1938,20 @@ class EssPortalController extends Controller
     }
 
     /**
+     * The most recent failed quiz attempt, if any. Tier-1 policy: one attempt
+     * only, so a failure permanently locks the assessment for that employee.
+     */
+    private function failedQuizAttempt(int $employeeId, int $courseId): ?object
+    {
+        return DB::table('employee_learning_attempts')
+            ->where('employee_id', $employeeId)
+            ->where('course_id', $courseId)
+            ->where('passed', false)
+            ->orderByDesc('attempt_id')
+            ->first();
+    }
+
+    /**
      * GET /api/v1/ess/my-learning/{courseCode}/material
      * Handbook payload for the player's reading stage (§2a).
      */
@@ -2046,6 +2073,7 @@ class EssPortalController extends Controller
      * GET /api/v1/ess/my-learning/{courseCode}/quiz
      * Hard gate (§1e / §10): the quiz is refused until the handbook is read.
      * Generates + caches the quiz on first request; NEVER returns the answer key.
+     * A failed attempt is final - the assessment is not served again.
      */
     public function learningQuiz(Request $request, string $courseCode): JsonResponse
     {
@@ -2067,6 +2095,25 @@ class EssPortalController extends Controller
                 'code' => 'reading_required',
                 'message' => 'Finish the handbook first.',
             ], 409);
+        }
+
+        // A failed attempt is final. Completed modules keep the existing
+        // already-passed panel, but an incomplete row with a failed attempt
+        // can no longer receive questions.
+        if (($row->status ?? null) !== 'Completed') {
+            $failedAttempt = $this->failedQuizAttempt(
+                (int) $employee->employee_id,
+                (int) $course->course_id,
+            );
+
+            if ($failedAttempt) {
+                return response()->json([
+                    'code' => 'retake_not_allowed',
+                    'message' => 'You did not pass this assessment. Retakes are not allowed.',
+                    'score' => (int) $failedAttempt->score,
+                    'submitted_at' => $failedAttempt->submitted_at,
+                ], 409);
+            }
         }
 
         $quiz = $course->quiz_json ? json_decode((string) $course->quiz_json, true) : null;
@@ -2155,7 +2202,8 @@ class EssPortalController extends Controller
      * POST /api/v1/ess/my-learning/{courseCode}/quiz
      * Grades server-side from the cached key and applies the §2c completion
      * rule: a pass sets Completed immediately (completion_source = 'quiz').
-     * Completed is terminal - resubmits are no-ops.
+     * Completed is terminal - resubmits are no-ops. A failed attempt is also
+     * terminal for the employee: no retakes, and the review omits the key.
      */
     public function submitLearningQuiz(Request $request, string $courseCode): JsonResponse
     {
@@ -2193,6 +2241,23 @@ class EssPortalController extends Controller
             ], 409);
         }
 
+        // Completed rows remain terminal (handled below). An incomplete row
+        // with a failed attempt cannot submit again - no retakes.
+        if ($row->status !== 'Completed') {
+            $failedAttempt = $this->failedQuizAttempt(
+                (int) $employee->employee_id,
+                (int) $course->course_id,
+            );
+
+            if ($failedAttempt) {
+                return response()->json([
+                    'code' => 'retake_not_allowed',
+                    'message' => 'You did not pass this assessment. Retakes are not allowed.',
+                    'score' => (int) $failedAttempt->score,
+                ], 409);
+            }
+        }
+
         $answers = $validated['answers'];
         $passMark = (int) ($quiz['pass_mark'] ?? 80);
 
@@ -2219,14 +2284,15 @@ class EssPortalController extends Controller
                 $correct++;
             }
             $answered[$qid] = $yourIndex;
+            // Answer key (correct_index / explanation) is deliberately omitted:
+            // the review only tells the employee which option they picked and
+            // whether that question was right.
             $review[] = [
                 'id' => $qid,
                 'question' => $q['question'],
                 'options' => array_values($q['options']),
-                'correct_index' => $correctIndex,
                 'your_index' => $yourIndex,
                 'is_correct' => $isCorrect,
-                'explanation' => $q['explanation'] ?? '',
             ];
         }
 
@@ -2245,6 +2311,7 @@ class EssPortalController extends Controller
                 'status' => 'Completed',
                 'certificate_eligible' => true,
                 'already_completed' => true,
+                'retake_allowed' => false,
                 'review' => $review,
             ]);
         }
@@ -2262,7 +2329,8 @@ class EssPortalController extends Controller
                     'completion_source' => 'quiz',
                 ]);
         } else {
-            // Not completed - retakes stay available while not Completed.
+            // Not completed - the failure is final; the status stays
+            // In Progress for reporting but the quiz can no longer be taken.
             DB::table('employee_learning')
                 ->where('employee_learning_id', $row->employee_learning_id)
                 ->update([
@@ -2300,6 +2368,7 @@ class EssPortalController extends Controller
             'pass_mark' => $passMark,
             'status' => $passed ? 'Completed' : 'In Progress',
             'certificate_eligible' => $passed,
+            'retake_allowed' => false,
             'review' => $review,
         ]);
     }
