@@ -46,7 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { roleMeta, type Role } from "@/lib/nav";
+import type { Role } from "@/lib/nav";
 import { getUser, setUser } from "@/lib/auth";
 import { essApi, profileApi } from "@/lib/api";
 
@@ -551,7 +551,6 @@ export function ProfilePage({ role }: { role: Role }) {
   return (
     <div>
       <PageHeader
-        eyebrow={roleMeta[role].label}
         title="My Profile"
         description="Manage your 201 records, contact details, family background, emergency contacts, and account security."
       />
@@ -590,7 +589,7 @@ export function ProfilePage({ role }: { role: Role }) {
             </div>
 
             <h2 className="mt-4 font-display text-xl font-semibold tracking-tight">{value.fullName}</h2>
-            <p className="text-sm font-medium text-primary dark:text-[oklch(0.7_0.16_22)]">{value.position}</p>
+            <p className="text-sm font-medium text-primary dark:text-primary">{value.position}</p>
             <Badge className="mt-2 border-success/20 bg-success/10 text-success hover:bg-success/15 px-2.5 py-0.5">
               <span className="h-1.5 w-1.5 rounded-full bg-success mr-1.5 inline-block" />
               {value.status}
@@ -638,7 +637,7 @@ export function ProfilePage({ role }: { role: Role }) {
                 { icon: Clock, label: "Last Login", value: value.lastLogin },
               ].map((row) => (
                 <div key={row.label} className="flex items-center gap-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/[0.08] border border-primary/10 text-primary dark:bg-primary/20 dark:text-[oklch(0.7_0.16_22)]">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/[0.08] border border-primary/10 text-primary dark:bg-primary/20 dark:text-primary">
                     <row.icon className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
@@ -652,7 +651,7 @@ export function ProfilePage({ role }: { role: Role }) {
             {role !== "superadmin" ? (
               <Button variant="outline" className="mt-5 w-full border-primary/15 bg-gold-soft/30 hover:bg-gold-soft/50 text-foreground" asChild>
                 <Link to={settingsPath as never} hash="security">
-                  <KeyRound className="mr-2 h-4 w-4 text-primary dark:text-[oklch(0.7_0.16_22)]" />
+                  <KeyRound className="mr-2 h-4 w-4 text-primary dark:text-primary" />
                   Change Password
                 </Link>
               </Button>
@@ -705,7 +704,7 @@ export function ProfilePage({ role }: { role: Role }) {
                   </div>
 
                   <div className="p-6">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-primary/80 dark:text-[oklch(0.7_0.16_22)]">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-primary/80 dark:text-primary/80">
                       Personal Details
                     </p>
 
@@ -829,7 +828,7 @@ export function ProfilePage({ role }: { role: Role }) {
                         className="cursor-pointer text-xs"
                         onClick={() => setActiveTab("full-info")}
                       >
-                        <IdCard className="mr-1.5 h-3.5 w-3.5 text-primary dark:text-[oklch(0.7_0.16_22)]" /> View Complete 201 Record
+                        <IdCard className="mr-1.5 h-3.5 w-3.5 text-primary dark:text-primary" /> View Complete 201 Record
                       </Button>
 
                       <div className="flex gap-2">
@@ -1108,7 +1107,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                         {dep.relationship} • Born {dep.birthDate}
                                       </p>
                                     </div>
-                                    <span className="text-xs font-medium text-primary px-2 py-0.5 rounded bg-primary/10 dark:text-[oklch(0.7_0.16_22)] dark:bg-primary/20">
+                                    <span className="text-xs font-medium text-primary px-2 py-0.5 rounded bg-primary/10 dark:text-primary dark:bg-primary/20">
                                       Dependent #{idx + 1}
                                     </span>
                                   </div>
@@ -1141,7 +1140,7 @@ export function ProfilePage({ role }: { role: Role }) {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
                                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                                <span className="text-xs font-bold text-primary dark:text-[oklch(0.7_0.16_22)]">Primary Emergency Contact</span>
+                                <span className="text-xs font-bold text-primary dark:text-primary">Primary Emergency Contact</span>
                               </div>
                               <Badge className="bg-primary text-primary-foreground text-[10px] px-2 py-0.5">
                                 First Dial
@@ -1281,7 +1280,7 @@ export function ProfilePage({ role }: { role: Role }) {
                             <div className="space-y-1">
                               <span className="text-xs text-muted-foreground">Employment Status / Type</span>
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary text-xs font-semibold dark:text-[oklch(0.7_0.16_22)] dark:bg-primary/15">
+                                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary text-xs font-semibold dark:text-primary dark:bg-primary/15">
                                   {value.employmentType}
                                 </Badge>
                                 <Badge className="border-success/20 bg-success/10 text-success text-xs">

@@ -1,7 +1,4 @@
-<<<<<<< Updated upstream
 # Keep the Docker build context lean (Dokploy/Nixpacks)
-=======
->>>>>>> Stashed changes
 node_modules/
 dist/
 dist-ssr/
@@ -12,8 +9,4 @@ dist-ssr/
 *.log
 .env
 .env.*
-<<<<<<< Updated upstream
 !.env.example
-=======
-!.env.example
->>>>>>> Stashed changes

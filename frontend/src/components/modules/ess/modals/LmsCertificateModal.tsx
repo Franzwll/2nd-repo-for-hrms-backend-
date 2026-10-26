@@ -104,7 +104,7 @@ export function LmsCertificateModal({
       <DialogContent className="sm:max-w-[560px] print:p-0 print:border-none">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <div className="rounded-md bg-amber-500/10 p-2 text-amber-600">
+            <div className="rounded-md bg-amber-500/10 dark:bg-amber-400/10 p-2 text-amber-600 dark:text-amber-400">
               <Award className="h-5 w-5" />
             </div>
             <div>
@@ -115,7 +115,10 @@ export function LmsCertificateModal({
         </DialogHeader>
 
         {/* Certificate Frame */}
-        <div className="rounded-xl border-4 border-double border-primary/40 bg-gradient-to-b from-card via-muted/30 to-card p-6 text-center shadow-sm space-y-4">
+        <div
+          id="lms-certificate"
+          className="rounded-xl border-4 border-double border-primary/40 bg-gradient-to-b from-card via-muted/30 to-card p-6 text-center shadow-sm space-y-4"
+        >
           <div className="flex items-center justify-center gap-2 text-primary font-display font-bold text-xs uppercase tracking-widest">
             <ShieldCheck className="h-4 w-4" /> Oxford Suites Makati · Learning &amp; Development
           </div>
@@ -130,7 +133,7 @@ export function LmsCertificateModal({
             <p className="text-xs text-muted-foreground">For successfully completing the corporate training module</p>
             <p className="text-lg font-bold font-display text-primary mt-1">{courseTitle}</p>
             <div className="mt-2 flex items-center justify-center gap-3 text-xs">
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
+              <Badge variant="outline" className="bg-emerald-500/10 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-400/20">
                 Score: {score}
               </Badge>
               <span className="text-muted-foreground">Date: <strong>{completedDate}</strong></span>
@@ -143,7 +146,7 @@ export function LmsCertificateModal({
               <p>Oxford Suites PH</p>
             </div>
             <div className="flex flex-col items-center">
-              <CheckCircle2 className="h-6 w-6 text-emerald-600 mb-0.5" />
+              <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 mb-0.5" />
               <p className="font-mono text-[9px]">
                 ID: {verifying ? "VERIFYING…" : (verificationCode ?? "UNVERIFIED")}
               </p>

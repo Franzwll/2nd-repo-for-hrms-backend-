@@ -18,6 +18,7 @@ import { ChevronDown, FileText, Loader2, Upload, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { API_BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export type UnifiedDocType = "Resume" | "COE" | "Certificate" | "Credential" | "Others";
@@ -65,13 +66,17 @@ export async function classifyOneDoc(file: File, isFirst: boolean): Promise<Unif
   fd.append("is_first", isFirst ? "true" : "false");
   let res: Response;
   try {
-    res = await fetch("/api/v1/landing/classify-document", {
+    // Use the configured API origin, never a root-relative "/api/..." path:
+    // in production the frontend is served by `vite preview` (no proxy), so a
+    // relative URL hits the frontend host and 502s / returns HTML instead of
+    // reaching Laravel on the API subdomain.
+    res = await fetch(`${API_BASE_URL}/landing/classify-document`, {
       method: "POST",
       body: fd,
       headers: { Accept: "application/json" },
     });
   } catch {
-    throw new Error("Cannot reach backend (:8000). Is `php artisan serve` running?");
+    throw new Error("Could not reach the document recognition service.");
   }
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok || json.success === false) {

@@ -1,0 +1,1041 @@
+{
+    "deleted_at": "2026-10-18 17:03:31",
+    "applicants": [
+        {
+            "applicant": {
+                "applicant_id": 88,
+                "applicant_code": "APL-01096",
+                "job_post_id": 1,
+                "name": "MARCO ANTONIO REYES",
+                "email": "marco.reyes.bar@outlook.ph",
+                "phone": "09178421953",
+                "applied_at": "2026-10-07 00:42:44",
+                "fit_score": "80.00",
+                "status": "fit",
+                "stage": "Offer",
+                "source": "Online Portal",
+                "resume_file_path": "resumes\/wBzGurMPkVdtmWKSAKwlCBi3YW7bIfN23P37VpEH.pdf",
+                "resume_original_name": "Marco_Antonio_Reyes_Resume.pdf",
+                "resume_hash": "1a6d9e1b3cf11bbc8829f8aaa1c8861377467d4a5ec523b43f5f4eeb9bf7806d",
+                "summary": "Matched skills: Inventory Control, Mise en Place, Mixology, POS Systems, Responsible Alcohol Service, Upselling; Education requirement satisfied; Experience requirement satisfied (7.42 yrs vs 1.0 yrs required); All required certifications matched \u2014 meets Bartender requirements. Supporting-document verification: 3 verified, 0 with discrepancies, 0 unable to verify \u2014 ranking score 90.48% (resume match 88.8%).",
+                "flags_json": "[\"Unrecognized skill: Assessment\",\"Unrecognized skill: Cash\",\"Unrecognized skill: Development & Beverage Staging\",\"Unrecognized skill: Handling & Tab Settlement\",\"Unrecognized skill: Hygiene Protocols\",\"Unrecognized skill: Hygiene Protocols Relations\",\"Unrecognized skill: Relations\",\"Unrecognized skill: Restaurant WORK EXPERIENCE\",\"Unrecognized skill: Service Execution\",\"Unrecognized skill: Service techniques\",\"Unrecognized skill: Signature Recipe\",\"Unrecognized skill: Speed Pouring\",\"Unrecognized skill: Turnover Flow\",\"Unrecognized job role: City Garden Grand Hotel\",\"[DOCUMENT] Credential verified: the document corroborates the resume claims.\",\"[DOCUMENT] COE verified: the document corroborates the resume claims.\",\"[DOCUMENT] Certificate verified: the document corroborates the resume claims.\"]",
+                "created_at": "2026-10-06 16:42:44",
+                "updated_at": "2026-10-06 16:47:58"
+            },
+            "applicant_documents": [
+                {
+                    "applicant_document_id": 41,
+                    "applicant_id": 88,
+                    "doc_type": "Credential",
+                    "title": "Marco_Antonio_Reyes_Diploma.pdf",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/STUdjPdDZbQRvZT41XhGnygfmLv7zRgxSKi39yXL.pdf",
+                    "original_name": "Marco_Antonio_Reyes_Diploma.pdf",
+                    "verification_status": "VERIFIED",
+                    "verification_result_json": "{\"success\":true,\"document_type\":\"Credential\",\"verification_status\":\"VERIFIED\",\"checks\":{\"degree\":{\"resume_value\":\"Bachelor of Science in Hotel and Restaurant Management\",\"document_value\":\"BACHELOR OF SCIENCE IN HOTEL AND RESTAURANT MANAGEMENT\",\"normalized_resume\":\"bachelor of science in hotel and restaurant management\",\"normalized_document\":\"bachelor of science in hotel and restaurant management\",\"match_method\":\"exact\",\"result\":\"MATCH\"},\"institution\":{\"resume_value\":\"Centro Escolar University (CEU) - Mendiola, Manila\",\"document_value\":\"CENTRO ESCOLAR UNIVERSITY (CEU)\",\"normalized_resume\":\"centro escolar university (ceu) - mendiola, manila\",\"normalized_document\":\"centro escolar university (ceu)\",\"match_method\":\"token_set\",\"result\":\"MATCH\"}},\"summary\":\"All 2 comparable field(s) on the credential document match the resume claims.\",\"extracted_document_profile\":{\"name\":\"REPUBLIKA NG PILIPINAS\",\"organizations\":[],\"job_titles_raw\":[],\"education\":[\"University Registrar University President\"],\"certifications_raw\":[],\"work_history\":[],\"sections_detected\":[\"education\"],\"estimated_years_experience\":0,\"document_claims\":{\"degree\":\"BACHELOR OF SCIENCE IN HOTEL AND RESTAURANT MANAGEMENT\",\"institution\":\"CENTRO ESCOLAR UNIVERSITY (CEU)\"}},\"text_extraction\":{\"method\":\"pdf-text (pypdfium2+pdfplumber)\",\"pages\":1,\"extension\":\".pdf\",\"character_count\":755}}",
+                    "extracted_profile_json": "{\"name\":\"REPUBLIKA NG PILIPINAS\",\"organizations\":[],\"job_titles_raw\":[],\"education\":[\"University Registrar University President\"],\"certifications_raw\":[],\"work_history\":[],\"sections_detected\":[\"education\"],\"estimated_years_experience\":0,\"document_claims\":{\"degree\":\"BACHELOR OF SCIENCE IN HOTEL AND RESTAURANT MANAGEMENT\",\"institution\":\"CENTRO ESCOLAR UNIVERSITY (CEU)\"}}",
+                    "verified_at": "2026-10-06 16:42:46",
+                    "uploaded_at": "2026-10-07 00:42:45",
+                    "created_at": "2026-10-06 16:42:45",
+                    "updated_at": "2026-10-06 16:42:46"
+                },
+                {
+                    "applicant_document_id": 42,
+                    "applicant_id": 88,
+                    "doc_type": "COE",
+                    "title": "Marco_Antonio_Reyes_COE_Current_Employer.pdf",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/ks6J8TBkTTTXzdTg8BspPneIGVW97PHe4IUyHouY.pdf",
+                    "original_name": "Marco_Antonio_Reyes_COE_Current_Employer.pdf",
+                    "verification_status": "VERIFIED",
+                    "verification_result_json": "{\"success\":true,\"document_type\":\"COE\",\"verification_status\":\"VERIFIED\",\"checks\":{\"company\":{\"resume_value\":\"The Peninsula Manila\",\"document_value\":\"The Peninsula Manila\",\"normalized_resume\":\"the peninsula manila\",\"normalized_document\":\"the peninsula manila\",\"match_method\":\"exact\",\"result\":\"MATCH\"},\"position\":{\"resume_value\":\"Bartender\",\"document_value\":\"LEAD BARTENDER & MIXOLOGIST\",\"normalized_resume\":\"bartender\",\"normalized_document\":\"lead bartender & mixologist\",\"match_method\":\"canonical_alias\",\"result\":\"MATCH\"},\"start_date\":{\"resume_value\":\"September 2022 - Present\",\"document_value\":\"since September 2022 \\u2013 Present\",\"normalized_resume\":\"2022-09\",\"normalized_document\":\"2022-09\",\"match_method\":\"exact\",\"result\":\"MATCH\"},\"end_date\":{\"resume_value\":\"September 2022 - Present\",\"document_value\":\"since September 2022 \\u2013 Present\",\"normalized_resume\":\"present\",\"normalized_document\":\"present\",\"match_method\":\"exact\",\"result\":\"MATCH\"}},\"summary\":\"All 4 comparable field(s) on the certificate of employment match the resume claims.\",\"extracted_document_profile\":{\"name\":\"Official Human Resources Directorate\",\"organizations\":[],\"job_titles_raw\":[\"Bartender\"],\"education\":[\"CERTIFICATE OF EMPLOYMENT\\nTO WHOM IT MAY CONCERN\"],\"certifications_raw\":[\"Of Employment\",\"To Whom It May Concern\",\"This Is To Certify That Marco Antonio Reyes Has Been Employed With The Peninsula Manila Since September 2022 And Is Currently An Active, Regular Employee\",\"The Employee Currently Holds The Position Of Lead Bartender & Mixologist. In This Role, The Employee Faithfully Exercises Leadership Over Operational Floor Duties, Service Standards Compliance, And Team Supervision\",\"During Tenure With The Peninsula Manila, The Employee Has Maintained An Exemplary Performance Record And Exhibited High Dedication To Hospitality Excellence\",\"This Certification\",\"Certified True And Correct\",\"Victoria M. Alcantara\",\"Victoria M. Alcantara, Chrp\",\"Vice President\",\"The Peninsula Manila Official Seal Human Resources Metro Manila\",\"Official Certificate Of Employment\"],\"work_history\":[],\"sections_detected\":[\"additional\",\"certifications\"],\"estimated_years_experience\":0,\"document_claims\":{\"company\":\"The Peninsula Manila\",\"position\":\"LEAD BARTENDER & MIXOLOGIST\",\"employment_dates\":\"since September 2022 \\u2013 Present\"}},\"text_extraction\":{\"method\":\"pypdfium2\",\"pages\":1,\"extension\":\".pdf\",\"character_count\":1196}}",
+                    "extracted_profile_json": "{\"name\":\"Official Human Resources Directorate\",\"organizations\":[],\"job_titles_raw\":[\"Bartender\"],\"education\":[\"CERTIFICATE OF EMPLOYMENT\\nTO WHOM IT MAY CONCERN\"],\"certifications_raw\":[\"Of Employment\",\"To Whom It May Concern\",\"This Is To Certify That Marco Antonio Reyes Has Been Employed With The Peninsula Manila Since September 2022 And Is Currently An Active, Regular Employee\",\"The Employee Currently Holds The Position Of Lead Bartender & Mixologist. In This Role, The Employee Faithfully Exercises Leadership Over Operational Floor Duties, Service Standards Compliance, And Team Supervision\",\"During Tenure With The Peninsula Manila, The Employee Has Maintained An Exemplary Performance Record And Exhibited High Dedication To Hospitality Excellence\",\"This Certification\",\"Certified True And Correct\",\"Victoria M. Alcantara\",\"Victoria M. Alcantara, Chrp\",\"Vice President\",\"The Peninsula Manila Official Seal Human Resources Metro Manila\",\"Official Certificate Of Employment\"],\"work_history\":[],\"sections_detected\":[\"additional\",\"certifications\"],\"estimated_years_experience\":0,\"document_claims\":{\"company\":\"The Peninsula Manila\",\"position\":\"LEAD BARTENDER & MIXOLOGIST\",\"employment_dates\":\"since September 2022 \\u2013 Present\"}}",
+                    "verified_at": "2026-10-06 16:42:48",
+                    "uploaded_at": "2026-10-07 00:42:47",
+                    "created_at": "2026-10-06 16:42:47",
+                    "updated_at": "2026-10-06 16:42:48"
+                },
+                {
+                    "applicant_document_id": 43,
+                    "applicant_id": 88,
+                    "doc_type": "Certificate",
+                    "title": "Marco_Antonio_Reyes_Training_Certificate_FoodSafety.pdf",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/mMA7MD77dPY0obITrhG7VarcdYByZAOx7QJiPBtY.pdf",
+                    "original_name": "Marco_Antonio_Reyes_Training_Certificate_FoodSafety.pdf",
+                    "verification_status": "VERIFIED",
+                    "verification_result_json": "{\"success\":true,\"document_type\":\"Certificate\",\"verification_status\":\"VERIFIED\",\"checks\":{\"certification\":{\"resume_value\":\"TESDA Bartending NC II\",\"document_value\":\"TESDA Bartending NC II\",\"normalized_resume\":\"tesda bartending nc ii\",\"normalized_document\":\"tesda bartending nc ii\",\"match_method\":\"exact\",\"result\":\"MATCH\"},\"issuer\":{\"resume_value\":\"TESDA Bartending NC II\",\"document_value\":\"TECHNICAL EDUCATION AND SKILLS DEVELOPMENT AUTHORITY (TESDA)\",\"normalized_resume\":\"tesda bartending nc ii\",\"normalized_document\":\"technical education and skills development authority (tesda)\",\"match_method\":\"acronym\",\"result\":\"MATCH\"}},\"summary\":\"All 2 comparable field(s) on the educational certificate match the resume claims.\",\"extracted_document_profile\":{\"name\":\"MARCO ANTONIO REYES\",\"organizations\":[],\"job_titles_raw\":[],\"education\":[\"CERTIFICATE OF COMPETENCY AND COMPLETION\\nThis is to officially certify that\"],\"certifications_raw\":[\"Of Competency And Completion\",\"This Is To Officially Certify That\",\"Marco Antonio Reyes Has Satisfactorily Completed All Prescribed Modules And Passed Evaluation For\",\"TESDA Bartending NC II\",\"Conferred On: November\",\"Serial Registration Number: Cert\",\"Enrico J. Salcedo\",\"Lead Certified Trainer\",\"Dr. Corazon G. Reyes\",\"Enrico J. Salcedo Dr. Corazon G. Reyes\"],\"work_history\":[],\"sections_detected\":[\"certifications\",\"skills\"],\"estimated_years_experience\":0,\"document_claims\":{\"certification\":\"TESDA Bartending NC II\",\"issuer\":\"TECHNICAL EDUCATION AND SKILLS DEVELOPMENT AUTHORITY (TESDA)\"}},\"text_extraction\":{\"method\":\"pdf-text (pypdfium2+pdfplumber)\",\"pages\":1,\"extension\":\".pdf\",\"character_count\":636}}",
+                    "extracted_profile_json": "{\"name\":\"MARCO ANTONIO REYES\",\"organizations\":[],\"job_titles_raw\":[],\"education\":[\"CERTIFICATE OF COMPETENCY AND COMPLETION\\nThis is to officially certify that\"],\"certifications_raw\":[\"Of Competency And Completion\",\"This Is To Officially Certify That\",\"Marco Antonio Reyes Has Satisfactorily Completed All Prescribed Modules And Passed Evaluation For\",\"TESDA Bartending NC II\",\"Conferred On: November\",\"Serial Registration Number: Cert\",\"Enrico J. Salcedo\",\"Lead Certified Trainer\",\"Dr. Corazon G. Reyes\",\"Enrico J. Salcedo Dr. Corazon G. Reyes\"],\"work_history\":[],\"sections_detected\":[\"certifications\",\"skills\"],\"estimated_years_experience\":0,\"document_claims\":{\"certification\":\"TESDA Bartending NC II\",\"issuer\":\"TECHNICAL EDUCATION AND SKILLS DEVELOPMENT AUTHORITY (TESDA)\"}}",
+                    "verified_at": "2026-10-06 16:42:49",
+                    "uploaded_at": "2026-10-07 00:42:49",
+                    "created_at": "2026-10-06 16:42:49",
+                    "updated_at": "2026-10-06 16:42:49"
+                }
+            ],
+            "applicant_screenings": [
+                {
+                    "screening_id": 72,
+                    "applicant_id": 88,
+                    "job_post_id": 1,
+                    "processing_status": "PARTIALLY_PROCESSED",
+                    "screening_result": "fit",
+                    "match_score": "90.48",
+                    "resume_match_score": "88.80",
+                    "score_breakdown_json": "{\"skills\":{\"weight\":0.4,\"earned\":28.8,\"max\":40,\"matched_required\":[\"Inventory Control\",\"Mise en Place\",\"Mixology\",\"POS Systems\",\"Responsible Alcohol Service\",\"Upselling\"],\"fuzzy_matched_required\":[],\"missing_required\":[\"Bar Hygiene\",\"Cash Handling\",\"Communication\",\"Customer Service\"],\"matched_preferred\":[],\"missing_preferred\":[],\"required_coverage\":0.6,\"preferred_coverage\":1},\"experience\":{\"weight\":0.3,\"earned\":30,\"max\":30,\"estimated_years\":7.42,\"min_years_required\":1,\"requirement_met\":true},\"education\":{\"weight\":0.2,\"earned\":20,\"max\":20,\"applicant_highest_level\":[\"Bachelor of Science in Hotel and Restaurant Management\",\"Centro Escolar University (CEU) - Mendiola, Manila\"],\"required_level\":\"Bachelor's Degree\",\"requirement_met\":true},\"certifications\":{\"weight\":0.1,\"earned\":10,\"max\":10,\"matched\":[\"Food Handler Certificate\"],\"missing\":[],\"no_requirements\":false}}",
+                    "profile_json": "{\"personal_information\":{\"name\":\"MARCO ANTONIO REYES\",\"email\":\"marco.reyes.bar@outlook.ph\",\"phone\":\"+63 917 842 1953\",\"address\":\"124 Jupiter St., Bel-Air, 1209 Makati City, Philippines\"},\"education\":[\"Bachelor of Science in Hotel and Restaurant Management\",\"Centro Escolar University (CEU) - Mendiola, Manila\"],\"work_experience\":[{\"job_title\":\"Bartender\",\"company\":\"The Peninsula Manila\",\"location\":\"Makati City, Metro Manila\",\"period\":\"September 2022 - Present\",\"recognized_role\":true},{\"job_title\":\"Bartender\",\"company\":\"Discovery Primea\",\"location\":\"Makati City, Metro Manila\",\"period\":\"January 2021 - August 2022\",\"recognized_role\":true},{\"job_title\":\"City Garden Grand Hotel\",\"company\":\"Bar Attendant \\\/ Barback Makati City, Metro Manila\",\"location\":null,\"period\":\"June 2019 - December 2020\",\"recognized_role\":false}],\"skills\":[\"Food Safety\",\"HACCP\",\"Inventory\",\"Inventory Control\",\"Mise en Place\",\"Mixology\",\"POS Systems\",\"Plating\",\"Responsible Alcohol Service\",\"Safety\",\"Upselling\"],\"certifications\":[\"Food Handler\",\"TESDA Bartending NC II\",\"Mixology And Bar Management Specialist\"],\"unrecognized_certifications\":[\"Mixology And Bar Management Specialist\"],\"estimated_years_experience\":7.42,\"estimated_experience_months\":89,\"job_roles\":{\"recognized\":[\"Bartender\"],\"unrecognized\":[\"City Garden Grand Hotel\"]},\"unrecognized_skills\":[\"Assessment\",\"Cash\",\"Development & Beverage Staging\",\"Handling & Tab Settlement\",\"Hygiene Protocols\",\"Hygiene Protocols Relations\",\"Relations\",\"Restaurant WORK EXPERIENCE\",\"Service Execution\",\"Service techniques\",\"Signature Recipe\",\"Speed Pouring\",\"Turnover Flow\"]}",
+                    "entities_json": "[{\"label\":\"PERSON\",\"value\":\"MARCO ANTONIO REYES\",\"source\":\"rule\"},{\"label\":\"EDUCATION\",\"value\":\"Bachelor of Science in Hotel and Restaurant Management\",\"source\":\"section_rule\"},{\"label\":\"EDUCATION\",\"value\":\"Centro Escolar University (CEU) - Mendiola, Manila\",\"source\":\"section_rule\"},{\"label\":\"JOB_TITLE\",\"value\":\"Bartender\",\"source\":\"section_rule\"},{\"label\":\"JOB_TITLE\",\"value\":\"City Garden Grand Hotel\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Mixology\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Signature Recipe\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Development & Beverage Staging\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Food Safety\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"HACCP\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Hygiene Protocols\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"POS Systems\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Cash\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Handling & Tab Settlement\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Inventory Control\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Mise en Place\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Responsible Alcohol Service\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Assessment\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Upselling\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Plating\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Relations\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Turnover Flow\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Speed Pouring\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Service Execution\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Hygiene Protocols Relations\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Restaurant WORK EXPERIENCE\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Service techniques\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Inventory\",\"source\":\"reference_scan\"},{\"label\":\"SKILL\",\"value\":\"Safety\",\"source\":\"reference_scan\"},{\"label\":\"CERTIFICATION\",\"value\":\"TESDA Bartending NC II\",\"source\":\"section_rule\"},{\"label\":\"CERTIFICATION\",\"value\":\"Food Handler\",\"source\":\"section_rule\"},{\"label\":\"CERTIFICATION\",\"value\":\"Mixology And Bar Management Specialist\",\"source\":\"section_rule\"},{\"label\":\"ORGANIZATION\",\"value\":\"The Peninsula Manila\",\"source\":\"section_rule\"},{\"label\":\"ORGANIZATION\",\"value\":\"Discovery Primea\",\"source\":\"section_rule\"},{\"label\":\"ORGANIZATION\",\"value\":\"Bar Attendant \\\/ Barback Makati City, Metro Manila\",\"source\":\"section_rule\"},{\"label\":\"ORGANIZATION\",\"value\":\"Salon de Ning\",\"source\":\"section_rule\"},{\"label\":\"ORGANIZATION\",\"value\":\"TripAdvisor\",\"source\":\"section_rule\"},{\"label\":\"EMAIL\",\"value\":\"marco.reyes.bar@outlook.ph\",\"source\":\"regex\"},{\"label\":\"PHONE\",\"value\":\"+63 917 842 1953\",\"source\":\"regex\"}]",
+                    "missing_information_json": "[]",
+                    "validation_json": "{\"missing_information\":[],\"invalid_format\":[],\"skill_analysis\":{\"recognized\":[\"Food Safety\",\"HACCP\",\"Inventory\",\"Inventory Control\",\"Mise en Place\",\"Mixology\",\"POS Systems\",\"Plating\",\"Responsible Alcohol Service\",\"Safety\",\"Upselling\"],\"unrecognized\":[\"Assessment\",\"Cash\",\"Development & Beverage Staging\",\"Handling & Tab Settlement\",\"Hygiene Protocols\",\"Hygiene Protocols Relations\",\"Relations\",\"Restaurant WORK EXPERIENCE\",\"Service Execution\",\"Service techniques\",\"Signature Recipe\",\"Speed Pouring\",\"Turnover Flow\"]},\"job_role_analysis\":{\"recognized\":[\"Bartender\"],\"unrecognized\":[\"City Garden Grand Hotel\"]},\"credential_analysis\":[{\"required\":\"Food Handler Certificate\",\"status\":\"RECOGNIZED\",\"matched_value\":\"Food Handler\"},{\"required\":null,\"extracted\":\"Mixology And Bar Management Specialist\",\"status\":\"UNRECOGNIZED\",\"note\":\"Invalid or requires verification based on system validation rules.\"}],\"credential_issues\":[],\"credential_verification\":{\"flags\":[],\"warning_count\":0,\"info_count\":0,\"risk_level\":\"LOW\",\"score_penalty\":0,\"escalate_invalid\":false,\"summary\":\"All internal credential consistency checks passed. No timeline or credential anomalies detected.\",\"checks_performed\":[\"timeline_overlap\",\"future_dates\",\"experience_graduation_gap\",\"seniority_experience_mismatch\",\"excessive_job_hopping\",\"education_cert_prerequisites\",\"chronological_coherence\"]},\"review_flags\":[{\"type\":\"UNRECOGNIZED_JOB_ROLE\",\"detail\":\"City Garden Grand Hotel\",\"note\":\"Not found in system reference data; flagged for manual review only.\"}]}",
+                    "alternative_job_json": null,
+                    "document_verification_json": "{\"status\":\"VERIFIED\",\"weight\":0.15,\"documents_total\":3,\"decisive_count\":3,\"verified_count\":3,\"discrepancy_count\":0,\"unable_count\":0,\"pending_count\":0,\"ignored_count\":0,\"credit_ratio\":1,\"documents_score\":100,\"score_penalty\":-1.68,\"escalate_invalid\":false,\"mismatched_fields\":[],\"flags\":[\"Credential verified: the document corroborates the resume claims.\",\"COE verified: the document corroborates the resume claims.\",\"Certificate verified: the document corroborates the resume claims.\"],\"per_document\":[{\"applicant_document_id\":41,\"doc_type\":\"Credential\",\"verification_status\":\"VERIFIED\",\"counted\":true,\"credit\":1,\"mismatched_fields\":[],\"summary\":\"All 2 comparable field(s) on the credential document match the resume claims.\",\"ignored_reason\":null},{\"applicant_document_id\":42,\"doc_type\":\"COE\",\"verification_status\":\"VERIFIED\",\"counted\":true,\"credit\":1,\"mismatched_fields\":[],\"summary\":\"All 4 comparable field(s) on the certificate of employment match the resume claims.\",\"ignored_reason\":null},{\"applicant_document_id\":43,\"doc_type\":\"Certificate\",\"verification_status\":\"VERIFIED\",\"counted\":true,\"credit\":1,\"mismatched_fields\":[],\"summary\":\"All 2 comparable field(s) on the educational certificate match the resume claims.\",\"ignored_reason\":null}]}",
+                    "reasons_json": "[\"Supporting-document verification (3 verified) raised the score from 88.8% to 90.48% (documents score 100.0% at a 15% weighting).\",\"Credential verified: the document corroborates the resume claims.\",\"COE verified: the document corroborates the resume claims.\",\"Certificate verified: the document corroborates the resume claims.\",\"Overall match score 90.48% reached the required threshold of 75.0% for Bartender.\",\"Matched required skills: Inventory Control, Mise en Place, Mixology, POS Systems, Responsible Alcohol Service, Upselling.\",\"Education requirement met: True; experience requirement met: True (7.42 yrs vs 1.0 yrs minimum).\"]",
+                    "model_info_json": "{\"base_model\":\"en_core_web_sm\",\"custom_ner_loaded\":true,\"custom_ner_path\":\"C:\\\\Users\\\\Windows 10 Lite\\\\Downloads\\\\MUNJOR\\\\4TH YR\\\\DEV\\\\LATEST CLONE\\\\v14.1\\\\2nd-repo-for-hrms-backend-\\\\nlp-service\\\\models_spacy\\\\role_specific_ner\"}",
+                    "error_message": null,
+                    "processed_at": "2026-10-06 16:42:49",
+                    "created_at": "2026-10-06 16:42:44",
+                    "updated_at": "2026-10-06 16:42:49"
+                }
+            ],
+            "applicant_screening_entities": [
+                {
+                    "entity_id": 1655,
+                    "applicant_id": 88,
+                    "label": "PERSON",
+                    "value": "MARCO ANTONIO REYES",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1656,
+                    "applicant_id": 88,
+                    "label": "EDUCATION",
+                    "value": "Bachelor of Science in Hotel and Restaurant Management",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1657,
+                    "applicant_id": 88,
+                    "label": "EDUCATION",
+                    "value": "Centro Escolar University (CEU) - Mendiola, Manila",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1658,
+                    "applicant_id": 88,
+                    "label": "JOB_TITLE",
+                    "value": "Bartender",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1659,
+                    "applicant_id": 88,
+                    "label": "JOB_TITLE",
+                    "value": "City Garden Grand Hotel",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1660,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Mixology",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1661,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Signature Recipe",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1662,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Development & Beverage Staging",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1663,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Food Safety",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1664,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "HACCP",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1665,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Hygiene Protocols",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1666,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "POS Systems",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1667,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Cash",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1668,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Handling & Tab Settlement",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1669,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Inventory Control",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1670,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Mise en Place",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1671,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Responsible Alcohol Service",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1672,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Assessment",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1673,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Upselling",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1674,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Plating",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1675,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Relations",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1676,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Turnover Flow",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1677,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Speed Pouring",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1678,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Service Execution",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1679,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Hygiene Protocols Relations",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1680,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Restaurant WORK EXPERIENCE",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1681,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Service techniques",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1682,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Inventory",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1683,
+                    "applicant_id": 88,
+                    "label": "SKILL",
+                    "value": "Safety",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1684,
+                    "applicant_id": 88,
+                    "label": "CERTIFICATION",
+                    "value": "TESDA Bartending NC II",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1685,
+                    "applicant_id": 88,
+                    "label": "CERTIFICATION",
+                    "value": "Food Handler",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1686,
+                    "applicant_id": 88,
+                    "label": "CERTIFICATION",
+                    "value": "Mixology And Bar Management Specialist",
+                    "created_at": "2026-10-07 00:42:44"
+                },
+                {
+                    "entity_id": 1687,
+                    "applicant_id": 88,
+                    "label": "ORGANIZATION",
+                    "value": "The Peninsula Manila",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "entity_id": 1688,
+                    "applicant_id": 88,
+                    "label": "ORGANIZATION",
+                    "value": "Discovery Primea",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "entity_id": 1689,
+                    "applicant_id": 88,
+                    "label": "ORGANIZATION",
+                    "value": "Bar Attendant \/ Barback Makati City, Metro Manila",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "entity_id": 1690,
+                    "applicant_id": 88,
+                    "label": "ORGANIZATION",
+                    "value": "Salon de Ning",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "entity_id": 1691,
+                    "applicant_id": 88,
+                    "label": "ORGANIZATION",
+                    "value": "TripAdvisor",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "entity_id": 1692,
+                    "applicant_id": 88,
+                    "label": "EMAIL",
+                    "value": "marco.reyes.bar@outlook.ph",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "entity_id": 1693,
+                    "applicant_id": 88,
+                    "label": "PHONE",
+                    "value": "+63 917 842 1953",
+                    "created_at": "2026-10-07 00:42:45"
+                }
+            ],
+            "applicant_screening_scores": [
+                {
+                    "score_id": 313,
+                    "applicant_id": 88,
+                    "criterion": "Skills",
+                    "score": "28.80",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "score_id": 314,
+                    "applicant_id": 88,
+                    "criterion": "Experience",
+                    "score": "30.00",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "score_id": 315,
+                    "applicant_id": 88,
+                    "criterion": "Education",
+                    "score": "20.00",
+                    "created_at": "2026-10-07 00:42:45"
+                },
+                {
+                    "score_id": 316,
+                    "applicant_id": 88,
+                    "criterion": "Certifications",
+                    "score": "10.00",
+                    "created_at": "2026-10-07 00:42:45"
+                }
+            ],
+            "screening_ground_truths": [],
+            "applicant_assessments": [
+                {
+                    "assessment_id": 39,
+                    "applicant_id": 88,
+                    "assessor_user_id": 3,
+                    "assessment_date": "2026-10-07",
+                    "scores_json": "{\"Guest Service Orientation\":4,\"Communication Skills\":4,\"Technical \\\/ Practical Skill\":4,\"Grooming & Professionalism\":4,\"Availability & Flexibility\":4}",
+                    "comments_json": "[]",
+                    "total_score": "80.00",
+                    "outcome": "Recommended",
+                    "result": "Passed",
+                    "remarks": "No overall evaluation recorded.",
+                    "created_at": "2026-10-06 16:45:46",
+                    "updated_at": "2026-10-06 16:45:46"
+                }
+            ],
+            "assessment_invites": [
+                {
+                    "assessment_invite_id": 3,
+                    "token": "oR2Bmgo86VOf4g2eZwGac2UkBpqzhudQWPqzZe6OmdTeVe3b",
+                    "applicant_id": 88,
+                    "created_by_user_id": 3,
+                    "test_title": "Bartender \u2014 Job Knowledge Test",
+                    "questions_json": "[{\"title\":\"Handle an Intoxicated Guest\",\"options\":[\"Serve the drink to avoid conflict.\",\"Politely refuse further alcohol, offer water or food, and inform your supervisor following house policy.\",\"Serve a weaker drink without telling the guest.\",\"Ask other guests to calm the person down.\"],\"correctIndex\":1,\"points\":20,\"scenario\":\"A visibly intoxicated guest demands another strong drink and becomes insistent when you hesitate. What would you do?\"},{\"title\":\"Verify Age Before Serving\",\"options\":[\"Serve them since they look old enough.\",\"Politely decline alcohol service without a valid ID, per policy, and offer a non-alcoholic alternative.\",\"Serve one drink as an exception this time.\",\"Ask another bartender to serve them instead.\"],\"correctIndex\":1,\"points\":20,\"scenario\":\"A young-looking guest orders a cocktail but cannot present a valid ID, claiming they left it in their room. What would you do?\"},{\"title\":\"Broken Glass Near the Ice Bin\",\"options\":[\"Scoop around the fragments and keep using the ice to save time.\",\"Stop using the ice at once, discard all contaminated ice, clean and sanitize the bin, refill with fresh ice, and remake affected drinks.\",\"Pick out the visible pieces and continue serving.\",\"Close the bar until the end of the shift.\"],\"correctIndex\":1,\"points\":20,\"scenario\":\"A glass shatters near the open ice bin during a rush, and fragments may have fallen into the ice. Drink orders are waiting. What would you do?\"},{\"title\":\"Manage a Long Bar Queue\",\"options\":[\"Serve friends and familiar faces first to move faster.\",\"Acknowledge waiting guests, serve strictly in order, keep the pace steady, and call for backup support.\",\"Rush pours and skip standard measures to go faster.\",\"Stop taking new orders until the queue disappears on its own.\"],\"correctIndex\":1,\"points\":20,\"scenario\":\"A long queue forms at the bar and waiting guests are getting restless. You are the only bartender for the next few minutes. What would you do?\"},{\"title\":\"Remake a Rejected Cocktail\",\"options\":[\"Insist the drink is correct and refuse to remake it.\",\"Apologize, confirm their preferred taste, and remake the drink promptly.\",\"Charge them for a second drink before remaking.\",\"Blame the recipe and walk away.\"],\"correctIndex\":1,\"points\":20,\"scenario\":\"A guest sends back a cocktail, saying it tastes wrong. You followed the recipe, but the guest is disappointed. What would you do?\"}]",
+                    "answers_json": "[1,1,1,1,1]",
+                    "passing_score": "75.00",
+                    "total_score": "100.00",
+                    "result": "Passed",
+                    "status": "Completed",
+                    "expires_at": "2026-10-13 16:46:07",
+                    "submitted_at": "2026-10-06 16:47:00",
+                    "created_at": "2026-10-06 16:46:07",
+                    "updated_at": "2026-10-06 16:47:00"
+                }
+            ],
+            "assessment_tests": [
+                {
+                    "assessment_test_id": 29,
+                    "applicant_id": 88,
+                    "assessor_user_id": 3,
+                    "test_title": "Bartender \u2014 Job Knowledge Test",
+                    "questions_json": "[{\"question\":\"Handle an Intoxicated Guest \\u2014 A visibly intoxicated guest demands another strong drink and becomes insistent when you hesitate. What would you do?\",\"points\":20},{\"question\":\"Verify Age Before Serving \\u2014 A young-looking guest orders a cocktail but cannot present a valid ID, claiming they left it in their room. What would you do?\",\"points\":20},{\"question\":\"Broken Glass Near the Ice Bin \\u2014 A glass shatters near the open ice bin during a rush, and fragments may have fallen into the ice. Drink orders are waiting. What would you do?\",\"points\":20},{\"question\":\"Manage a Long Bar Queue \\u2014 A long queue forms at the bar and waiting guests are getting restless. You are the only bartender for the next few minutes. What would you do?\",\"points\":20},{\"question\":\"Remake a Rejected Cocktail \\u2014 A guest sends back a cocktail, saying it tastes wrong. You followed the recipe, but the guest is disappointed. What would you do?\",\"points\":20}]",
+                    "scores_json": "[20,20,20,20,20]",
+                    "total_score": "100.00",
+                    "passing_score": "75.00",
+                    "result": "Passed",
+                    "test_date": "2026-10-06",
+                    "remarks": "Answered by the applicant through the secure test link.",
+                    "created_at": "2026-10-06 16:47:00",
+                    "updated_at": "2026-10-06 16:47:00"
+                }
+            ],
+            "interviews": [
+                {
+                    "interview_id": 63,
+                    "interview_code": "INT-00237",
+                    "applicant_id": 88,
+                    "scheduled_date": "2026-10-07",
+                    "scheduled_time": "00:45:00",
+                    "scheduled_end_time": null,
+                    "mode": "On-site",
+                    "facility_id": 1,
+                    "facility_status": "Facility Approved",
+                    "interviewer_employee_id": null,
+                    "interviewer_name": "Chef Gabriel Mendoza",
+                    "zoom_meeting_id": null,
+                    "zoom_join_url": null,
+                    "zoom_continue_url": null,
+                    "zoom_password": null,
+                    "status": "Completed",
+                    "interview_notes": null,
+                    "created_at": "2026-10-06 16:45:08",
+                    "updated_at": "2026-10-06 16:45:46"
+                }
+            ],
+            "practical_tests": [
+                {
+                    "practical_test_id": 11,
+                    "applicant_id": 88,
+                    "assessor_user_id": 3,
+                    "task_title": "Bartender \u2014 Practical Demonstration",
+                    "criteria_json": "[{\"criterion\":\"Task Execution & Accuracy\",\"max_points\":5,\"comment\":null},{\"criterion\":\"Position-Specific Skill\",\"max_points\":5,\"comment\":null},{\"criterion\":\"Work Standards & Procedures\",\"max_points\":5,\"comment\":null},{\"criterion\":\"Time Management\",\"max_points\":5,\"comment\":null}]",
+                    "scores_json": "[4,4,4,4]",
+                    "total_score": "80.00",
+                    "result": "Passed",
+                    "test_date": "2026-10-07",
+                    "remarks": null,
+                    "created_at": "2026-10-06 16:47:31",
+                    "updated_at": "2026-10-06 16:47:31"
+                }
+            ],
+            "final_evaluations": [
+                {
+                    "final_evaluation_id": 19,
+                    "applicant_id": 88,
+                    "evaluated_by_user_id": 3,
+                    "evaluation_date": "2026-10-07",
+                    "screening_score": "90.48",
+                    "screening_status": "fit",
+                    "interview_score": "80.00",
+                    "interview_result": "Passed",
+                    "assessment_test_score": "100.00",
+                    "assessment_test_result": "Passed",
+                    "practical_required": 0,
+                    "practical_test_score": null,
+                    "practical_test_result": null,
+                    "overall_score": null,
+                    "score_breakdown_json": null,
+                    "recommendation": "Recommended for Hire",
+                    "recommended_job_post_id": null,
+                    "recommended_position_title": null,
+                    "overall_remarks": null,
+                    "created_at": "2026-10-06 16:47:51",
+                    "updated_at": "2026-10-06 16:47:51"
+                }
+            ],
+            "new_hires": [
+                {
+                    "new_hire_id": 44,
+                    "new_hire_code": "NH-00031",
+                    "applicant_id": 88,
+                    "employee_id": null,
+                    "name": "MARCO ANTONIO REYES",
+                    "email": "marco.reyes.bar@outlook.ph",
+                    "phone": "09178421953",
+                    "position_id": 4,
+                    "department_id": 2,
+                    "stage": "Pre-onboarding",
+                    "start_date": "2026-10-06",
+                    "evaluation_requested_at": null,
+                    "created_at": "2026-10-06 16:48:09",
+                    "updated_at": "2026-10-06 16:48:09"
+                }
+            ]
+        },
+        {
+            "applicant": {
+                "applicant_id": 94,
+                "applicant_code": "APL-01097",
+                "job_post_id": 3,
+                "name": "Maricel Santos Dizon",
+                "email": "butchoylangsalakam01@gmail.com",
+                "phone": "09186729014",
+                "applied_at": "2026-10-12 02:36:32",
+                "fit_score": "76.00",
+                "status": "not-fit",
+                "stage": "Interview Scheduled",
+                "source": "HR re-entry (re-applied)",
+                "resume_file_path": "resumes\/reapply_6acc47b0903e7_Maricel_Santos_Dizon_Resume.pdf",
+                "resume_original_name": "Maricel_Santos_Dizon_Resume.pdf",
+                "resume_hash": "f5fa2363a68acabd1bed0172915f14e585ca372a7d8eb0cd99bdc23817b37da0",
+                "summary": "Matched skills: Room Turnover, Safety; Experience requirement satisfied (7.5 yrs vs 0.0 yrs required); No certification requirements defined for this role \u2014 meets Housekeeping Attendant requirements. No available position achieved the required qualification level.",
+                "flags_json": "[\"Unrecognized skill: Amenity Replenishment\",\"Unrecognized skill: Bathroom Deep Cleaning\",\"Unrecognized skill: Bed Making\",\"Unrecognized skill: Custody Registration\",\"Unrecognized skill: Defect Identification\",\"Unrecognized skill: Fixture Sanitization\",\"Unrecognized skill: Found Procedure Adherence\",\"Unrecognized skill: Grout Descaling\",\"Unrecognized skill: Item\",\"Unrecognized skill: Linen Trolley Par Stock\",\"Unrecognized skill: Logging\",\"Unrecognized skill: Lost\",\"Unrecognized skill: Luxury Guestroom Make-Up\",\"Unrecognized skill: MSDS Protocols\",\"Unrecognized skill: Maintenance Work Order\",\"Unrecognized skill: Mesa\",\"Unrecognized skill: Organization\",\"Unrecognized skill: PPE\",\"Unrecognized skill: Personalized Guest\",\"Unrecognized skill: Safe Chemical Dilution\",\"Unrecognized skill: Segregation\",\"Unrecognized skill: Turn-Down Evening Service\",\"Unrecognized skill: Waste\"]",
+                "created_at": "2026-10-12 02:36:32",
+                "updated_at": "2026-10-12 02:37:50"
+            },
+            "applicant_documents": [
+                {
+                    "applicant_document_id": 48,
+                    "applicant_id": 94,
+                    "doc_type": "COE",
+                    "title": "COE - Current Employer",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/reapply_6acc47b092fdf_Maricel_Santos_Dizon_COE_Current_Employer.pdf",
+                    "original_name": "Maricel_Santos_Dizon_COE_Current_Employer.pdf",
+                    "verification_status": "PENDING",
+                    "verification_result_json": "{\"success\":false,\"document_type\":\"COE\",\"verification_status\":\"PENDING\",\"checks\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\"}",
+                    "extracted_profile_json": null,
+                    "verified_at": null,
+                    "uploaded_at": "2026-10-12 10:36:32",
+                    "created_at": "2026-10-12 02:36:32",
+                    "updated_at": "2026-10-12 02:36:32"
+                },
+                {
+                    "applicant_document_id": 49,
+                    "applicant_id": 94,
+                    "doc_type": "COE",
+                    "title": "COE - Previous Employer",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/reapply_6acc47b09b891_Maricel_Santos_Dizon_COE_Previous_Employer.pdf",
+                    "original_name": "Maricel_Santos_Dizon_COE_Previous_Employer.pdf",
+                    "verification_status": "PENDING",
+                    "verification_result_json": "{\"success\":false,\"document_type\":\"COE\",\"verification_status\":\"PENDING\",\"checks\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\"}",
+                    "extracted_profile_json": null,
+                    "verified_at": null,
+                    "uploaded_at": "2026-10-12 10:36:32",
+                    "created_at": "2026-10-12 02:36:32",
+                    "updated_at": "2026-10-12 02:36:32"
+                },
+                {
+                    "applicant_document_id": 50,
+                    "applicant_id": 94,
+                    "doc_type": "Certificate",
+                    "title": "Diploma",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/reapply_6acc47b0a5308_Maricel_Santos_Dizon_Diploma.pdf",
+                    "original_name": "Maricel_Santos_Dizon_Diploma.pdf",
+                    "verification_status": "PENDING",
+                    "verification_result_json": "{\"success\":false,\"document_type\":\"Certificate\",\"verification_status\":\"PENDING\",\"checks\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\"}",
+                    "extracted_profile_json": null,
+                    "verified_at": null,
+                    "uploaded_at": "2026-10-12 10:36:32",
+                    "created_at": "2026-10-12 02:36:32",
+                    "updated_at": "2026-10-12 02:36:32"
+                },
+                {
+                    "applicant_document_id": 51,
+                    "applicant_id": 94,
+                    "doc_type": "Certificate",
+                    "title": "Incomplete Certificate",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/reapply_6acc47b0b251b_Maricel_Santos_Dizon_Incomplete_Certificate.pdf",
+                    "original_name": "Maricel_Santos_Dizon_Incomplete_Certificate.pdf",
+                    "verification_status": "PENDING",
+                    "verification_result_json": "{\"success\":false,\"document_type\":\"Certificate\",\"verification_status\":\"PENDING\",\"checks\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\"}",
+                    "extracted_profile_json": null,
+                    "verified_at": null,
+                    "uploaded_at": "2026-10-12 10:36:32",
+                    "created_at": "2026-10-12 02:36:32",
+                    "updated_at": "2026-10-12 02:36:32"
+                },
+                {
+                    "applicant_document_id": 52,
+                    "applicant_id": 94,
+                    "doc_type": "Certificate",
+                    "title": "Training Certificate - Food Safety",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/reapply_6acc47b0b8aba_Maricel_Santos_Dizon_Training_Certificate_FoodSafety.pdf",
+                    "original_name": "Maricel_Santos_Dizon_Training_Certificate_FoodSafety.pdf",
+                    "verification_status": "PENDING",
+                    "verification_result_json": "{\"success\":false,\"document_type\":\"Certificate\",\"verification_status\":\"PENDING\",\"checks\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\"}",
+                    "extracted_profile_json": null,
+                    "verified_at": null,
+                    "uploaded_at": "2026-10-12 10:36:32",
+                    "created_at": "2026-10-12 02:36:32",
+                    "updated_at": "2026-10-12 02:36:32"
+                },
+                {
+                    "applicant_document_id": 53,
+                    "applicant_id": 94,
+                    "doc_type": "Certificate",
+                    "title": "Training Certificate - Service",
+                    "original_copy": 0,
+                    "file_path": "applicant-documents\/reapply_6acc47b0c2291_Maricel_Santos_Dizon_Training_Certificate_Service.pdf",
+                    "original_name": "Maricel_Santos_Dizon_Training_Certificate_Service.pdf",
+                    "verification_status": "PENDING",
+                    "verification_result_json": "{\"success\":false,\"document_type\":\"Certificate\",\"verification_status\":\"PENDING\",\"checks\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\"}",
+                    "extracted_profile_json": null,
+                    "verified_at": null,
+                    "uploaded_at": "2026-10-12 10:36:32",
+                    "created_at": "2026-10-12 02:36:32",
+                    "updated_at": "2026-10-12 02:36:32"
+                }
+            ],
+            "applicant_screenings": [
+                {
+                    "screening_id": 75,
+                    "applicant_id": 94,
+                    "job_post_id": 3,
+                    "processing_status": "PARTIALLY_PROCESSED",
+                    "screening_result": "not-fit",
+                    "match_score": "76.00",
+                    "resume_match_score": "76.00",
+                    "score_breakdown_json": "{\"skills\":{\"weight\":0.4,\"earned\":26,\"max\":40,\"matched_required\":[\"Room Turnover\",\"Safety\"],\"fuzzy_matched_required\":[],\"missing_required\":[\"Attention to Detail\",\"Time Management\"],\"matched_preferred\":[],\"missing_preferred\":[],\"required_coverage\":0.5,\"preferred_coverage\":1},\"experience\":{\"weight\":0.3,\"earned\":30,\"max\":30,\"estimated_years\":7.5,\"min_years_required\":0,\"requirement_met\":true},\"education\":{\"weight\":0.2,\"earned\":10,\"max\":20,\"applicant_highest_level\":[\"Polytechnic University of the Philippines (PUP) - Sta\"],\"required_level\":\"High School Graduate\",\"requirement_met\":false},\"certifications\":{\"weight\":0.1,\"earned\":10,\"max\":10,\"matched\":[],\"missing\":[],\"no_requirements\":true}}",
+                    "profile_json": "{\"personal_information\":{\"name\":\"MARICEL SANTOS DIZON\",\"email\":\"maricel.dizon.housekeeping@outlook.ph\",\"phone\":\"+63 918 672 9014\",\"address\":\"18 Kalayaan Avenue, Guadalupe Nuevo, 1212 Makati\"},\"education\":[\"Polytechnic University of the Philippines (PUP) - Sta\"],\"work_experience\":[{\"job_title\":\"Housekeeping Room Attendant\",\"company\":\"Ascott Makati\",\"location\":\"Makati City, Metro Manila\",\"period\":\"August 2022 - Present\",\"recognized_role\":true},{\"job_title\":\"Housekeeping Attendant\",\"company\":\"BSA Tower Serviced Residences\",\"location\":\"Makati City, Metro Manila\",\"period\":\"October 2020 - July 2022\",\"recognized_role\":true}],\"skills\":[\"Chemical Safety\",\"Customer Service\",\"Food Safety\",\"Housekeeping Operations\",\"Room Turnover\",\"Safety\",\"Safety Compliance\"],\"certifications\":[\"TESDA Housekeeping NC II\",\"Hospitality Chemical Safety And Sanitation Compliance\",\"Professional Guestroom Cleaning And Inspection Standards\",\"Tesda National Certificate Ii In Housekeeping\"],\"unrecognized_certifications\":[\"Hospitality Chemical Safety And Sanitation Compliance\",\"Professional Guestroom Cleaning And Inspection Standards\",\"Tesda National Certificate Ii In Housekeeping\"],\"estimated_years_experience\":7.5,\"estimated_experience_months\":90,\"job_roles\":{\"recognized\":[\"Housekeeping Attendant\"],\"unrecognized\":[]},\"unrecognized_skills\":[\"Amenity Replenishment\",\"Bathroom Deep Cleaning\",\"Bed Making\",\"Custody Registration\",\"Defect Identification\",\"Fixture Sanitization\",\"Found Procedure Adherence\",\"Grout Descaling\",\"Item\",\"Linen Trolley Par Stock\",\"Logging\",\"Lost\",\"Luxury Guestroom Make-Up\",\"MSDS Protocols\",\"Maintenance Work Order\",\"Mesa\",\"Organization\",\"PPE\",\"Personalized Guest\",\"Safe Chemical Dilution\",\"Segregation\",\"Turn-Down Evening Service\",\"Waste\"]}",
+                    "entities_json": "[{\"label\":\"PERSON\",\"value\":\"MARICEL SANTOS DIZON\",\"source\":\"rule\"},{\"label\":\"EDUCATION\",\"value\":\"Polytechnic University of the Philippines (PUP) - Sta\",\"source\":\"section_rule\"},{\"label\":\"JOB_TITLE\",\"value\":\"Housekeeping Room Attendant\",\"source\":\"section_rule\"},{\"label\":\"JOB_TITLE\",\"value\":\"Housekeeping Attendant\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Chemical Safety\",\"source\":\"reference_scan\"},{\"label\":\"SKILL\",\"value\":\"Customer Service\",\"source\":\"reference_scan\"},{\"label\":\"SKILL\",\"value\":\"Food Safety\",\"source\":\"reference_scan\"},{\"label\":\"SKILL\",\"value\":\"Housekeeping Operations\",\"source\":\"reference_scan\"},{\"label\":\"SKILL\",\"value\":\"Room Turnover\",\"source\":\"reference_scan\"},{\"label\":\"SKILL\",\"value\":\"Safety\",\"source\":\"reference_scan\"},{\"label\":\"SKILL\",\"value\":\"Safety Compliance\",\"source\":\"reference_scan\"},{\"label\":\"SKILL\",\"value\":\"Luxury Guestroom Make-Up\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Bed Making\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Bathroom Deep Cleaning\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Fixture Sanitization\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Grout Descaling\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Linen Trolley Par Stock\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Organization\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Safe Chemical Dilution\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"MSDS Protocols\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"PPE\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Lost\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Found Procedure Adherence\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Item\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Custody Registration\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Defect Identification\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Maintenance Work Order\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Logging\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Turn-Down Evening Service\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Personalized Guest\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Amenity Replenishment\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Waste\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Segregation\",\"source\":\"section_rule\"},{\"label\":\"SKILL\",\"value\":\"Mesa\",\"source\":\"section_rule\"},{\"label\":\"CERTIFICATION\",\"value\":\"Tesda National Certificate Ii In Housekeeping\",\"source\":\"hint_pattern\"},{\"label\":\"CERTIFICATION\",\"value\":\"Hospitality Chemical Safety And Sanitation Compliance\",\"source\":\"section_rule\"},{\"label\":\"CERTIFICATION\",\"value\":\"Professional Guestroom Cleaning And Inspection Standards\",\"source\":\"section_rule\"},{\"label\":\"CERTIFICATION\",\"value\":\"TESDA Housekeeping NC II\",\"source\":\"reference_scan\"},{\"label\":\"ORGANIZATION\",\"value\":\"Ascott Makati\",\"source\":\"section_rule\"},{\"label\":\"ORGANIZATION\",\"value\":\"BSA Tower Serviced Residences\",\"source\":\"section_rule\"},{\"label\":\"EMAIL\",\"value\":\"maricel.dizon.housekeeping@outlook.ph\",\"source\":\"regex\"},{\"label\":\"PHONE\",\"value\":\"+63 918 672 9014\",\"source\":\"regex\"}]",
+                    "missing_information_json": "[]",
+                    "validation_json": "{\"missing_information\":[],\"invalid_format\":[],\"skill_analysis\":{\"recognized\":[\"Chemical Safety\",\"Customer Service\",\"Food Safety\",\"Housekeeping Operations\",\"Room Turnover\",\"Safety\",\"Safety Compliance\"],\"unrecognized\":[\"Amenity Replenishment\",\"Bathroom Deep Cleaning\",\"Bed Making\",\"Custody Registration\",\"Defect Identification\",\"Fixture Sanitization\",\"Found Procedure Adherence\",\"Grout Descaling\",\"Item\",\"Linen Trolley Par Stock\",\"Logging\",\"Lost\",\"Luxury Guestroom Make-Up\",\"MSDS Protocols\",\"Maintenance Work Order\",\"Mesa\",\"Organization\",\"PPE\",\"Personalized Guest\",\"Safe Chemical Dilution\",\"Segregation\",\"Turn-Down Evening Service\",\"Waste\"]},\"job_role_analysis\":{\"recognized\":[\"Housekeeping Attendant\"],\"unrecognized\":[]},\"credential_analysis\":[{\"required\":null,\"extracted\":\"Hospitality Chemical Safety And Sanitation Compliance\",\"status\":\"UNRECOGNIZED\",\"note\":\"Invalid or requires verification based on system validation rules.\"},{\"required\":null,\"extracted\":\"Professional Guestroom Cleaning And Inspection Standards\",\"status\":\"UNRECOGNIZED\",\"note\":\"Invalid or requires verification based on system validation rules.\"},{\"required\":null,\"extracted\":\"Tesda National Certificate Ii In Housekeeping\",\"status\":\"UNRECOGNIZED\",\"note\":\"Invalid or requires verification based on system validation rules.\"}],\"credential_issues\":[],\"credential_verification\":{\"flags\":[],\"warning_count\":0,\"info_count\":0,\"risk_level\":\"LOW\",\"score_penalty\":0,\"escalate_invalid\":false,\"summary\":\"All internal credential consistency checks passed. No timeline or credential anomalies detected.\",\"checks_performed\":[\"timeline_overlap\",\"future_dates\",\"experience_graduation_gap\",\"seniority_experience_mismatch\",\"excessive_job_hopping\",\"education_cert_prerequisites\",\"chronological_coherence\"]},\"review_flags\":[]}",
+                    "alternative_job_json": null,
+                    "document_verification_json": "{\"status\":\"PENDING\",\"weight\":0.15,\"documents_total\":6,\"decisive_count\":0,\"verified_count\":0,\"discrepancy_count\":0,\"unable_count\":0,\"pending_count\":6,\"ignored_count\":0,\"credit_ratio\":null,\"documents_score\":null,\"score_penalty\":0,\"escalate_invalid\":false,\"mismatched_fields\":[],\"flags\":[],\"per_document\":[{\"applicant_document_id\":48,\"doc_type\":\"COE\",\"verification_status\":\"PENDING\",\"counted\":false,\"credit\":null,\"mismatched_fields\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\",\"ignored_reason\":\"verification still in progress\"},{\"applicant_document_id\":49,\"doc_type\":\"COE\",\"verification_status\":\"PENDING\",\"counted\":false,\"credit\":null,\"mismatched_fields\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\",\"ignored_reason\":\"verification still in progress\"},{\"applicant_document_id\":50,\"doc_type\":\"Certificate\",\"verification_status\":\"PENDING\",\"counted\":false,\"credit\":null,\"mismatched_fields\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\",\"ignored_reason\":\"verification still in progress\"},{\"applicant_document_id\":51,\"doc_type\":\"Certificate\",\"verification_status\":\"PENDING\",\"counted\":false,\"credit\":null,\"mismatched_fields\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\",\"ignored_reason\":\"verification still in progress\"},{\"applicant_document_id\":52,\"doc_type\":\"Certificate\",\"verification_status\":\"PENDING\",\"counted\":false,\"credit\":null,\"mismatched_fields\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\",\"ignored_reason\":\"verification still in progress\"},{\"applicant_document_id\":53,\"doc_type\":\"Certificate\",\"verification_status\":\"PENDING\",\"counted\":false,\"credit\":null,\"mismatched_fields\":[],\"summary\":\"Waiting for the applicant's resume screening \\u2014 the document will be compared against the resume claims once a screening profile is available.\",\"ignored_reason\":\"verification still in progress\"}]}",
+                    "reasons_json": "[\"Education does not meet the requirement of the applied job.\",\"Required-skills coverage 50% is below the 60% minimum. Missing: Attention to Detail, Time Management.\",\"Alternative job analysis: highest-scoring open position 'Restaurant Server' reached only 69.0%, below the 75.0% recommendation threshold.\"]",
+                    "model_info_json": "{\"base_model\":\"en_core_web_sm\",\"custom_ner_loaded\":true,\"custom_ner_path\":\"C:\\\\Users\\\\Windows 10 Lite\\\\Downloads\\\\MUNJOR\\\\4TH YR\\\\DEV\\\\LATEST CLONE\\\\v15.4\\\\2nd-repo-for-hrms-backend-\\\\nlp-service\\\\models_spacy\\\\role_specific_ner\"}",
+                    "error_message": null,
+                    "processed_at": "2026-10-12 02:36:36",
+                    "created_at": "2026-10-12 02:36:36",
+                    "updated_at": "2026-10-12 02:36:36"
+                }
+            ],
+            "applicant_screening_entities": [
+                {
+                    "entity_id": 1766,
+                    "applicant_id": 94,
+                    "label": "PERSON",
+                    "value": "MARICEL SANTOS DIZON",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1767,
+                    "applicant_id": 94,
+                    "label": "EDUCATION",
+                    "value": "Polytechnic University of the Philippines (PUP) - Sta",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1768,
+                    "applicant_id": 94,
+                    "label": "JOB_TITLE",
+                    "value": "Housekeeping Room Attendant",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1769,
+                    "applicant_id": 94,
+                    "label": "JOB_TITLE",
+                    "value": "Housekeeping Attendant",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1770,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Chemical Safety",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1771,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Customer Service",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1772,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Food Safety",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1773,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Housekeeping Operations",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1774,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Room Turnover",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1775,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Safety",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1776,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Safety Compliance",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1777,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Luxury Guestroom Make-Up",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1778,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Bed Making",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1779,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Bathroom Deep Cleaning",
+                    "created_at": "2026-10-12 10:36:36"
+                },
+                {
+                    "entity_id": 1780,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Fixture Sanitization",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1781,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Grout Descaling",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1782,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Linen Trolley Par Stock",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1783,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Organization",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1784,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Safe Chemical Dilution",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1785,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "MSDS Protocols",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1786,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "PPE",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1787,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Lost",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1788,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Found Procedure Adherence",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1789,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Item",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1790,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Custody Registration",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1791,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Defect Identification",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1792,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Maintenance Work Order",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1793,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Logging",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1794,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Turn-Down Evening Service",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1795,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Personalized Guest",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1796,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Amenity Replenishment",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1797,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Waste",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1798,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Segregation",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1799,
+                    "applicant_id": 94,
+                    "label": "SKILL",
+                    "value": "Mesa",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1800,
+                    "applicant_id": 94,
+                    "label": "CERTIFICATION",
+                    "value": "Tesda National Certificate Ii In Housekeeping",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1801,
+                    "applicant_id": 94,
+                    "label": "CERTIFICATION",
+                    "value": "Hospitality Chemical Safety And Sanitation Compliance",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1802,
+                    "applicant_id": 94,
+                    "label": "CERTIFICATION",
+                    "value": "Professional Guestroom Cleaning And Inspection Standards",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1803,
+                    "applicant_id": 94,
+                    "label": "CERTIFICATION",
+                    "value": "TESDA Housekeeping NC II",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1804,
+                    "applicant_id": 94,
+                    "label": "ORGANIZATION",
+                    "value": "Ascott Makati",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1805,
+                    "applicant_id": 94,
+                    "label": "ORGANIZATION",
+                    "value": "BSA Tower Serviced Residences",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1806,
+                    "applicant_id": 94,
+                    "label": "EMAIL",
+                    "value": "maricel.dizon.housekeeping@outlook.ph",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "entity_id": 1807,
+                    "applicant_id": 94,
+                    "label": "PHONE",
+                    "value": "+63 918 672 9014",
+                    "created_at": "2026-10-12 10:36:37"
+                }
+            ],
+            "applicant_screening_scores": [
+                {
+                    "score_id": 325,
+                    "applicant_id": 94,
+                    "criterion": "Skills",
+                    "score": "26.00",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "score_id": 326,
+                    "applicant_id": 94,
+                    "criterion": "Experience",
+                    "score": "30.00",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "score_id": 327,
+                    "applicant_id": 94,
+                    "criterion": "Education",
+                    "score": "10.00",
+                    "created_at": "2026-10-12 10:36:37"
+                },
+                {
+                    "score_id": 328,
+                    "applicant_id": 94,
+                    "criterion": "Certifications",
+                    "score": "10.00",
+                    "created_at": "2026-10-12 10:36:37"
+                }
+            ],
+            "screening_ground_truths": [],
+            "applicant_assessments": [],
+            "assessment_invites": [],
+            "assessment_tests": [],
+            "interviews": [
+                {
+                    "interview_id": 65,
+                    "interview_code": "INT-00238",
+                    "applicant_id": 94,
+                    "scheduled_date": "2026-10-12",
+                    "scheduled_time": "22:19:38",
+                    "scheduled_end_time": null,
+                    "mode": "Virtual",
+                    "facility_id": 4,
+                    "facility_status": "Facility Approved",
+                    "interviewer_employee_id": null,
+                    "interviewer_name": "Lourdes Bautista",
+                    "zoom_meeting_id": "88477391125",
+                    "zoom_join_url": "https:\/\/us05web.zoom.us\/j\/88477391125?pwd=ifhE9Z01g41nKMmGJnuUHhYY2oqGKg.1",
+                    "zoom_continue_url": "https:\/\/us05web.zoom.us\/j\/88477391125?pwd=ifhE9Z01g41nKMmGJnuUHhYY2oqGKg.1#rejoin",
+                    "zoom_password": "j3H09j",
+                    "status": "Scheduled",
+                    "interview_notes": "Playwright preview note \u2014 strong guest presence, proceed to assessment.",
+                    "created_at": "2026-10-12 02:37:48",
+                    "updated_at": "2026-10-12 14:25:35"
+                }
+            ],
+            "practical_tests": [],
+            "final_evaluations": [],
+            "new_hires": []
+        }
+    ]
+}

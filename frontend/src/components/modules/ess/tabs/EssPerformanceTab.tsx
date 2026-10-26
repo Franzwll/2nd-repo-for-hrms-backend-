@@ -31,10 +31,10 @@ import { essApi } from "@/lib/api";
 
 // Card visuals: soft tinted tiles in light mode, dark geometric tiles in dark mode.
 const COURSE_THEMES = [
-  "border-amber-200/80 from-amber-50 via-orange-50 to-yellow-100 dark:border-transparent dark:from-[#6b5320] dark:via-[#4a3a16] dark:to-[#2a230f]", // gold/brown
-  "border-slate-200/80 from-slate-50 via-slate-100 to-slate-200 dark:border-transparent dark:from-[#4b5563] dark:via-[#374151] dark:to-[#1f2937]", // graphite
-  "border-rose-200/80 from-rose-50 via-pink-50 to-fuchsia-100 dark:border-transparent dark:from-[#7a2f4a] dark:via-[#5c2238] dark:to-[#3a1624]", // magenta/maroon
-  "border-teal-200/80 from-teal-50 via-emerald-50 to-cyan-100 dark:border-transparent dark:from-[#2f6b6b] dark:via-[#234f4f] dark:to-[#163333]", // teal
+  "border-amber-200/80 from-amber-50 via-orange-50 to-yellow-100 dark:border-amber-400/25 dark:from-gold/20 dark:via-gold-soft dark:to-card", // gold/brown
+  "border-slate-200/80 from-slate-50 via-slate-100 to-slate-200 dark:border-slate-400/25 dark:from-slate-400/20 dark:via-slate-500/10 dark:to-card", // graphite
+  "border-rose-200/80 from-rose-50 via-pink-50 to-fuchsia-100 dark:border-rose-400/25 dark:from-rose-400/20 dark:via-rose-500/10 dark:to-card", // magenta/maroon
+  "border-teal-200/80 from-teal-50 via-emerald-50 to-cyan-100 dark:border-teal-400/25 dark:from-teal-400/20 dark:via-teal-500/10 dark:to-card", // teal
 ];
 
 function courseTheme(index: number) {
@@ -323,7 +323,8 @@ export function EssPerformanceTab() {
             <button
               type="button"
               onClick={closeModuleDetail}
-              className="inline-flex items-center gap-1.5 font-semibold text-amber-600 hover:underline"
+              className="inline-flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400 hover:underline"
+              className="inline-flex cursor-pointer items-center gap-1.5 font-semibold text-amber-600 hover:underline"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Learning Materials
             </button>
@@ -360,7 +361,7 @@ export function EssPerformanceTab() {
                         setOpenModuleId(isOpen ? null : course.id);
                         if (!isOpen) setDetailCourse(course);
                       }}
-                      className="group flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-muted/30 sm:px-6"
+                      className="group flex w-full cursor-pointer items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-muted/30 sm:px-6"
                     >
                       <span
                         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
@@ -387,9 +388,9 @@ export function EssPerformanceTab() {
                           <button
                             type="button"
                             onClick={() => handleOpenPlayer(course, "handbook")}
-                            className="group flex w-full items-start gap-4 py-4 text-left transition-colors hover:bg-muted/30"
+                            className="group flex w-full cursor-pointer items-start gap-4 py-4 text-left transition-colors hover:bg-muted/30"
                           >
-                            <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                            <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-amber-500 dark:text-amber-400" />
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium text-foreground group-hover:text-primary">
                                 Handbook
@@ -412,10 +413,10 @@ export function EssPerformanceTab() {
                                   </span>
                                 )}
                                 {course.mandatory && (
-                                  <span className="font-semibold text-red-600">Mandatory</span>
+                                  <span className="font-semibold text-red-600 dark:text-red-400">Mandatory</span>
                                 )}
                                 {read && (
-                                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
+                                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
                                     <CheckCircle2 className="h-3 w-3" /> Read
                                   </span>
                                 )}
@@ -433,9 +434,9 @@ export function EssPerformanceTab() {
                               else handleOpenPlayer(course, "quiz");
                             }}
                             title={!read && !done ? "Read the handbook first" : undefined}
-                            className="group flex w-full items-start gap-4 py-4 text-left transition-colors hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="group flex w-full cursor-pointer items-start gap-4 py-4 text-left transition-colors hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-teal-600" />
+                            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-teal-600 dark:text-teal-400" />
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium text-foreground group-hover:text-primary">
                                 Quiz
@@ -449,7 +450,7 @@ export function EssPerformanceTab() {
                               </p>
                               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                                 {done ? (
-                                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
+                                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
                                     <CheckCircle2 className="h-3 w-3" /> Passed
                                     {course.score !== "—" ? ` · ${course.score}` : ""}
                                   </span>

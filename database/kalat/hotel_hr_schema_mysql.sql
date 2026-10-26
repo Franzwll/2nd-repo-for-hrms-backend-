@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Hotel & Restaurant HR1 - Final Database Schema (MySQL 8.0+)
--- Revision: 2.3 (rev 2.2 + job_posts.position_id required). 42 tables.
+-- Revision: 2.2 (rev 2.1 + CHECK constraints + derived-counter notes). 42 tables.
 -- Source of truth: frontend/src of Hotel-and-Restaurant-HR1 (data + workflow
 -- analysis) and docs/hotel_hr_database_audit_report.md.
 -- Change summary vs revision 1.0 (37 tables):
@@ -13,9 +13,6 @@
 -- Change summary vs revision 2.0 (39 tables):
 --   ADD    : notifications, user_login_activity, payroll_periods
 --   MODIFY : payroll_records (nullable payroll_period_id FK)
--- Change summary vs revision 2.2 (42 tables):
---   MODIFY : job_posts (position_id NOT NULL; title and slug always derive
---            from the linked Core HR position title via position_id)
 -- ============================================================================
 
 -- Self-contained: create the database if missing, then switch to it.
@@ -205,10 +202,7 @@ CREATE TABLE `job_posts` (
   `slug` VARCHAR(120) NOT NULL UNIQUE,
   `title` VARCHAR(150) NOT NULL,
   `department_id` BIGINT UNSIGNED NOT NULL,
-  -- NOTE: required FK to the Core HR position. `title` and `slug` always
-  -- derive from the linked position's title (positions.title) so they can
-  -- never drift out of sync with the Job Post Builder dropdown.
-  `position_id` BIGINT UNSIGNED NOT NULL,
+  `position_id` BIGINT UNSIGNED NULL,
   `employment_type` VARCHAR(30) NOT NULL,
   `schedule` VARCHAR(120) NULL,
   `salary_min` DECIMAL(12,2) NULL,
@@ -228,8 +222,6 @@ CREATE TABLE `job_posts` (
   `qualifications_json` JSON NULL,
   `skills_json` JSON NULL,
   `benefits_json` JSON NULL,
-  -- NOTE: poster image uploaded via Recruitment Management (public disk).
-  `picture` VARCHAR(255) NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`job_post_id`),
@@ -237,9 +229,7 @@ CREATE TABLE `job_posts` (
   KEY `idx_job_posts_position_id` (`position_id`),
   KEY `idx_job_posts_status_active` (`status`, `active`),
   CONSTRAINT chk_job_posts_status CHECK (`status` IN ('Open', 'Closed', 'Draft')),
-  CONSTRAINT chk_job_posts_employment_type CHECK (`employment_type` IN ('Full-time', 'Part-time', 'Contract', 'Seasonal')),
-  CONSTRAINT chk_job_posts_experience_level CHECK (`experience_level` IS NULL OR `experience_level` IN ('No Experience', '1-2 Years', '3-5 Years', '5+ Years')),
-  CONSTRAINT chk_job_posts_education_level CHECK (`education_level` IS NULL OR `education_level` IN ('High School Graduate', 'Vocational / TESDA', 'College Level', 'Bachelor''s Degree'))
+  CONSTRAINT chk_job_posts_employment_type CHECK (`employment_type` IN ('Full-time', 'Part-time', 'Contract', 'Seasonal'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `job_post_platforms` (
@@ -277,7 +267,7 @@ CREATE TABLE `applicants` (
   KEY `idx_applicants_stage` (`stage`),
   KEY `idx_applicants_applied_at` (`applied_at`),
   CONSTRAINT chk_applicants_status CHECK (`status` IN ('fit', 'other-role', 'credential', 'not-fit')),
-  CONSTRAINT chk_applicants_stage CHECK (`stage` IN ('Screened', 'Interview Scheduled', 'Assessed', 'Offer', 'Hired', 'Rejected', 'Accepted'))
+  CONSTRAINT chk_applicants_stage CHECK (`stage` IN ('Screened', 'Interview Scheduled', 'Assessed', 'Offer', 'Hired', 'Rejected'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `applicant_screening_entities` (
@@ -416,7 +406,7 @@ CREATE TABLE `onboarding_checklist_items` (
 
 CREATE TABLE `employee_onboarding_items` (
   `employee_onboarding_item_id` BIGINT UNSIGNED AUTO_INCREMENT,
-  `employee_id` BIGINT UNSIGNED NULL,
+  `employee_id` BIGINT UNSIGNED NOT NULL,
   `new_hire_id` BIGINT UNSIGNED NULL,
   `template_item_id` BIGINT UNSIGNED NULL,
   `item_text` TEXT NOT NULL,

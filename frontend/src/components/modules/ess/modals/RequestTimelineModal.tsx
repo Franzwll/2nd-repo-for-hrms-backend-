@@ -217,7 +217,7 @@ export function RequestTimelineModal({
         )}
 
         {isReturned && (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3.5 text-sm">
+          <div className="rounded-lg border border-amber-500/40 dark:border-amber-400/25 bg-amber-500/10 dark:bg-amber-400/10 p-3.5 text-sm">
             <p className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-300">
               <Clock className="h-4 w-4" /> Action needed
             </p>
@@ -228,7 +228,7 @@ export function RequestTimelineModal({
         )}
 
         {request.status === "Rejected" && (
-          <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3.5 text-sm">
+          <div className="rounded-lg border border-rose-500/40 dark:border-rose-400/25 bg-rose-500/10 dark:bg-rose-400/10 p-3.5 text-sm">
             <p className="flex items-center gap-1.5 font-semibold text-rose-700 dark:text-rose-300">
               <XCircle className="h-4 w-4" /> Request rejected
             </p>
@@ -239,7 +239,7 @@ export function RequestTimelineModal({
         )}
 
         {["For Dispatch", "With Module", "For Fulfillment"].includes(request.status) && (
-          <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 p-3.5 text-sm">
+          <div className="rounded-lg border border-indigo-500/40 dark:border-indigo-400/25 bg-indigo-500/10 dark:bg-indigo-400/10 p-3.5 text-sm">
             <p className="font-semibold text-indigo-700 dark:text-indigo-300">
               Approved — being processed by the responsible team
             </p>
@@ -252,7 +252,7 @@ export function RequestTimelineModal({
         )}
 
         {request.status === "For Release" && (
-          <div className="rounded-lg border border-teal-500/40 bg-teal-500/10 p-3.5 text-sm">
+          <div className="rounded-lg border border-teal-500/40 dark:border-teal-400/25 bg-teal-500/10 dark:bg-teal-400/10 p-3.5 text-sm">
             <p className="font-semibold text-teal-700 dark:text-teal-300">
               Approved — waiting for final release
             </p>
@@ -263,7 +263,7 @@ export function RequestTimelineModal({
         )}
 
         {request.status === "Completed" && (
-          <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3.5 text-sm">
+          <div className="rounded-lg border border-emerald-500/40 dark:border-emerald-400/25 bg-emerald-500/10 dark:bg-emerald-400/10 p-3.5 text-sm">
             <p className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
               <CheckCircle2 className="h-4 w-4" /> Ready
             </p>
@@ -413,7 +413,7 @@ export function RequestTimelineModal({
             <Button
               variant="outline"
               size="sm"
-              className="border-rose-500/30 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+              className="border-rose-500/30 dark:border-rose-400/20 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"
               onClick={() => void handleCancel()}
               disabled={cancelling}
             >

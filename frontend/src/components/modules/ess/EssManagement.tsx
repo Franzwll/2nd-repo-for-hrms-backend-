@@ -117,17 +117,17 @@ type Row = Omit<ESSRequest, "status" | "note"> & {
 };
 
 const statusClass: Record<Status, string> = {
-  Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30",
-  "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30",
-  "For Dispatch": "bg-sky-500/10 text-sky-600 border-sky-500/30",
-  "With Module": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
-  "For Release": "bg-teal-500/10 text-teal-600 border-teal-500/30",
-  Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
-  "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
-  Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30",
-  Completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
-  Cancelled: "bg-slate-500/10 text-slate-600 border-slate-500/30",
-  "Returned for Clarification": "bg-orange-500/10 text-orange-600 border-orange-500/30",
+  Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30 dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20",
+  "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30 dark:bg-blue-400/10 dark:text-blue-400 dark:border-blue-400/20",
+  "For Dispatch": "bg-sky-500/10 text-sky-600 border-sky-500/30 dark:bg-sky-400/10 dark:text-sky-400 dark:border-sky-400/20",
+  "With Module": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:bg-indigo-400/10 dark:text-indigo-400 dark:border-indigo-400/20",
+  "For Release": "bg-teal-500/10 text-teal-600 border-teal-500/30 dark:bg-teal-400/10 dark:text-teal-400 dark:border-teal-400/20",
+  Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20",
+  "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:bg-indigo-400/10 dark:text-indigo-400 dark:border-indigo-400/20",
+  Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30 dark:bg-rose-400/10 dark:text-rose-400 dark:border-rose-400/20",
+  Completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20",
+  Cancelled: "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:bg-slate-400/10 dark:text-slate-400 dark:border-slate-400/20",
+  "Returned for Clarification": "bg-orange-500/10 text-orange-600 border-orange-500/30 dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20",
 };
 
 /** Mirrors EssRequestWorkflow::requiresFulfillment for row-level UI choices. */
@@ -1066,7 +1066,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             )}
                             {r.status === "Under Review" && r.moduleNote && (
                               <p
-                                className="mt-1 max-w-[180px] truncate text-[11px] text-amber-600"
+                                className="mt-1 max-w-[180px] truncate text-[11px] text-amber-600 dark:text-amber-400"
                                 title={r.moduleNote}
                               >
                                 Declined: {r.moduleNote}

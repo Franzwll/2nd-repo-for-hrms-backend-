@@ -147,10 +147,10 @@ function EmployeeDashboard() {
 
       {/* Onboarding Checklist Banner (Displays when employee has pending onboarding items) */}
       {!loadingOnboarding && pendingTasks.length > 0 && (
-        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 dark:border-amber-400/20 dark:bg-amber-400/10">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400">
                 <AlertCircle className="h-5 w-5" />
               </span>
               <div>
@@ -158,7 +158,7 @@ function EmployeeDashboard() {
                   <h3 className="font-semibold text-sm text-foreground">
                     Onboarding Checklist Pending
                   </h3>
-                  <Badge variant="outline" className="bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40 text-[10px]">
+                  <Badge variant="outline" className="bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40 dark:border-amber-400/20 dark:bg-amber-400/10 text-[10px]">
                     {pendingTasks.length} task{pendingTasks.length > 1 ? "s" : ""} left
                   </Badge>
                 </div>
@@ -171,7 +171,7 @@ function EmployeeDashboard() {
                       key={idx}
                       className="inline-flex items-center gap-1 text-[11px] rounded-md bg-background/80 px-2 py-0.5 border border-border text-foreground"
                     >
-                      <CheckCircle2 className="h-3 w-3 text-amber-600 shrink-0" />
+                      <CheckCircle2 className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
                       {task}
                     </span>
                   ))}
@@ -184,7 +184,7 @@ function EmployeeDashboard() {
               </div>
             </div>
 
-            <Button asChild size="sm" variant="outline" className="border-amber-500/40 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0 text-xs h-8">
+            <Button asChild size="sm" variant="outline" className="border-amber-500/40 dark:border-amber-400/20 hover:bg-amber-500/20 dark:hover:bg-amber-400/10 text-amber-700 dark:text-amber-400 shrink-0 text-xs h-8">
               <Link to="/employee/onboarding">
                 Complete Onboarding <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
               </Link>
@@ -319,13 +319,13 @@ function EmployeeDashboard() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* Social Recognition & Wall of Fame Card */}
+        {/* My Feed & Wall of Fame Card */}
         <Card className="border-border/70 flex flex-col justify-between shadow-xs">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-display text-xl font-semibold">
                 <Award className="h-5 w-5 text-primary" />
-                Social Recognition
+                My Feed
               </div>
               <Button asChild variant="ghost" size="sm" className="text-primary hover:text-primary/90 hover:bg-primary/5 font-semibold text-xs">
                 <Link to="/employee/ess" search={{ category: "Recognition" }}>
@@ -410,7 +410,7 @@ function EmployeeDashboard() {
                       <button
                         type="button"
                         onClick={() => handleReact(rec.id, "heart")}
-                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-rose-500/10 hover:border-rose-500/40 hover:text-rose-600 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-rose-500/10 hover:border-rose-500/40 hover:text-rose-600 dark:hover:bg-rose-400/10 dark:hover:border-rose-400/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
                         title="Send Heart"
                       >
                         ❤️ {rec.reactions?.heart ?? 0}
@@ -418,7 +418,7 @@ function EmployeeDashboard() {
                       <button
                         type="button"
                         onClick={() => handleReact(rec.id, "star")}
-                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-amber-500/10 hover:border-amber-500/40 hover:text-amber-600 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-amber-500/10 hover:border-amber-500/40 hover:text-amber-600 dark:hover:bg-amber-400/10 dark:hover:border-amber-400/20 dark:hover:text-amber-400 transition-colors cursor-pointer"
                         title="Send Star"
                       >
                         ⭐ {rec.reactions?.star ?? 0}
@@ -426,7 +426,7 @@ function EmployeeDashboard() {
                       <button
                         type="button"
                         onClick={() => handleReact(rec.id, "fire")}
-                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-orange-500/10 hover:border-orange-500/40 hover:text-orange-600 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-orange-500/10 hover:border-orange-500/40 hover:text-orange-600 dark:hover:bg-orange-400/10 dark:hover:border-orange-400/20 dark:hover:text-orange-400 transition-colors cursor-pointer"
                         title="Send Fire"
                       >
                         🔥 {rec.reactions?.fire ?? 0}

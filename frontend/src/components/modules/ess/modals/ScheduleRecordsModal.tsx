@@ -115,13 +115,13 @@ const DOT_CLASS: Record<DayStatus, string> = {
 
 const TINT_CLASS: Record<DayStatus, string> = {
   present:
-    "bg-emerald-500/10 text-emerald-700 ring-1 ring-inset ring-emerald-500/20 hover:bg-emerald-500/20 dark:text-emerald-300",
-  late: "bg-amber-500/15 text-amber-700 ring-1 ring-inset ring-amber-500/25 hover:bg-amber-500/25 dark:text-amber-300",
+    "bg-emerald-500/10 dark:bg-emerald-400/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20 dark:ring-emerald-400/20 hover:bg-emerald-500/20 dark:hover:bg-emerald-400/15",
+  late: "bg-amber-500/15 dark:bg-amber-400/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/25 dark:ring-amber-400/20 hover:bg-amber-500/25 dark:hover:bg-amber-400/15",
   absent:
-    "bg-rose-500/15 text-rose-700 ring-1 ring-inset ring-rose-500/25 hover:bg-rose-500/25 dark:text-rose-300",
+    "bg-rose-500/15 dark:bg-rose-400/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/25 dark:ring-rose-400/20 hover:bg-rose-500/25 dark:hover:bg-rose-400/15",
   leave:
-    "bg-violet-500/10 text-violet-700 ring-1 ring-inset ring-violet-500/20 hover:bg-violet-500/20 dark:text-violet-300",
-  rest: "bg-slate-500/10 text-slate-600 ring-1 ring-inset ring-slate-400/20 hover:bg-slate-500/15 dark:text-slate-300",
+    "bg-violet-500/10 dark:bg-violet-400/10 text-violet-700 dark:text-violet-300 ring-1 ring-inset ring-violet-500/20 dark:ring-violet-400/20 hover:bg-violet-500/20 dark:hover:bg-violet-400/15",
+  rest: "bg-slate-500/10 dark:bg-slate-400/10 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-400/20 dark:ring-border hover:bg-slate-500/15 dark:hover:bg-slate-400/10",
 };
 
 function StatusDayButton({
@@ -162,13 +162,6 @@ function StatusDayButton({
       )}
     >
       <span className="font-semibold leading-none">{day.date.getDate()}</span>
-      <span
-        className={cn(
-          compact ? "h-1 w-1" : "h-1.5 w-1.5",
-          "rounded-full",
-          modifiers["selected"] ? "bg-white" : status ? DOT_CLASS[status] : "bg-transparent",
-        )}
-      />
     </button>
   );
 }

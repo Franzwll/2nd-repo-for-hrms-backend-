@@ -73,7 +73,9 @@ export function Turnstile({
           callback: (token: string) => verifyRef.current(token),
           "expired-callback": () => expireRef.current?.(),
           "error-callback": () => expireRef.current?.(),
-          theme: "auto",
+          // Auth pages are light-only — pin the widget instead of "auto" so it
+          // never renders its dark variant.
+          theme: "light",
         });
       })
       .catch(() => {

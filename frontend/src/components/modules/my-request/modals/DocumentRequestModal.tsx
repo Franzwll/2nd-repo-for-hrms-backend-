@@ -149,7 +149,7 @@ export function DocumentRequestModal({
             >
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="hardcopy" id="mr-fmt-hardcopy" className="sr-only" />
-                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="text-xs font-semibold">Physical Hardcopy</span>
               </div>
               <p className="pl-6 text-[10px] text-muted-foreground">

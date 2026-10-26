@@ -191,7 +191,7 @@ export function EssLeaveTab() {
                     </div>
                     <div className="flex items-center gap-1.5 font-medium">
                       <span className="text-muted-foreground">After filing:</span>
-                      <span className={isBalanceExceeded ? "text-rose-600 font-bold" : "text-emerald-600 font-bold"}>
+                      <span className={isBalanceExceeded ? "text-rose-600 dark:text-rose-400 font-bold" : "text-emerald-600 dark:text-emerald-400 font-bold"}>
                         {remainingAfterApproval} day(s)
                       </span>
                     </div>
@@ -358,25 +358,25 @@ export function EssLeaveTab() {
             </CardHeader>
             <CardContent className="space-y-3 text-xs text-muted-foreground">
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>3-Day Advance Notice:</strong> Planned Vacation Leave requests must be filed at least 3 days prior to the effective date.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>Medical Certificate Requirement:</strong> Sick leave spanning 2 or more consecutive working days requires an attached medical certificate upon return.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>Emergency Leave Notice:</strong> Must be filed within 24 hours of resuming active duty shift.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>Review Turnaround:</strong> Standard supervisor and HR review turnaround is within 24–48 business hours.
                 </span>

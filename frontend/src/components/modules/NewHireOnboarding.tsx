@@ -389,7 +389,7 @@ function EmployeeSubmissionDetails({
         </p>
       )}
       {returned && (
-        <p className="rounded-md border border-orange-500/30 bg-orange-500/10 px-2 py-1.5 text-[11px] leading-relaxed">
+        <p className="rounded-md border border-orange-500/30 bg-orange-500/10 px-2 py-1.5 text-[11px] leading-relaxed dark:border-orange-400/20 dark:bg-orange-400/10">
           <span className="font-semibold text-orange-600 dark:text-orange-400">HR feedback: </span>
           <span className="text-foreground">{submission.reviewNote}</span>
         </p>
@@ -519,7 +519,7 @@ function EmployeeSubmissionDetails({
             <Button
               size="sm"
               variant="outline"
-              className="h-7 cursor-pointer border-orange-500/50 px-2.5 text-[11px] text-orange-600 hover:bg-orange-500/10 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-400"
+              className="h-7 cursor-pointer border-orange-500/50 px-2.5 text-[11px] text-orange-600 hover:bg-orange-500/10 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-400 dark:border-orange-400/30 dark:hover:bg-orange-400/10"
               disabled={verifyBusy}
               onClick={onReturn}
             >
@@ -603,7 +603,7 @@ function AdminChecklistRow({
           {done ? (
             <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
           ) : returned ? (
-            <RotateCcw className="h-4 w-4 shrink-0 text-orange-500" />
+            <RotateCcw className="h-4 w-4 shrink-0 text-orange-500 dark:text-orange-400" />
           ) : submitted ? (
             <Hourglass className="h-4 w-4 shrink-0 text-destructive" />
           ) : (
@@ -625,7 +625,7 @@ function AdminChecklistRow({
         {!done && returned && (
           <Badge
             variant="outline"
-            className="shrink-0 border-orange-500/40 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-400"
+            className="shrink-0 border-orange-500/40 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-400 dark:border-orange-400/25 dark:bg-orange-400/10"
           >
             Returned for correction
           </Badge>
@@ -1864,6 +1864,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     <div>
       <PageHeader
         title="New Hire Onboarding"
+        description="Track pre-employment requirements, contracts, and onboarding progress for incoming hires."
         actions={
           <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
             <Download className="h-4 w-4" /> Generate Report
@@ -3947,7 +3948,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <RotateCcw className="h-4 w-4 text-orange-500" /> Return for correction
+              <RotateCcw className="h-4 w-4 text-orange-500 dark:text-orange-400" /> Return for correction
             </DialogTitle>
             <DialogDescription>
               “{returnTarget?.itemText}” goes back to the employee with your note so they can fix
@@ -4080,7 +4081,7 @@ function EmployeeChecklistRow({
                 item.done
                   ? "bg-success/10 text-success border-success/30 text-[10px]"
                   : returned
-                    ? "bg-orange-500/10 text-orange-600 border-orange-500/30 text-[10px]"
+                    ? "bg-orange-500/10 text-orange-600 border-orange-500/30 text-[10px] dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20"
                     : submitted
                       ? "bg-destructive/10 text-destructive border-destructive/30 text-[10px]"
                       : "bg-caution/10 text-caution border-caution/30 text-[10px]"
@@ -4556,8 +4557,8 @@ export function EmployeeOnboarding() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Employee Portal"
         title="New Hire Onboarding"
+        description="Track your onboarding checklist, pre-employment requirements, and first-day readiness."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" className="gap-2" onClick={loadOnboarding} disabled={loading}>
@@ -4637,7 +4638,7 @@ export function EmployeeOnboarding() {
             </CardTitle>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-semibold px-2.5 py-1 flex items-center gap-1.5 shadow-2xs">
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-semibold px-2.5 py-1 flex items-center gap-1.5 shadow-2xs dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               Day {elapsedDays} of {totalProbationDays} Active
             </Badge>
@@ -4658,7 +4659,7 @@ export function EmployeeOnboarding() {
                   key={m.id}
                   className={`relative rounded-xl border p-4 transition-all ${
                     isCompleted
-                      ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15 shadow-2xs"
+                      ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15 dark:border-emerald-400/30 shadow-2xs"
                       : isInProgress
                       ? "border-primary/60 bg-primary/5 shadow-xs ring-1 ring-primary/25"
                       : "border-border/70 bg-muted/10 opacity-75"
@@ -4668,7 +4669,7 @@ export function EmployeeOnboarding() {
                     <span
                       className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
                         isCompleted
-                          ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                          ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20"
                           : isInProgress
                           ? "bg-primary text-primary-foreground font-semibold"
                           : "bg-muted text-muted-foreground border border-border"
@@ -4678,7 +4679,7 @@ export function EmployeeOnboarding() {
                     </span>
 
                     {isCompleted ? (
-                      <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold">
+                      <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold dark:text-emerald-400">
                         <CheckCircle2 className="h-4 w-4" />
                         <span>Passed</span>
                       </div>
@@ -4847,7 +4848,7 @@ export function EmployeeOnboarding() {
 
                 {/* HR correction feedback — resubmit below to resolve it */}
                 {!viewingItem.done && viewingItem.reviewNote && (
-                  <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs leading-relaxed">
+                  <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs leading-relaxed dark:border-orange-400/20 dark:bg-orange-400/10">
                     <p className="font-semibold text-orange-600 dark:text-orange-400">
                       HR requested a correction
                       {typeof viewingItem.returnedCount === "number" &&

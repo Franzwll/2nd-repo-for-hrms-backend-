@@ -71,7 +71,7 @@ export function ShiftSwapModal({ open, onOpenChange, onSubmitSwap }: ShiftSwapMo
       <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[480px]">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <div className="rounded-md bg-purple-500/10 p-2 text-purple-600">
+            <div className="rounded-md bg-purple-500/10 dark:bg-purple-400/10 p-2 text-purple-600 dark:text-purple-400">
               <ArrowLeftRight className="h-5 w-5" />
             </div>
             <div>

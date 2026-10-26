@@ -12,10 +12,12 @@ import {
   ShieldCheck,
   Building2,
   Check,
+  Info,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
@@ -91,9 +93,9 @@ function getShiftVisual(shift: string, time: string) {
       type: "rest" as const,
       label: "Rest Day",
       tag: "Off Duty",
-      themeBorder: "border-slate-500/25",
+      themeBorder: "border-slate-500/25 dark:border-slate-400/20",
       themeBg: "bg-muted/30",
-      themeAccent: "from-slate-500/10 to-transparent",
+      themeAccent: "from-slate-500/10 to-transparent dark:from-slate-400/10",
       badgeColor: "bg-muted text-muted-foreground border-border/80",
       iconSvg: (
         <div className="p-3 rounded-2xl bg-muted/60 text-muted-foreground border border-border/70 shadow-2xs">
@@ -131,12 +133,12 @@ function getShiftVisual(shift: string, time: string) {
       type: "night" as const,
       label: "Night Shift",
       tag: "Evening / Night",
-      themeBorder: "border-indigo-500/35",
-      themeBg: "bg-indigo-500/5",
-      themeAccent: "from-indigo-500/15 via-purple-500/5 to-transparent",
-      badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
+      themeBorder: "border-indigo-500/35 dark:border-indigo-400/25",
+      themeBg: "bg-indigo-500/5 dark:bg-indigo-400/10",
+      themeAccent: "from-indigo-500/15 via-purple-500/5 to-transparent dark:from-indigo-400/10 dark:via-purple-400/5",
+      badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30 dark:bg-indigo-400/10 dark:border-indigo-400/20",
       iconSvg: (
-        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shadow-xs">
+        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shadow-xs dark:bg-indigo-400/10 dark:border-indigo-400/20">
           <svg
             className="h-8 w-8 text-indigo-400 drop-shadow-sm"
             viewBox="0 0 24 24"
@@ -165,14 +167,14 @@ function getShiftVisual(shift: string, time: string) {
       type: "mid" as const,
       label: "Mid Shift",
       tag: "Afternoon",
-      themeBorder: "border-orange-500/35",
-      themeBg: "bg-orange-500/5",
-      themeAccent: "from-orange-500/15 via-amber-500/5 to-transparent",
-      badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30",
+      themeBorder: "border-orange-500/35 dark:border-orange-400/25",
+      themeBg: "bg-orange-500/5 dark:bg-orange-400/10",
+      themeAccent: "from-orange-500/15 via-amber-500/5 to-transparent dark:from-orange-400/10 dark:via-amber-400/5",
+      badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30 dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20",
       iconSvg: (
-        <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-xs">
+        <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-xs dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20">
           <svg
-            className="h-8 w-8 text-orange-500 drop-shadow-sm"
+            className="h-8 w-8 text-orange-500 dark:text-orange-400 drop-shadow-sm"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -199,14 +201,14 @@ function getShiftVisual(shift: string, time: string) {
     type: "day" as const,
     label: "Day Shift",
     tag: "Morning / AM",
-    themeBorder: "border-amber-500/35",
-    themeBg: "bg-amber-500/5",
-    themeAccent: "from-amber-500/15 via-primary/5 to-transparent",
-    badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30",
+    themeBorder: "border-amber-500/35 dark:border-amber-400/25",
+    themeBg: "bg-amber-500/5 dark:bg-amber-400/10",
+    themeAccent: "from-amber-500/15 via-primary/5 to-transparent dark:from-amber-400/10",
+    badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30 dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20",
     iconSvg: (
-      <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-xs">
+      <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-xs dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20">
         <svg
-          className="h-8 w-8 text-amber-500 drop-shadow-sm"
+          className="h-8 w-8 text-amber-500 dark:text-amber-400 drop-shadow-sm"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -352,20 +354,20 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
       {attendanceLoading ? (
         <StatCardsSkeleton count={2} />
       ) : (
-      <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard
-          label="Present Days"
-          value={attSummary.present_days}
-          icon={CheckCircle2}
-          tone="success"
-        />
-        <StatCard
-          label="Leave Days"
-          value={attSummary.leave_days}
-          icon={AlertCircle}
-          tone="primary"
-        />
-      </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <StatCard
+            label="Present Days"
+            value={attSummary.present_days}
+            icon={CheckCircle2}
+            tone="success"
+          />
+          <StatCard
+            label="Leave Days"
+            value={attSummary.leave_days}
+            icon={AlertCircle}
+            tone="primary"
+          />
+        </div>
       )}
 
       <div className="mt-6 space-y-4">
@@ -383,22 +385,60 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                   Station Active
                 </Badge>
                 {currentDutyStatus === "clocked_in" && (
-                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:bg-emerald-400/10 dark:border-emerald-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     Currently On Duty
                   </Badge>
                 )}
                 {currentDutyStatus === "on_break" && (
-                  <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                  <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 dark:bg-amber-400/10 dark:border-amber-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                     <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
                     On Lunch / Meal Break
                   </Badge>
                 )}
                 {currentDutyStatus === "clocked_out" && (
-                  <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                  <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 dark:bg-slate-400/10 dark:border-slate-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
                     Shift Completed / Clocked Out
                   </Badge>
                 )}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Clocking guidelines"
+                      title="Clocking guidelines"
+                      className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                    >
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 text-xs">
+                    <div className="flex items-center gap-2 pb-2">
+                      <Info className="h-4 w-4 shrink-0 text-primary" />
+                      <p className="font-display text-sm font-semibold text-foreground">
+                        Clocking Guidelines
+                      </p>
+                    </div>
+                    <div className="space-y-2 text-muted-foreground">
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span>
+                          <strong className="text-foreground">Punctuality:</strong> 15-min grace
+                          period compliant past shift start.
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span>
+                          <strong className="text-foreground">Meal Breaks:</strong> 1-hour statutory
+                          interval for break out and in.
+                        </span>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 
@@ -415,14 +455,6 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                     <div className="my-2.5">
                       <span className="text-5xl sm:text-6xl font-extrabold font-mono tracking-tight text-foreground drop-shadow-xs">
                         {formattedTime}
-                      </span>
-                    </div>
-                    <div className="inline-flex items-center gap-2 rounded-full bg-background border border-border/80 px-3.5 py-1 text-xs text-muted-foreground">
-                      <span>Active Station Mode:</span>
-                      <span className="font-semibold text-foreground">
-                        {currentDutyStatus === "clocked_out"
-                          ? "Shift Concluded"
-                          : "Live Biometric Clocking"}
                       </span>
                     </div>
                   </div>
@@ -471,7 +503,7 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                       <h4 className="font-display text-sm font-semibold text-foreground">
                         Station Verification &amp; Shift Info
                       </h4>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-400/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 dark:border-emerald-400/20">
                         Verified
                       </span>
                     </div>
@@ -504,35 +536,6 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                           {employeeInfo?.department || "Kitchen / Culinary"}
                         </span>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Terminal Guidelines Footer */}
-              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2 shrink-0">
-                    <AlertCircle className="h-4 w-4 text-primary shrink-0" />
-                    <span className="font-semibold font-display text-foreground">
-                      Clocking Guidelines
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-muted-foreground w-full lg:w-auto">
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Punctuality:</strong> 15-min grace period compliant past shift
-                        start.
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Meal Breaks:</strong> 1-hour statutory interval for break out and
-                        in.
-                      </span>
                     </div>
                   </div>
                 </div>

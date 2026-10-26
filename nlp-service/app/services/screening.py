@@ -80,11 +80,14 @@ def classify_applied_job(
     thresholds: Optional[Dict[str, float]] = None,
     document_verifications: Optional[List[Dict]] = None,
 ) -> Dict:
-    match = matching.match_profile_to_requirements(profile, validation, requirements, weights)
-    blockers = _credential_blockers(validation)
-    reasons: List[str] = []
     threshold = (thresholds or {}).get("perfect", config.PERFECT_SCORE_THRESHOLD)
     coverage_min = (thresholds or {}).get("coverage_min", config.REQUIRED_SKILLS_COVERAGE_MIN)
+    match = matching.match_profile_to_requirements(
+        profile, validation, requirements, weights,
+        required_coverage_min_override=coverage_min,
+    )
+    blockers = _credential_blockers(validation)
+    reasons: List[str] = []
     # Resume-only score, before the supporting-document evidence is blended in.
     resume_score = float(match["match_score"])
     evidence = verification_scoring.aggregate_document_verifications(document_verifications)
@@ -229,6 +232,7 @@ def evaluate_alternative_jobs(
 ) -> List[Dict]:
     evaluated = []
     alt_threshold = (thresholds or {}).get("alternative", config.ALT_JOB_SCORE_THRESHOLD)
+    coverage_min = (thresholds or {}).get("coverage_min", config.REQUIRED_SKILLS_COVERAGE_MIN)
     # Alternative roles are ranked with the same verified evidence as the
     # applied job, so a referral never points at a role the documents contradict.
     evidence = verification_scoring.aggregate_document_verifications(document_verifications)
@@ -243,7 +247,10 @@ def evaluate_alternative_jobs(
             or requirements.get("experience_level")
         ):
             continue
-        match = matching.match_profile_to_requirements(profile, validation, requirements, weights)
+        match = matching.match_profile_to_requirements(
+            profile, validation, requirements, weights,
+            required_coverage_min_override=coverage_min,
+        )
         verification = validation.get("credential_verification") or {}
         score_penalty = float(verification.get("score_penalty", 0.0))
         if score_penalty > 0.0:

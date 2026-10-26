@@ -142,7 +142,7 @@ export function LeaveApplicationModal({ open, onOpenChange, onSubmitLeave }: Lea
               </div>
               <div className="flex items-center gap-1.5 font-medium">
                 <span className="text-muted-foreground">After filing:</span>
-                <span className={isBalanceExceeded ? "text-rose-600 font-bold" : "text-emerald-600 font-bold"}>
+                <span className={isBalanceExceeded ? "text-rose-600 dark:text-rose-400 font-bold" : "text-emerald-600 dark:text-emerald-400 font-bold"}>
                   {remainingAfterApproval} day(s)
                 </span>
               </div>
