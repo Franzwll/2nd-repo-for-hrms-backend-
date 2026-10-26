@@ -12,6 +12,7 @@ class PromotionRequest extends Model
 
     protected $fillable = [
         'employee_id',
+        'ess_request_id',
         'current_position_id',
         'requested_position_id',
         'requested_salary_grade_id',
@@ -42,6 +43,11 @@ class PromotionRequest extends Model
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class, 'employee_id', 'employee_id');
+    }
+
+    public function essRequest(): BelongsTo
+    {
+        return $this->belongsTo(EssRequest::class, 'ess_request_id', 'ess_request_id');
     }
 
     public function currentPosition(): BelongsTo

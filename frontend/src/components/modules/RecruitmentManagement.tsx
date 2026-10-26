@@ -4531,7 +4531,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         positionsForDepartment(draft.department).find((p) => p.title === title)?.dbId;
       let departmentId = knownDepartments.find((d) => d.name === draft.department)?.dbId;
       if (!departmentId) {
-        const created = await coreHcmApi.createDepartment({ name: draft.department });
+        // Department codes are required by StoreDepartmentRequest; generate
+        // one from the name like the publish flow does.
+        const code =
+          draft.department
+            .split(/[\s&/\\-]+/)
+            .filter(Boolean)
+            .map((word) => word[0])
+            .join("")
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, "")
+            .slice(0, 20) || "DEPT";
+        const created = await coreHcmApi.createDepartment({ name: draft.department, code });
         departmentId = created.department_id;
       }
       if (!positionId) {

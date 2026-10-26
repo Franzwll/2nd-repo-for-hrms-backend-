@@ -18,28 +18,44 @@ class UserController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $data = $request->validate([
+            'sort' => ['nullable', 'in:system_user_id,full_name,role,department_name,last_login_at,last_login_ip,status'],
+            'direction' => ['nullable', 'in:asc,desc'],
+        ]);
+
         $query = SystemUser::query()->with(['role', 'permissions']);
 
         if ($request->filled('q')) {
             $search = $request->string('q');
 
             $query->where(function ($q) use ($search) {
-                $q->where('username', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('full_name', 'like', "%{$search}%")
-                    ->orWhere('department_name', 'like', "%{$search}%");
+                $q->where('system_users.username', 'like', "%{$search}%")
+                    ->orWhere('system_users.email', 'like', "%{$search}%")
+                    ->orWhere('system_users.full_name', 'like', "%{$search}%")
+                    ->orWhere('system_users.department_name', 'like', "%{$search}%");
             });
         }
 
         if ($request->filled('role_id')) {
-            $query->where('role_id', $request->integer('role_id'));
+            $query->where('system_users.role_id', $request->integer('role_id'));
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
+            $query->where('system_users.status', $request->string('status'));
         }
 
-        $users = $query->orderBy('system_user_id')->paginate($this->perPage($request));
+        $sort = $data['sort'] ?? 'system_user_id';
+        $direction = $data['direction'] ?? 'asc';
+
+        if ($sort === 'role') {
+            $query->leftJoin('system_roles', 'system_roles.role_id', '=', 'system_users.role_id')
+                ->select('system_users.*')
+                ->orderBy('system_roles.role_name', $direction);
+        } else {
+            $query->orderBy("system_users.{$sort}", $direction);
+        }
+
+        $users = $query->paginate($this->perPage($request));
 
         return response()->json([
             'data' => UserManagementResource::collection($users),

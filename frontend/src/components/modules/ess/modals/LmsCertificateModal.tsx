@@ -15,7 +15,7 @@ import { myProfile } from "@/data/ess";
 import { getUser } from "@/lib/auth";
 import { essApi } from "@/lib/api";
 import { downloadCertificatePdf } from "@/lib/downloadCertificatePdf";
-import { printElement } from "@/lib/printElement";
+import { usePasswordGate } from "@/components/ui/report-menu";
 
 interface LmsCertificateModalProps {
   open: boolean;
@@ -47,6 +47,7 @@ export function LmsCertificateModal({
   const recipientRole = authUser?.department_name ? `${authUser.department_name} Staff` : myProfile.position;
   const recipientDept = authUser?.department_name || myProfile.department;
   const [downloading, setDownloading] = useState(false);
+  const { gateSensitive, gateDialog } = usePasswordGate();
 
   // Server-verified credential: eligibility + deterministic verification code
   // for COMPLETED courses only (404 otherwise — never fabricate a code).
@@ -66,55 +67,10 @@ export function LmsCertificateModal({
   }, [open, courseId]);
 
   const handlePrint = () => {
-    // Print from an isolated frame: the modal's portal/fixed positioning and the
-    // app's global print rules otherwise clip the certificate or add pages.
-    printElement({
-      elementId: "lms-certificate",
-      title: "Certificate of Completion",
-      frameId: "lms-certificate-print-frame",
-      extraCss: `
-        html, body {
-          height: 100% !important;
-          min-height: 100% !important;
-        }
-        body {
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          padding: 15mm !important;
-          box-sizing: border-box !important;
-        }
-        #print-element-root {
-          width: 100% !important;
-          display: flex !important;
-          justify-content: center !important;
-        }
-        #lms-certificate {
-          --background: #ffffff;
-          --foreground: #0f172a;
-          --card: #ffffff;
-          --card-foreground: #0f172a;
-          --muted: #f1f5f9;
-          --muted-foreground: #475569;
-          --border: #e2e8f0;
-          --primary: #9f1239;
-          position: static !important;
-          width: 100% !important;
-          max-width: 720px !important;
-          margin: 0 auto !important;
-          padding: 32px !important;
-          border: 4px double #9f1239 !important;
-          border-radius: 12px !important;
-          background: #ffffff !important;
-          box-shadow: none !important;
-          page-break-inside: avoid !important;
-          page-break-after: avoid !important;
-        }
-        #lms-certificate * { visibility: visible !important; }
-        button, [role="button"] { display: none !important; }
-      `,
+    gateSensitive({ sensitive: true }, () => {
+      window.print();
+      toast.success("Printing certificate...");
     });
-    toast.success("Opening the print dialog…");
   };
 
   const handleDownload = async () => {
@@ -142,7 +98,9 @@ export function LmsCertificateModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      {gateDialog}
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[560px] print:p-0 print:border-none">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -220,5 +178,6 @@ export function LmsCertificateModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

@@ -273,6 +273,12 @@ export type OrgNode = {
   name: string;
   title: string;
   children?: OrgNode[];
+  /** Department this card belongs to (department, position or employee). */
+  departmentId?: number;
+  employeeId?: number;
+  kind?: "department" | "employee" | "position";
+  /** Open/filled slots shown on position cards. */
+  positions?: { positionId: number; title: string; headcount: number; filled: number }[];
 };
 
 export const orgChart: OrgNode = {

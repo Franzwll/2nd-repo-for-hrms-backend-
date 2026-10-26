@@ -227,7 +227,7 @@ import {
   type ReportFormat,
 } from "@/lib/report-export";
 import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
-import { ReportMenu } from "@/components/ui/report-menu";
+import { ReportMenu, usePasswordGate } from "@/components/ui/report-menu";
 import {
   ZoomEmbeddedMeeting,
   type ZoomChatEntry,
@@ -6622,6 +6622,7 @@ function ApplicantViewScreen({
 const TOP_FIVE_VISIBLE_CARDS = 3;
 
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
+  const { gateSensitive, gateDialog } = usePasswordGate();
   const navigate = useNavigate();
   const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
@@ -7491,6 +7492,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · ${filterSummary}`,
       columns,
       rows: rowsData,
+      sensitive: true,
       summary: [
         { label: "Total Entries", value: auditLog.length },
         { label: "Filtered", value: rowsForReport.length },
@@ -10853,6 +10855,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   return (
     <div>
+      {gateDialog}
       <PageHeader
         title="Applicant Management"
         description="NER resume screening, candidate ranking, interview scheduling and evaluation."
@@ -15231,8 +15234,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <DropdownMenuItem
                             onClick={() => {
                               const data = buildAuditReportData();
-                              printReport(data);
-                              toast.success(`${data.title} sent to printer.`);
+                              gateSensitive({ sensitive: true }, () => {
+                                printReport(data);
+                                toast.success(`${data.title} sent to printer.`);
+                              });
                             }}
                           >
                             <Printer className="mr-2 h-4 w-4" /> Print…

@@ -26,6 +26,7 @@ interface PromotionRequestFormProps {
 
 interface PositionOption {
   id: string | number;
+  dbId?: number | undefined;
   title: string;
   dept?: string | undefined;
   level?: string;
@@ -88,6 +89,7 @@ export function PromotionRequestForm({
       )
       .map((p) => ({
         id: p.id,
+        dbId: p.dbId,
         title: p.title,
         dept: p.department,
         level: p.level,
@@ -111,6 +113,7 @@ export function PromotionRequestForm({
             })
             .map((p) => ({
               id: p.position_id,
+              dbId: p.position_id,
               title: p.title,
               dept: p.department || undefined,
             }));
@@ -222,6 +225,15 @@ export function PromotionRequestForm({
       return;
     }
 
+    const selectedPosition = positionsList.find((p) => p.title === targetPosition);
+    const requestedPositionId =
+      selectedPosition?.dbId ??
+      (typeof selectedPosition?.id === "number" ? selectedPosition.id : Number(selectedPosition?.id));
+    if (!Number.isFinite(requestedPositionId) || !requestedPositionId) {
+      toast.error("The selected position is not linked to the HR database. Please refresh and try again.");
+      return;
+    }
+
     try {
       setSubmitting(true);
       const detailsPayload = [
@@ -241,17 +253,19 @@ export function PromotionRequestForm({
         .filter(Boolean)
         .join("\n\n");
 
-      const res = await essApi.createRequest({
-        category_code: "career_promotion",
-        category_name: "Career & Position",
-        request_type: `${requestType} — ${targetPosition}`,
-        details: detailsPayload,
-      });
+      const payload = new FormData();
+      payload.append("requested_position_id", String(requestedPositionId));
+      payload.append("justification", justification.trim());
+      payload.append("details", detailsPayload);
+      attachedFiles.forEach((file, index) => payload.append(`attachments[${index}]`, file.file));
+
+      const res = await essApi.createPromotionRequest(payload);
 
       toast.success(
-        `${requestType} submitted successfully! Forwarded to Core HCM & Performance Evaluation team for review.`,
+        res?.message ||
+          `${requestType} submitted successfully! Forwarded to Core HCM & Performance Evaluation team for review.`,
       );
-      onSubmitSuccess?.(res?.request);
+      onSubmitSuccess?.(res?.data);
       resetForm();
     } catch (err: any) {
       toast.error(err.message || "Failed to submit promotion request.");

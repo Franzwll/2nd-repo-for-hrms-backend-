@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { SortHead, type SortState } from "@/components/portal/sortable";
 import { StatCard } from "@/components/portal/StatCard";
 import {
   AlertDialog,
@@ -66,6 +67,15 @@ import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { authApi, hcmApi, userManagementApi, type ApiSystemUser } from "@/lib/api";
 
 type SystemUserStatus = "Active" | "Suspended" | "Disabled";
+
+type UserSortKey =
+  | "system_user_id"
+  | "full_name"
+  | "role"
+  | "department_name"
+  | "last_login_at"
+  | "last_login_ip"
+  | "status";
 
 interface SystemUser {
   id: string;
@@ -187,6 +197,7 @@ export function UserManagement() {
   const [usersMeta, setUsersMeta] = useState(EMPTY_META);
   const [userStats, setUserStats] = useState<UserStats>(EMPTY_STATS);
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<SortState<UserSortKey>>(null);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("users");
   const [deptOptions, setDeptOptions] = useState<string[]>(FALLBACK_DEPARTMENTS);
@@ -234,6 +245,8 @@ export function UserManagement() {
         q: search.trim() || undefined,
         role_id: roleFilter !== "all" ? roleIdByName[roleFilter] : undefined,
         status: statusFilter === "all" ? undefined : statusToApi(statusFilter as SystemUserStatus),
+        sort: sort?.key,
+        direction: sort?.dir,
       });
       setUsers(res.data.map(toUiUser));
       setUsersMeta(res.meta ?? EMPTY_META);
@@ -250,12 +263,21 @@ export function UserManagement() {
     } finally {
       setLoadingUsers(false);
     }
-  }, [page, search, roleFilter, statusFilter, roleIdByName]);
+  }, [page, search, roleFilter, statusFilter, roleIdByName, sort]);
 
   useEffect(() => {
     const timer = setTimeout(() => void loadUsers(), search ? 300 : 0);
     return () => clearTimeout(timer);
   }, [loadUsers, search]);
+
+  const toggleSort = (key: UserSortKey) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
+    setPage(1);
+  };
 
   useEffect(() => {
     hcmApi.departments
@@ -714,13 +736,27 @@ export function UserManagement() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>User ID</TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Last Login</TableHead>
-                      <TableHead>IP Address</TableHead>
-                      <TableHead>Status</TableHead>
+                      <SortHead sortKey="system_user_id" sort={sort} onSort={toggleSort}>
+                        User ID
+                      </SortHead>
+                      <SortHead sortKey="full_name" sort={sort} onSort={toggleSort}>
+                        User
+                      </SortHead>
+                      <SortHead sortKey="role" sort={sort} onSort={toggleSort}>
+                        Role
+                      </SortHead>
+                      <SortHead sortKey="department_name" sort={sort} onSort={toggleSort}>
+                        Department
+                      </SortHead>
+                      <SortHead sortKey="last_login_at" sort={sort} onSort={toggleSort}>
+                        Last Login
+                      </SortHead>
+                      <SortHead sortKey="last_login_ip" sort={sort} onSort={toggleSort}>
+                        IP Address
+                      </SortHead>
+                      <SortHead sortKey="status" sort={sort} onSort={toggleSort}>
+                        Status
+                      </SortHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
