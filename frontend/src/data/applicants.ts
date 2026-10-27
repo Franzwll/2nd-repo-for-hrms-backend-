@@ -82,6 +82,7 @@ export type Applicant = {
   name: string;
   email: string;
   phone: string;
+  address?: string | null;
   position: string;
   jobId: string;
   appliedAt: string;
@@ -134,6 +135,17 @@ export type Applicant = {
    *  cooldown_lifted_at records an HR early override. */
   rejectedAt?: string | null;
   cooldownLiftedAt?: string | null;
+  archivedAt?: string | null;
+  archivedBy?: string | null;
+  archivedReason?: string | null;
+  isArchived?: boolean;
+  isBlocked?: boolean;
+  blockedAt?: string | null;
+  blockedBy?: string | null;
+  blockedReason?: string | null;
+  blockScope?: string | null;
+  blockExpiresAt?: string | null;
+  isActiveBlocked?: boolean;
 };
 
 export const statusMeta: Record<
@@ -866,6 +878,7 @@ export type AuditActionType =
   | "Offer Declined"
   | "Verification Document Uploaded"
   | "Status Change"
+  | "Applicant Returned to Recruitment"
   | "Applicant Added";
 
 export type AuditEntry = {

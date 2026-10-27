@@ -1,17 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Timer } from "lucide-react";
+import { ArrowLeft, Lock, ShieldCheck, Timer } from "lucide-react";
 import { toast } from "sonner";
 
-import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
-import oxfordMarkMaroon from "@/assets/oxford-mark-maroon.png";
-import interior1 from "@/assets/oxford-suite-makati-interior1.png";
-import suiteb from "@/assets/o-suiteb.png";
-import loginDining from "@/assets/login-dining.png";
-import interior3b from "@/assets/oxford-suite-makati-interior3b.png";
-import suite1b from "@/assets/o-suite(1)b.png";
-import suite2b from "@/assets/o-suite(2)b.png";
+import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
+import { Preloader } from "@/components/ui/preloader";
 import { cn } from "@/lib/utils";
 
 import { authApi, mfaApi } from "@/lib/api";
@@ -44,39 +38,6 @@ const maskEmail = (email?: string) => {
   return `${name[0]}${"*".repeat(name.length - 2)}${name[name.length - 1]}@${domain}`;
 };
 
-const montageImages = [
-  {
-    src: interior1,
-    alt: "Oxford Suites Makati interior hall",
-    animation: "animate-[kenburns-1_20s_infinite_alternate_ease-in-out]",
-  },
-  {
-    src: suiteb,
-    alt: "Oxford Suites Makati executive suite",
-    animation: "animate-[kenburns-2_20s_infinite_alternate_ease-in-out]",
-  },
-  {
-    src: loginDining,
-    alt: "Oxford Suites Makati dining restaurant",
-    animation: "animate-[kenburns-3_20s_infinite_alternate_ease-in-out]",
-  },
-  {
-    src: interior3b,
-    alt: "Oxford Suites Makati suite lounge",
-    animation: "animate-[kenburns-1_20s_infinite_alternate_ease-in-out]",
-  },
-  {
-    src: suite1b,
-    alt: "Oxford Suites Makati premier living area",
-    animation: "animate-[kenburns-2_20s_infinite_alternate_ease-in-out]",
-  },
-  {
-    src: suite2b,
-    alt: "Oxford Suites Makati deluxe king bedroom",
-    animation: "animate-[kenburns-3_20s_infinite_alternate_ease-in-out]",
-  },
-];
-
 function OTPPage() {
   useLightOnly();
   const navigate = useNavigate();
@@ -88,19 +49,13 @@ function OTPPage() {
   );
   const [error, setError] = useState("");
   const [verified, setVerified] = useState(false);
+  const [redirectTarget, setRedirectTarget] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // True server TTL (120s) — resend unlocks after a 30s anti-spam cooldown.
   const [timeLeft, setTimeLeft] = useState(() => getLoginContext()?.expires_in ?? 120);
   const [resendDisabled, setResendDisabled] = useState(true);
-  const [currentSlide, setCurrentSlide] = useState(0);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
-  // Flip to true right after mount so the brand lockup cross-fades white → maroon,
-  // then keeps looping white → maroon → white → maroon … until verified.
-  const [brandLit, setBrandLit] = useState(false);
-  // Tracks whether the entrance fade already ran so every later leg — including
-  // maroon → white — waits the same full beat before flipping (no flick).
-  const [brandCycled, setBrandCycled] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const otpTtl = loginCtx?.expires_in ?? 120;
@@ -111,37 +66,6 @@ function OTPPage() {
       navigate({ to: "/login" });
     }
   }, [navigate]);
-
-  // Loop the brand lockup white → maroon → white → maroon … while unverified.
-  // The transitions stay ON the whole time, so every leg is the same slow
-  // 2000ms color fade as the entrance (white → maroon, then maroon → white,
-  // then white → maroon …) — the new color always eases in, never flicks.
-  // First leg starts 500ms after entry; every later leg holds 4400ms
-  // (2000ms fade + 2400ms hold) so each fade fully resolves before flipping.
-  // Stops (settles on maroon) the moment `verified` becomes true.
-  useEffect(() => {
-    if (verified) {
-      setBrandLit(true);
-      return;
-    }
-    if (!brandCycled) {
-      const id = window.setTimeout(() => {
-        setBrandLit(true);
-        setBrandCycled(true);
-      }, 500);
-      return () => window.clearTimeout(id);
-    }
-    const id = window.setTimeout(() => setBrandLit((v) => !v), 4400);
-    return () => window.clearTimeout(id);
-  }, [brandCycled, brandLit, verified]);
-
-  // Montage slideshow transition
-  useEffect(() => {
-    const slideTimer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % montageImages.length);
-    }, 6000);
-    return () => clearInterval(slideTimer);
-  }, []);
 
   // Countdown timer — resend unlocks 30s after issue; expiry matches the server TTL.
   useEffect(() => {
@@ -188,15 +112,15 @@ function OTPPage() {
     setToken(res.token);
     setUser(res.user);
     clearLoginContext();
-    setVerified(true);
-    toast.success("Identity verified — signing you in…");
     const target =
       res.user.role === "Super Admin"
         ? "/superadmin"
         : res.user.role === "Admin"
           ? "/admin"
           : "/employee";
-    setTimeout(() => navigate({ to: target }), 1200);
+    setRedirectTarget(target);
+    setVerified(true);
+    toast.success("Identity verified — signing you in…");
   };
 
   const handleVerify = async () => {
@@ -207,9 +131,12 @@ function OTPPage() {
           ? "Please enter the 6-digit code from your authenticator app."
           : "Please enter the complete 6-digit OTP.",
       );
+      const firstEmptyIndex = digits.findIndex((d) => !d);
+      if (firstEmptyIndex !== -1) {
+        inputRefs.current[firstEmptyIndex]?.focus();
+      }
       return;
     }
-    // No captcha here: the login step already cleared it to mint this token.
     const ctx = getLoginContext();
     if (!ctx) {
       setError("Your login session has expired. Please sign in again.");
@@ -287,301 +214,239 @@ function OTPPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-slate-950 px-4">
-      {/* Photo Montage Container */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
-        {montageImages.map((img, index) => (
-          <img
-            key={img.src}
-            src={img.src}
-            alt={img.alt}
-            className={cn(
-              "absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out scale-105",
-              index === currentSlide ? "opacity-100" : "opacity-0",
-              img.animation,
-            )}
-          />
-        ))}
-      </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-x-hidden bg-[#faf8f5] px-5 pt-28 pb-12 sm:px-10 sm:pt-32 lg:pt-12">
+      {/* Ambient background decoration */}
+      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-gold/10 blur-3xl" />
 
-      {/* Neutral scrim for legibility */}
-      <div className="absolute inset-0 z-0 bg-slate-950/40 backdrop-blur-[2px]" />
+      {/* Workspace preloader with maroon background shown once verified */}
+      {verified && redirectTarget && (
+        <Preloader onComplete={() => navigate({ to: redirectTarget })} />
+      )}
 
-      {/* Brand lockup — login's exact position/size/font (top-left full lockup
-          at scale-170, Logo's h-9 mark + font-display uppercase wordmark),
-          logo + text only (no background). Animates white → maroon on entry:
-          two stacked marks cross-fade opacity while the wordmark
-          transition-colors to text-primary. */}
+      {/* Brand lockup imitating Sign In's position & sizing:
+          Top-left corner, responsive scale (scale-125 on mobile, scale-150 on sm, scale-170 on lg) */}
       <Link
         to="/"
         aria-label="Oxford Suites Makati — home"
-        className="absolute left-6 top-6 z-10 origin-left scale-125 drop-shadow-xl sm:left-8 sm:top-8 sm:scale-150 lg:left-12 lg:top-10 lg:scale-170"
+        className="absolute left-6 top-6 z-20 origin-left scale-125 drop-shadow-sm transition-transform hover:scale-[1.28] sm:left-8 sm:top-8 sm:scale-150 sm:hover:scale-[1.53] lg:left-12 lg:top-10 lg:scale-170 lg:hover:scale-[1.73]"
       >
-        <span className="inline-flex items-center gap-2.5">
-          <span className="relative block h-9 w-auto shrink-0">
-            <img
-              src={oxfordMarkWhite}
-              alt=""
-              aria-hidden="true"
-              className={cn(
-                "h-9 w-auto object-contain transition-opacity duration-2000 ease-in-out",
-                brandLit ? "opacity-0" : "opacity-100",
-              )}
-            />
-            <img
-              src={oxfordMarkMaroon}
-              alt=""
-              aria-hidden="true"
-              className={cn(
-                "absolute inset-0 h-9 w-auto object-contain transition-opacity duration-2000 ease-in-out",
-                brandLit ? "opacity-100" : "opacity-0",
-              )}
-            />
-          </span>
-          <span className="flex flex-col leading-none">
-            <span
-              className={cn(
-                "font-display text-[0.95rem] font-bold uppercase tracking-[0.14em] transition-colors duration-2000 ease-in-out",
-                brandLit ? "text-primary" : "text-white",
-              )}
-            >
-              Oxford Suites
-            </span>
-            <span
-              className={cn(
-                "font-display text-[0.8rem] font-semibold uppercase tracking-[0.3em] opacity-80 transition-colors duration-2000 ease-in-out",
-                brandLit ? "text-primary" : "text-white",
-              )}
-            >
-              Makati
-            </span>
-          </span>
-          <span className="sr-only">Oxford Suites Makati</span>
-        </span>
+        <Logo mark="maroon" tone="primary" />
       </Link>
 
-      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/20 bg-card/95 px-8 py-10 shadow-2xl backdrop-blur-md">
-        {/* Verified — same "Preparing your workspace" loading as the login preloader */}
-        {verified ? (
-          <div className="flex flex-col items-center gap-5 py-6 text-center">
-            <div className="flex flex-col items-center gap-6 sm:flex-row sm:gap-8">
-              <img
-                src={oxfordMarkMaroon}
-                alt="Oxford Suites Makati"
-                className="h-20 sm:h-24 w-auto object-contain shrink-0"
-              />
+      {/* Form Container (Clean & Frameless without card border or white background) */}
+      <div className="relative z-10 w-full max-w-md">
+        {/* Header Icon */}
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
+          <ShieldCheck className="h-6 w-6" />
+        </div>
 
-              <div className="flex flex-col items-center sm:items-start space-y-2">
-                <div className="flex flex-col leading-tight font-display font-semibold uppercase tracking-[0.15em] text-xl sm:text-2xl text-primary">
-                  <span>Oxford Suites</span>
-                  <span>Makati</span>
-                </div>
+        <p className="text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
+          Security Verification
+        </p>
+        <h2 className="mt-1.5 text-center font-display text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
+          {isTotp ? "Authenticator Code" : "OTP Verification"}
+        </h2>
+        <p className="mt-2 text-center text-sm leading-relaxed text-muted-foreground">
+          {isTotp ? (
+            <>
+              Open your authenticator app and enter the 6-digit code for{" "}
+              <span className="font-medium text-foreground">
+                {maskEmail(loginCtx?.email)}
+              </span>.
+            </>
+          ) : (
+            <>
+              We've sent a 6-digit code to{" "}
+              <span className="font-medium text-foreground">
+                {maskEmail(loginCtx?.email)}
+              </span>.
+              <br />
+              Enter it below to continue.
+            </>
+          )}
+        </p>
 
-                <div className="h-px w-full max-w-[200px] bg-primary/20" />
-
-                <p className="text-[11px] tracking-[0.22em] font-semibold uppercase text-gold">
-                  Preparing your workspace
-                </p>
-
-                {/* Clean Gold Progress Bar */}
-                <div className="mt-1 h-1.5 w-52 sm:w-60 overflow-hidden rounded-full bg-primary/15">
-                  <span className="hero-progress block h-full w-1/3 bg-gold" />
-                </div>
-              </div>
+        {import.meta.env.DEV && loginCtx?.debug_otp && (
+          <div
+            className="mt-4 p-3 bg-primary/5 border border-primary/20 rounded-md text-center"
+            title="Click to copy"
+          >
+            <div className="font-medium text-primary text-xs">Dev debug OTP:</div>
+            <div className="mt-1 font-mono text-lg font-semibold text-primary">
+              {loginCtx.debug_otp}
+            </div>
+            <div className="text-xs text-primary/80 mt-1">
+              Copy to auto-fill or enter manually
             </div>
           </div>
-        ) : (
-          <>
-            {/* Header */}
-            <div className="mb-6 flex flex-col items-center text-center">
-              <h1 className="font-display text-2xl font-semibold">
-                {isTotp ? "Authenticator Code" : "OTP Verification"}
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {isTotp ? (
-                  <>
-                    Open your authenticator app and enter the 6-digit code for{" "}
-                    <span className="font-medium text-foreground">
-                      {maskEmail(loginCtx?.email)}
-                    </span>
-                    .
-                  </>
-                ) : (
-                  <>
-                    We've sent a 6-digit code to{" "}
-                    <span className="font-medium text-foreground">
-                      {maskEmail(loginCtx?.email)}
-                    </span>
-                    .
-                    <br />
-                    Enter it below to continue.
-                  </>
-                )}
-                {import.meta.env.DEV && loginCtx?.debug_otp && (
-                  <div
-                    className="mt-3 p-3 bg-primary/5 border-primary/20 rounded-md text-center"
-                    title="Click to copy"
-                  >
-                    <div className="font-medium text-primary">Dev debug OTP:</div>
-                    <div className="mt-1 font-mono text-lg font-semibold text-primary">
-                      {loginCtx.debug_otp}
-                    </div>
-                    <div className="text-xs text-primary/80 mt-1">
-                      Copy to auto-fill or enter manually
-                    </div>
-                  </div>
-                )}
+        )}
+
+        {isTotp && recoveryMode ? (
+          <form
+            className="mt-7 space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleRecovery();
+            }}
+          >
+            <p className="text-center text-xs text-muted-foreground">
+              Lost your phone? Enter one of your recovery codes (each works once).
+            </p>
+            <input
+              type="text"
+              value={recoveryCode}
+              onChange={(e) => {
+                setRecoveryCode(e.target.value);
+                setError("");
+              }}
+              placeholder="XXXX-XXXX"
+              autoComplete="one-time-code"
+              className="h-12 w-full rounded-md border border-stone-300/80 bg-white/80 text-center font-mono text-lg font-semibold tracking-widest outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25"
+            />
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-center text-xs text-destructive">
+                {error}
               </p>
+            )}
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full cursor-pointer font-semibold shadow-md hover:shadow-lg transition-all active:scale-[0.99]"
+              disabled={submitting || recoveryCode.trim().length < 4}
+            >
+              {submitting ? "Verifying…" : "Sign in with recovery code"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setRecoveryMode(false);
+                setError("");
+              }}
+              className="w-full text-center text-sm font-medium text-primary hover:underline cursor-pointer"
+            >
+              Back to authenticator code
+            </button>
+          </form>
+        ) : (
+          <form
+            className="mt-7"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleVerify();
+            }}
+          >
+            {/* OTP input boxes */}
+            <div
+              className="flex justify-center gap-2 sm:gap-2.5"
+              role="group"
+              aria-label="One-time password input"
+            >
+              {digits.map((d, idx) => (
+                <input
+                  key={idx}
+                  ref={(el) => {
+                    inputRefs.current[idx] = el;
+                  }}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={d}
+                  id={`otp-digit-${idx + 1}`}
+                  aria-label={`OTP digit ${idx + 1}`}
+                  onChange={(e) => handleChange(idx, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(idx, e)}
+                  onPaste={handlePaste}
+                  className={cn(
+                    "h-12 min-w-0 flex-1 max-w-10 sm:h-14 sm:max-w-12 rounded-lg border text-center text-lg font-semibold transition-all outline-none",
+                    "border-stone-300/80 bg-white/80 text-foreground shadow-2xs",
+                    "focus:border-primary focus:ring-2 focus:ring-primary/25 focus:bg-white",
+                    d ? "border-primary/50 bg-primary/5" : "",
+                    error ? "border-destructive" : "",
+                  )}
+                />
+              ))}
             </div>
 
-            {isTotp && recoveryMode ? (
-              <div className="space-y-3">
-                <p className="text-center text-xs text-muted-foreground">
-                  Lost your phone? Enter one of your recovery codes (each works once).
-                </p>
-                <input
-                  type="text"
-                  value={recoveryCode}
-                  onChange={(e) => {
-                    setRecoveryCode(e.target.value);
-                    setError("");
-                  }}
-                  placeholder="XXXX-XXXX"
-                  autoComplete="one-time-code"
-                  className="h-12 w-full rounded-md border border-border bg-muted/40 text-center font-mono text-lg font-semibold tracking-widest outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25"
-                />
-                {error && <p className="mt-3 text-center text-xs text-destructive">{error}</p>}
-                <Button
-                  className="mt-2 w-full cursor-pointer"
-                  size="lg"
-                  onClick={handleRecovery}
-                  disabled={submitting || recoveryCode.trim().length < 4}
-                >
-                  {submitting ? "Verifying…" : "Sign in with recovery code"}
-                </Button>
+            {/* Error display */}
+            {error && (
+              <p className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-center text-xs text-destructive">
+                {error}
+              </p>
+            )}
+
+            {/* Timer / resend for email OTP */}
+            {!isTotp && (
+              <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <Timer className="h-3.5 w-3.5" />
+                {timeLeft > 0 ? (
+                  <span>
+                    Code expires in {Math.floor(timeLeft / 60)}:
+                    {String(timeLeft % 60).padStart(2, "0")}
+                    {!resendDisabled && (
+                      <>
+                        {" · "}
+                        <button
+                          type="button"
+                          onClick={handleResend}
+                          className="font-medium text-primary hover:underline cursor-pointer"
+                        >
+                          Resend OTP
+                        </button>
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    className="font-medium text-primary hover:underline cursor-pointer"
+                  >
+                    Code expired — send a new one
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Verify Button - matching Sign In CTA */}
+            <Button
+              type="submit"
+              size="lg"
+              className="mt-6 w-full cursor-pointer font-semibold shadow-md hover:shadow-lg transition-all active:scale-[0.99]"
+              disabled={submitting}
+              id="otp-verify-btn"
+            >
+              {submitting ? "Verifying…" : "Verify & Sign In"}
+            </Button>
+
+            {isTotp && (
+              <p className="mt-3 text-center text-sm text-muted-foreground">
+                Lost your phone?{" "}
                 <button
                   type="button"
                   onClick={() => {
-                    setRecoveryMode(false);
+                    setRecoveryMode(true);
                     setError("");
                   }}
-                  className="w-full text-center text-sm font-medium text-primary hover:underline"
+                  className="font-medium text-primary hover:underline cursor-pointer"
                 >
-                  Back to authenticator code
+                  Use a recovery code
                 </button>
-              </div>
-            ) : (
-              <>
-                {/* OTP boxes */}
-                <div
-                  className="flex justify-center gap-2"
-                  role="group"
-                  aria-label="One-time password input"
-                >
-                  {digits.map((d, idx) => (
-                    <input
-                      key={idx}
-                      ref={(el) => {
-                        inputRefs.current[idx] = el;
-                      }}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={d}
-                      id={`otp-digit-${idx + 1}`}
-                      aria-label={`OTP digit ${idx + 1}`}
-                      onChange={(e) => handleChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(idx, e)}
-                      onPaste={handlePaste}
-                      className={cn(
-                        "h-12 min-w-0 flex-1 max-w-9 rounded-md border text-center text-lg font-semibold transition-all outline-none",
-                        "border-border bg-muted/40 text-foreground",
-                        "focus:border-primary focus:ring-2 focus:ring-primary/25",
-                        d ? "border-primary/50 bg-primary/5" : "",
-                        error ? "border-destructive" : "",
-                      )}
-                    />
-                  ))}
-                </div>
-
-                {/* Error */}
-                {error && <p className="mt-3 text-center text-xs text-destructive">{error}</p>}
-
-                {/* Timer / resend (email codes only — app codes refresh themselves) */}
-                {!isTotp && (
-                  <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                    <Timer className="h-3.5 w-3.5" />
-                    {timeLeft > 0 ? (
-                      <span>
-                        Code expires in {Math.floor(timeLeft / 60)}:
-                        {String(timeLeft % 60).padStart(2, "0")}
-                        {!resendDisabled && (
-                          <>
-                            {" · "}
-                            <button
-                              type="button"
-                              onClick={handleResend}
-                              className="font-medium text-primary hover:underline"
-                            >
-                              Resend OTP
-                            </button>
-                          </>
-                        )}
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleResend}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        Code expired — send a new one
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Verify button */}
-                <Button
-                  className="mt-6 w-full cursor-pointer"
-                  size="lg"
-                  onClick={handleVerify}
-                  disabled={digits.join("").length < OTP_LENGTH || submitting}
-                  id="otp-verify-btn"
-                >
-                  {submitting ? "Verifying…" : "Verify & Sign In"}
-                </Button>
-
-                {isTotp && (
-                  <p className="mt-3 text-center text-sm text-muted-foreground">
-                    Lost your phone?{" "}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRecoveryMode(true);
-                        setError("");
-                      }}
-                      className="font-medium text-primary hover:underline cursor-pointer"
-                    >
-                      Use a recovery code
-                    </button>
-                  </p>
-                )}
-              </>
+              </p>
             )}
-
-            {/* Back link */}
-            <p className="mt-4 text-center text-sm text-muted-foreground">
-              Wrong account?{" "}
-              <button
-                type="button"
-                onClick={() => navigate({ to: "/login" })}
-                className="font-medium text-primary hover:underline cursor-pointer"
-              >
-                Go back
-              </button>
-            </p>
-          </>
+          </form>
         )}
+
+        {/* Back to sign in link */}
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to sign in
+          </Link>
+        </p>
       </div>
     </div>
   );

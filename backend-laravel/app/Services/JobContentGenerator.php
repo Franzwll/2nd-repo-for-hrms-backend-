@@ -101,10 +101,10 @@ class JobContentGenerator
         'quota_day' => 1800,
         'quota' => 1800,
         'rate_minute' => 65,
-        'overloaded' => 45,
-        'auth' => 3600,
-        'model' => 3600,
-        'request' => 300,
+        'overloaded' => 30,
+        'auth' => 1800,
+        'model' => 60,
+        'request' => 30,
         'network' => 20,
     ];
 
@@ -114,9 +114,9 @@ class JobContentGenerator
         $this->groqKey = config('services.job_groq.key') ?: env('JOB_GROQ_API_KEY') ?: config('services.chat_groq.key') ?: null;
         $this->groqModel = (string) (config('services.job_groq.model') ?: env('JOB_GROQ_MODEL', 'openai/gpt-oss-20b'));
         $this->openrouterKey = config('services.job_openrouter.key') ?: env('JOB_OPENROUTER_API_KEY') ?: config('services.openrouter.key') ?: env('OPENROUTER_API_KEY') ?: null;
-        $this->openrouterModel = (string) (config('services.job_openrouter.model') ?: env('JOB_OPENROUTER_MODEL', env('OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free')));
+        $this->openrouterModel = (string) (config('services.job_openrouter.model') ?: env('JOB_OPENROUTER_MODEL', env('OPENROUTER_MODEL', 'nvidia/nemotron-3.5-lightning:free')));
         $this->apiKey = config('services.gemini.key') ?: env('GEMINI_API_KEY') ?: null;
-        $this->model = (string) (config('services.gemini.model') ?: env('GEMINI_MODEL', 'gemini-3.5-flash-lite'));
+        $this->model = (string) (config('services.gemini.model') ?: env('GEMINI_MODEL', 'gemini-3.1-flash-lite'));
         $this->fallbackModel = config('services.gemini.fallback_model') ?: env('GEMINI_FALLBACK_MODEL') ?: null;
         $this->fallbackApiKey = config('services.gemini.fallback_key') ?: env('GEMINI_FALLBACK_API_KEY') ?: null;
         $this->timeout = (int) (config('services.gemini.timeout') ?: env('GEMINI_TIMEOUT', 30));
@@ -133,7 +133,7 @@ class JobContentGenerator
             'groq' => (int) (config('services.job_ai.attempts.groq') ?: env('JOB_GROQ_ATTEMPTS', 2)),
             'openrouter' => (int) (config('services.job_ai.attempts.openrouter') ?: env('JOB_OPENROUTER_ATTEMPTS', 2)),
         ];
-        $this->totalBudget = max(5, (int) (config('services.job_ai.total_budget') ?: env('JOB_AI_TOTAL_BUDGET', 25)));
+        $this->totalBudget = max(5, (int) (config('services.job_ai.total_budget') ?: env('JOB_AI_TOTAL_BUDGET', 35)));
     }
 
     /**
@@ -346,6 +346,85 @@ class JobContentGenerator
                     continue;
                 }
 
+                // Intra-provider fallback: Groq JSON format rejection (400 json_validate_failed)
+                if ($response->status() === 400 && $provider['kind'] === 'groq' && str_contains(Str::lower($response->body()), 'json_validate_failed')) {
+                    Log::info('Groq json_validate_failed, retrying without strict json_object response_format', [
+                        'model' => $provider['model'],
+                    ]);
+                    try {
+                        $retryResponse = $this->postGroq($provider, $prompt, false);
+                        if ($retryResponse->successful()) {
+                            $response = $retryResponse;
+                        }
+                    } catch (\Throwable) {
+                        // ignore, proceed with original response
+                    }
+                }
+
+                // Intra-provider fallback: Groq model not found / invalid model -> try qwen/qwen3.8-27b
+                if (($response->status() === 404 || ($response->status() === 400 && str_contains(Str::lower($response->body()), 'model'))) && $provider['kind'] === 'groq') {
+                    foreach (['qwen/qwen3.8-27b', 'openai/gpt-oss-120b'] as $altModel) {
+                        if ($provider['model'] === $altModel) {
+                            continue;
+                        }
+                        Log::info("Groq model {$provider['model']} unavailable, trying fallback model {$altModel}");
+                        $altProvider = array_merge($provider, ['model' => $altModel]);
+                        try {
+                            $altResponse = $this->postGroq($altProvider, $prompt, false);
+                            if ($altResponse->successful()) {
+                                $response = $altResponse;
+                                $provider = $altProvider;
+                                break;
+                            }
+                        } catch (\Throwable) {
+                            // continue
+                        }
+                    }
+                }
+
+                // Intra-provider fallback: OpenRouter model not found (404) -> try nemotron-3.5-lightning or openrouter/free
+                if ($response->status() === 404 && $provider['kind'] === 'openrouter') {
+                    foreach (['nvidia/nemotron-3.5-lightning:free', 'openrouter/free'] as $altModel) {
+                        if ($provider['model'] === $altModel) {
+                            continue;
+                        }
+                        Log::info("OpenRouter model {$provider['model']} returned 404, trying fallback model {$altModel}");
+                        $altProvider = array_merge($provider, ['model' => $altModel]);
+                        try {
+                            $altResponse = $this->postOpenRouter($altProvider, $prompt);
+                            if ($altResponse->successful()) {
+                                $response = $altResponse;
+                                $provider = $altProvider;
+                                break;
+                            }
+                        } catch (\Throwable) {
+                            // continue
+                        }
+                    }
+                }
+
+                // Intra-provider fallback: Gemini model unavailable (404 / 503) -> try gemini-3.1-flash-lite
+                if (in_array($response->status(), [404, 503], true) && $provider['kind'] === 'gemini') {
+                    foreach (['gemini-3.1-flash-lite', 'gemini-flash-latest'] as $altModel) {
+                        if ($provider['model'] === $altModel) {
+                            continue;
+                        }
+                        Log::info("Gemini model {$provider['model']} returned {$response->status()}, trying fallback model {$altModel}");
+                        $altProvider = array_merge($provider, ['model' => $altModel]);
+                        try {
+                            $altResponse = $this->postGemini($altProvider, $prompt);
+                            if ($altResponse->successful()) {
+                                $response = $altResponse;
+                                $provider = $altProvider;
+                                break;
+                            }
+                        } catch (\Throwable) {
+                            // continue
+                        }
+                    }
+                }
+
+                response_check:
                 if ($response->successful()) {
                     $text = $this->responseText($provider, $response);
                     $parsed = $this->parseJsonPayload($text);
@@ -458,39 +537,49 @@ class JobContentGenerator
     }
 
     /** Single chat-completions call routed through Groq. */
-    protected function postGroq(array $provider, string $prompt): \Illuminate\Http\Client\Response
+    protected function postGroq(array $provider, string $prompt, bool $jsonMode = true): \Illuminate\Http\Client\Response
     {
+        $payload = [
+            'model' => $provider['model'],
+            'messages' => [
+                ['role' => 'user', 'content' => $prompt],
+            ],
+            'max_tokens' => 2048,
+        ];
+
+        if ($jsonMode) {
+            $payload['response_format'] = ['type' => 'json_object'];
+        }
+
         return $this->requestFor($provider)
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $provider['key'],
             ])
-            ->post('https://api.groq.com/openai/v1/chat/completions', [
-                'model' => $provider['model'],
-                'messages' => [
-                    ['role' => 'user', 'content' => $prompt],
-                ],
-                'max_tokens' => 2048,
-                'response_format' => ['type' => 'json_object'],
-            ]);
+            ->post('https://api.groq.com/openai/v1/chat/completions', $payload);
     }
 
     /** Single chat-completions call routed through OpenRouter. */
-    protected function postOpenRouter(array $provider, string $prompt): \Illuminate\Http\Client\Response
+    protected function postOpenRouter(array $provider, string $prompt, bool $jsonMode = false): \Illuminate\Http\Client\Response
     {
+        $payload = [
+            'model' => $provider['model'],
+            'messages' => [
+                ['role' => 'user', 'content' => $prompt],
+            ],
+            'max_tokens' => 2048,
+        ];
+
+        if ($jsonMode) {
+            $payload['response_format'] = ['type' => 'json_object'];
+        }
+
         return $this->requestFor($provider)
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $provider['key'],
                 'HTTP-Referer' => (string) (config('app.url') ?: 'http://localhost'),
                 'X-Title' => 'HRMS Job Post Builder',
             ])
-            ->post('https://openrouter.ai/api/v1/chat/completions', [
-                'model' => $provider['model'],
-                'messages' => [
-                    ['role' => 'user', 'content' => $prompt],
-                ],
-                'max_tokens' => 2048,
-                'response_format' => ['type' => 'json_object'],
-            ]);
+            ->post('https://openrouter.ai/api/v1/chat/completions', $payload);
     }
 
     /** Extracts the model text from any provider's success envelope. */
@@ -565,11 +654,16 @@ class JobContentGenerator
             );
         }
 
+        if ($status === 400 && str_contains($haystack, 'json_validate_failed')) {
+            return $build('The AI model struggled with strict JSON formatting (HTTP 400). Please retry.', 'unreadable', 0);
+        }
+
         return match (true) {
             in_array($status, [500, 502, 503, 504], true) => $build($via . ' is temporarily overloaded (HTTP ' . $status . '). Nothing was saved — please retry in a moment.', 'overloaded', 45),
-            in_array($status, [401, 403], true) => $build($via . ' rejected the API key (HTTP ' . $status . '). Ask an admin to check ' . $keyHint . ' on the API server.', 'auth', 3600),
-            $status === 404 => $build('The configured AI model was not found (HTTP 404). Ask an admin to check ' . $modelHint . ' on the API server.', 'model', 3600),
-            $status === 400 => $build('The AI request was rejected (HTTP 400). The configured model name may be invalid — ask an admin to check ' . $modelHint . ' on the API server.', 'request', 300),
+            in_array($status, [401, 403], true) => $build($via . ' rejected the API key (HTTP ' . $status . '). Ask an admin to check ' . $keyHint . ' on the API server.', 'auth', 1800),
+            $status === 404 => $build('The configured AI model was not found (HTTP 404). Ask an admin to check ' . $modelHint . ' on the API server.', 'model', 60),
+            $status === 400 && (str_contains($haystack, 'model') || str_contains($haystack, 'not found')) => $build('The configured model name may be invalid (HTTP 400). Ask an admin to check ' . $modelHint . ' on the API server.', 'model', 60),
+            $status === 400 => $build('The AI request was rejected (HTTP 400). Ask an admin to check ' . $modelHint . ' on the API server.', 'request', 30),
             default => $build('The AI service (' . $via . ') could not generate a draft (HTTP ' . $status . '). Please retry.', 'provider'),
         };
     }
@@ -841,6 +935,18 @@ class JobContentGenerator
         }
     }
 
+    /** Clears any active provider cool-downs (e.g. after config changes or manual refresh). */
+    public function clearCooldowns(): void
+    {
+        foreach ($this->providers() as $provider) {
+            try {
+                Cache::forget('job_ai_block_' . $this->providerTag($provider));
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+    }
+
     /**
      * Public usage/limit snapshot for the Job Post Builder indicator
      * (GET /job-posts/ai-usage and every generate-draft response).
@@ -854,6 +960,7 @@ class JobContentGenerator
         $blockedUntil = null;
         $blockedCode = null;
         $blockedReason = null;
+        $hasTrueLimit = false;
 
         foreach ($this->providers() as $provider) {
             $block = $this->providerBlock($provider);
@@ -872,6 +979,10 @@ class JobContentGenerator
                 continue;
             }
 
+            if (in_array($block['code'], self::LIMIT_CODES, true)) {
+                $hasTrueLimit = true;
+            }
+
             if ($blockedUntil === null || $block['resets_at'] > $blockedUntil) {
                 $blockedUntil = $block['resets_at'];
                 $blockedCode = $block['code'];
@@ -881,7 +992,11 @@ class JobContentGenerator
 
         $used = $this->metric('success');
         $dailyLimit = $this->dailyLimit;
-        $hardBlocked = $providers !== [] && ! $openProvider;
+        // A hard block is reported only when EVERY provider is cooling
+        // down AND an actual rate or quota limit is active. Transient errors
+        // (model 404, network timeout, JSON parse) should not falsely display
+        // "Limit reached" in the Job Post Builder.
+        $hardBlocked = $providers !== [] && ! $openProvider && $hasTrueLimit;
 
         return [
             'configured' => $this->isConfigured(),
@@ -893,7 +1008,7 @@ class JobContentGenerator
             'failures_today' => $this->metric('failure'),
             'tokens_today' => $this->metric('tokens'),
             // A hard block is reported only when EVERY provider is cooling
-            // down — otherwise a fallback provider can still answer.
+            // down and a true usage limit is in effect — otherwise a fallback provider can still answer.
             'blocked_until' => $hardBlocked ? $blockedUntil : null,
             'blocked_code' => $hardBlocked ? $blockedCode : null,
             'blocked_reason' => $hardBlocked ? $blockedReason : null,

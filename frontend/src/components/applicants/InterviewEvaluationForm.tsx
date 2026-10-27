@@ -106,10 +106,6 @@ export function InterviewEvaluationForm({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-[0.7rem] text-muted-foreground">
-            Defaults to you (the logged-in user) — change it if another interviewer conducted this
-            interview. Required.
-          </p>
         </div>
         <div className="space-y-1.5">
           <Label>Interview date</Label>

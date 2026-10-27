@@ -9,9 +9,13 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   ArrowRight,
+  ArrowRightCircle,
   Award,
+  Ban,
   BarChart3,
   BookMarked,
   Briefcase,
@@ -51,6 +55,7 @@ import {
   Printer,
   Repeat2,
   RefreshCw,
+  RotateCcw,
   Save,
   ScanLine,
   Search,
@@ -289,6 +294,18 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
     offerResponseRecordedBy: a.offer_response_recorded_by ?? null,
     rejectedAt: a.rejected_at ?? null,
     cooldownLiftedAt: a.cooldown_lifted_at ?? null,
+    address: a.address ?? null,
+    archivedAt: a.archived_at ?? null,
+    archivedBy: a.archived_by ?? null,
+    archivedReason: a.archived_reason ?? null,
+    isArchived: a.is_archived ?? Boolean(a.archived_at),
+    isBlocked: a.is_blocked ?? false,
+    blockedAt: a.blocked_at ?? null,
+    blockedBy: a.blocked_by ?? null,
+    blockedReason: a.blocked_reason ?? null,
+    blockScope: a.block_scope ?? null,
+    blockExpiresAt: a.block_expires_at ?? null,
+    isActiveBlocked: a.is_active_blocked ?? Boolean(a.is_blocked),
   };
 }
 
@@ -296,6 +313,27 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
  *  inbound email-SMS integration, so HR records the medium. */
 type OfferResponseChannel = "Email" | "SMS" | "Call" | "In person";
 const OFFER_RESPONSE_CHANNELS: OfferResponseChannel[] = ["Email", "SMS", "Call", "In person"];
+
+type ReturnTargetStage =
+  | "Screened"
+  | "Accepted"
+  | "Interview Scheduled"
+  | "Assessed"
+  | "Assessment Test"
+  | "Practical Test"
+  | "Final Evaluation"
+  | "Offer";
+
+const RETURN_TARGET_STAGES: { value: ReturnTargetStage; label: string }[] = [
+  { value: "Screened", label: "Screened — pipeline entry" },
+  { value: "Accepted", label: "Accepted — resume verified" },
+  { value: "Interview Scheduled", label: "Interview Scheduled" },
+  { value: "Assessed", label: "Assessed — interview completed" },
+  { value: "Assessment Test", label: "Assessment Test" },
+  { value: "Practical Test", label: "Practical Test" },
+  { value: "Final Evaluation", label: "Final Evaluation" },
+  { value: "Offer", label: "Offer" },
+];
 
 /** Normalized offer state for the final-evaluation decision (null when no
  *  offer was ever sent). Drives the offer banners + Accept / Decline gates. */
@@ -5436,16 +5474,41 @@ function ApplicantViewScreen({
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-3/4" />
             </div>
-          ) : history?.cooldown ? (
-            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 dark:border-amber-400/20 dark:bg-amber-400/10 px-3 py-2 text-xs leading-relaxed">
-              Eligible to re-apply on{" "}
-              <span className="font-semibold">{history.cooldown.eligible_after_label}</span> (
-              {history.cooldown.days_left} day(s) left).
-            </p>
           ) : (
-            <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs">
-              Eligible to re-apply — no waiting period in effect.
-            </p>
+            <div className="space-y-2">
+              {history?.block && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <Ban className="h-4 w-4 shrink-0" />
+                    <span>Recruitment Restriction Active (Blocked)</span>
+                  </div>
+                  <p className="mt-1">
+                    <span className="font-medium">Reason:</span> {history.block.reason}
+                    {history.block.scope && (
+                      <span className="ml-2 font-medium">
+                        (Scope: {history.block.scope === "all_jobs" ? "All Positions" : `Position ${history.block.scope_job_id ?? ""}`})
+                      </span>
+                    )}
+                    {history.block.expires_at && (
+                      <span className="ml-2">
+                        Expires: {new Date(history.block.expires_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
+              {history?.cooldown ? (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 dark:border-amber-400/20 dark:bg-amber-400/10 px-3 py-2 text-xs leading-relaxed">
+                  Eligible to re-apply on{" "}
+                  <span className="font-semibold">{history.cooldown.eligible_after_label}</span> (
+                  {history.cooldown.days_left} day(s) left).
+                </p>
+              ) : (
+                <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs">
+                  Eligible to re-apply — no waiting period in effect.
+                </p>
+              )}
+            </div>
           )}
           {(history?.data ?? []).length > 0 && (
             <div className="space-y-1.5">
@@ -5476,6 +5539,19 @@ function ApplicantViewScreen({
                     <Badge variant="secondary" className="text-[11px]">
                       Current
                     </Badge>
+                  )}
+                  {row.matched_rules && row.matched_rules.length > 0 && (
+                    <span className="flex flex-wrap items-center gap-1">
+                      {row.matched_rules.map((rule) => (
+                        <Badge
+                          key={rule}
+                          variant="outline"
+                          className="border-primary/40 bg-primary/10 text-[10px] text-primary"
+                        >
+                          Matched: {rule}
+                        </Badge>
+                      ))}
+                    </span>
                   )}
                 </div>
               ))}
@@ -6625,6 +6701,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const navigate = useNavigate();
   const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
+  const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   /* Only the very first load shows skeletons. The 20s background poll and the
      focus/visibility re-read refresh silently, so the table stays clickable
@@ -6642,11 +6719,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const loadApplicantRecords = useCallback(async () => {
     // Hired applicants leave the pipeline (they move to New Hire Onboarding);
     // rejected applicants stay in the list, only labelled as "Rejected".
-    const excludeStages = "Hired";
+    const listParams: Record<string, any> = { exclude_stages: "Hired" };
+    if (includeArchived) listParams.include_archived = "1";
     try {
       if (!hasLoadedRef.current) setLoading(true);
       const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
-        fetchAllPages(applicantsApi.list, { exclude_stages: excludeStages }),
+        fetchAllPages(applicantsApi.list, listParams),
         fetchAllPages(interviewsApi.list),
         fetchAllPages(assessmentsApi.list),
         fetchAllPages(assessmentTestsApi.list),
@@ -6696,7 +6774,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       hasLoadedRef.current = true;
       setLoading(false);
     }
-  }, []);
+  }, [includeArchived]);
 
   useEffect(() => {
     void loadApplicantRecords();
@@ -6908,6 +6986,46 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** How the applicant replied (Email / SMS / Call / In person) — HR records it. */
   const [offerResponseChannel, setOfferResponseChannel] = useState<OfferResponseChannel | "">("");
   const [offerResponseNote, setOfferResponseNote] = useState("");
+
+  /* Function 2: Move to Specific Stage */
+  const [moveToStageFor, setMoveToStageFor] = useState<Applicant | null>(null);
+  const [moveToStageTarget, setMoveToStageTarget] = useState<ReturnTargetStage>("Screened");
+  const [moveToStageReason, setMoveToStageReason] = useState("");
+  const [moveToStageBusy, setMoveToStageBusy] = useState(false);
+
+  /* Function 3: Reopen Application */
+  const [reopenFor, setReopenFor] = useState<Applicant | null>(null);
+  const [reopenTarget, setReopenTarget] = useState<ReturnTargetStage>("Screened");
+  const [reopenReason, setReopenReason] = useState("");
+  const [reopenBusy, setReopenBusy] = useState(false);
+
+  /* Function 4: Correct Hiring Decision */
+  const [correctHiringFor, setCorrectHiringFor] = useState<Applicant | null>(null);
+  const [correctHiringType, setCorrectHiringType] = useState<"mistaken_hire" | "no_show" | "reneged">("no_show");
+  const [correctHiringReason, setCorrectHiringReason] = useState("");
+  const [correctHiringCooldown, setCorrectHiringCooldown] = useState(true);
+  const [correctHiringBusy, setCorrectHiringBusy] = useState(false);
+
+  /* Function 5 & 6: Archive / Restore */
+  const [archiveFor, setArchiveFor] = useState<Applicant | null>(null);
+  const [archiveReason, setArchiveReason] = useState("");
+  const [archiveBusy, setArchiveBusy] = useState(false);
+
+  const [restoreFor, setRestoreFor] = useState<Applicant | null>(null);
+  const [restoreReason, setRestoreReason] = useState("");
+  const [restoreBusy, setRestoreBusy] = useState(false);
+
+  /* Function 7 & 8: Block / Unblock */
+  const [blockFor, setBlockFor] = useState<Applicant | null>(null);
+  const [blockReason, setBlockReason] = useState("");
+  const [blockScope, setBlockScope] = useState<"all_jobs" | "specific_job">("all_jobs");
+  const [blockExpiresAt, setBlockExpiresAt] = useState("");
+  const [blockBusy, setBlockBusy] = useState(false);
+
+  const [unblockFor, setUnblockFor] = useState<Applicant | null>(null);
+  const [unblockReason, setUnblockReason] = useState("");
+  const [unblockBusy, setUnblockBusy] = useState(false);
+
   const [assessmentSearch, setAssessmentSearch] = useState("");
   const [assessmentDept, setAssessmentDept] = useState<string>("all");
   const [assessmentOutcome, setAssessmentOutcome] = useState<string>("all");
@@ -8240,6 +8358,229 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       reportStageSaveFailure("Offer decline", e);
     } finally {
       setOfferActionBusy(false);
+    }
+  };
+
+  /* Function 2: Move to Specific Stage */
+  const openMoveToStage = (a: Applicant) => {
+    setMoveToStageFor(a);
+    setMoveToStageReason("");
+    setMoveToStageTarget("Screened");
+  };
+
+  const confirmMoveToStage = async () => {
+    const a = moveToStageFor;
+    if (!a?.dbId) return;
+    const reason = moveToStageReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please provide a reason of at least 5 characters.");
+      return;
+    }
+    setMoveToStageBusy(true);
+    try {
+      const saved = await applicantsApi.moveToStage(a.dbId, {
+        target_stage: moveToStageTarget,
+        reason,
+      });
+      const updated = transformApiApplicant(saved);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.success(`${a.name} moved to ${moveToStageTarget}`);
+      setMoveToStageFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Move to stage", e);
+    } finally {
+      setMoveToStageBusy(false);
+    }
+  };
+
+  /* Function 3: Reopen Application */
+  const openReopen = (a: Applicant) => {
+    setReopenFor(a);
+    setReopenReason("");
+    setReopenTarget("Screened");
+  };
+
+  const confirmReopen = async () => {
+    const a = reopenFor;
+    if (!a?.dbId) return;
+    const reason = reopenReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please provide a reason of at least 5 characters.");
+      return;
+    }
+    setReopenBusy(true);
+    try {
+      const saved = await applicantsApi.reopen(a.dbId, {
+        target_stage: reopenTarget,
+        reason,
+      });
+      const updated = transformApiApplicant(saved);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.success(`Application reopened for ${a.name} at ${reopenTarget}`);
+      setReopenFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Reopen application", e);
+    } finally {
+      setReopenBusy(false);
+    }
+  };
+
+  /* Function 4: Correct Hiring Decision */
+  const openCorrectHiring = (a: Applicant) => {
+    setCorrectHiringFor(a);
+    setCorrectHiringReason("");
+    setCorrectHiringType("no_show");
+    setCorrectHiringCooldown(true);
+  };
+
+  const confirmCorrectHiring = async () => {
+    const a = correctHiringFor;
+    if (!a?.dbId) return;
+    const reason = correctHiringReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please provide a reason of at least 5 characters.");
+      return;
+    }
+    setCorrectHiringBusy(true);
+    try {
+      const saved = await applicantsApi.correctHiring(a.dbId, {
+        correction_type: correctHiringType,
+        reason,
+        apply_cooldown: correctHiringCooldown,
+      });
+      const updated = transformApiApplicant(saved);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.success(`Hiring decision corrected for ${a.name}`);
+      setCorrectHiringFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Correct hiring decision", e);
+    } finally {
+      setCorrectHiringBusy(false);
+    }
+  };
+
+  /* Function 5: Archive Applicant */
+  const openArchive = (a: Applicant) => {
+    setArchiveFor(a);
+    setArchiveReason("");
+  };
+
+  const confirmArchive = async () => {
+    const a = archiveFor;
+    if (!a?.dbId) return;
+    const reason = archiveReason.trim();
+    if (reason.length < 3) {
+      toast.error("Please provide an archive reason.");
+      return;
+    }
+    setArchiveBusy(true);
+    try {
+      const res = await applicantsApi.archive(a.dbId, { reason });
+      const updated = transformApiApplicant(res.data);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.success(`${a.name} archived`);
+      setArchiveFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Archive applicant", e);
+    } finally {
+      setArchiveBusy(false);
+    }
+  };
+
+  /* Function 6: Restore Applicant */
+  const openRestore = (a: Applicant) => {
+    setRestoreFor(a);
+    setRestoreReason("");
+  };
+
+  const confirmRestore = async () => {
+    const a = restoreFor;
+    if (!a?.dbId) return;
+    const reason = restoreReason.trim();
+    if (reason.length < 3) {
+      toast.error("Please provide a restoration reason.");
+      return;
+    }
+    setRestoreBusy(true);
+    try {
+      const res = await applicantsApi.restore(a.dbId, { reason });
+      const updated = transformApiApplicant(res.data);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.success(`${a.name} restored from archive`);
+      setRestoreFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Restore applicant", e);
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
+  /* Function 7: Block Applicant */
+  const openBlock = (a: Applicant) => {
+    setBlockFor(a);
+    setBlockReason("");
+    setBlockScope("all_jobs");
+    setBlockExpiresAt("");
+  };
+
+  const confirmBlock = async () => {
+    const a = blockFor;
+    if (!a?.dbId) return;
+    const reason = blockReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please enter a blocking reason (at least 5 characters).");
+      return;
+    }
+    setBlockBusy(true);
+    try {
+      const res = await applicantsApi.block(a.dbId, {
+        reason,
+        scope: blockScope,
+        expires_at: blockExpiresAt || null,
+      });
+      const updated = transformApiApplicant(res.data);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.warning(`${a.name} has been restricted from recruitment`);
+      setBlockFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Block applicant", e);
+    } finally {
+      setBlockBusy(false);
+    }
+  };
+
+  /* Function 8: Unblock Applicant */
+  const openUnblock = (a: Applicant) => {
+    setUnblockFor(a);
+    setUnblockReason("");
+  };
+
+  const confirmUnblock = async () => {
+    const a = unblockFor;
+    if (!a?.dbId) return;
+    const reason = unblockReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please enter a reason for lifting the restriction (at least 5 characters).");
+      return;
+    }
+    setUnblockBusy(true);
+    try {
+      const res = await applicantsApi.unblock(a.dbId, { reason });
+      const updated = transformApiApplicant(res.data);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.success(`Recruitment restriction lifted for ${a.name}`);
+      setUnblockFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Unblock applicant", e);
+    } finally {
+      setUnblockBusy(false);
     }
   };
 
@@ -10690,6 +11031,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         };
       })
       .filter(({ a, interview, liveInterview, assessment, test, practical, final }) => {
+        if (!includeArchived && a.isArchived) return false;
         if (pipelinePosition !== "all" && a.position !== pipelinePosition) return false;
         if (pipelineStage !== "all" && a.stage !== pipelineStage) return false;
         if (
@@ -10749,6 +11091,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     pipelineSearch,
     pipelineResult,
     pipelineScheduledDate,
+    includeArchived,
   ]);
 
   const pipelineSort = useSort(pipelineRows, {
@@ -14268,6 +14611,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <X className="mr-1 h-3.5 w-3.5" /> Clear
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant={includeArchived ? "secondary" : "outline"}
+                        className="h-9 gap-1.5 px-3 text-xs"
+                        onClick={() => setIncludeArchived((v) => !v)}
+                        title="Toggle visibility of archived applicants"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        {includeArchived ? "Hide Archived" : "Show Archived"}
+                      </Button>
                     </div>
                   </div>
                   <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
@@ -14498,9 +14851,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           </AvatarFallback>
                                         </Avatar>
                                         <div className="min-w-0 flex-1">
-                                          <p className="truncate font-medium" title={a.name}>
-                                            {a.name}
-                                          </p>
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <p className="truncate font-medium" title={a.name}>
+                                              {a.name}
+                                            </p>
+                                            {a.isActiveBlocked && (
+                                              <Badge
+                                                variant="destructive"
+                                                className="h-4 px-1 text-[9px] uppercase font-bold tracking-wider"
+                                              >
+                                                Blocked
+                                              </Badge>
+                                            )}
+                                            {a.isArchived && (
+                                              <Badge
+                                                variant="secondary"
+                                                className="h-4 px-1 text-[9px] uppercase font-medium"
+                                              >
+                                                Archived
+                                              </Badge>
+                                            )}
+                                          </div>
                                           <p
                                             className="truncate text-muted-foreground"
                                             title={`${a.id} · ${a.position}`}
@@ -15076,6 +15447,42 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 scheduled in calendar
                                               </DropdownMenuItem>
                                             ) : null}
+                                            {/* Administrative Actions */}
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem onClick={() => openMoveToStage(a)}>
+                                              <ArrowRightCircle className="mr-2 h-3.5 w-3.5 text-primary" /> Move to stage...
+                                            </DropdownMenuItem>
+                                            {a.stage === "Rejected" && (
+                                              <DropdownMenuItem onClick={() => openReopen(a)}>
+                                                <RotateCcw className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Reopen application
+                                              </DropdownMenuItem>
+                                            )}
+                                            {(a.stage === "Hired" || a.stage === "Offer" || a.status === "hired") && (
+                                              <DropdownMenuItem onClick={() => openCorrectHiring(a)}>
+                                                <ShieldAlert className="mr-2 h-3.5 w-3.5 text-amber-600" /> Correct hiring decision
+                                              </DropdownMenuItem>
+                                            )}
+                                            {!a.isArchived ? (
+                                              <DropdownMenuItem onClick={() => openArchive(a)}>
+                                                <Archive className="mr-2 h-3.5 w-3.5" /> Archive applicant
+                                              </DropdownMenuItem>
+                                            ) : (
+                                              <DropdownMenuItem onClick={() => openRestore(a)}>
+                                                <ArchiveRestore className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Restore applicant
+                                              </DropdownMenuItem>
+                                            )}
+                                            {!a.isActiveBlocked ? (
+                                              <DropdownMenuItem
+                                                className="text-destructive focus:text-destructive"
+                                                onClick={() => openBlock(a)}
+                                              >
+                                                <Ban className="mr-2 h-3.5 w-3.5" /> Block applicant
+                                              </DropdownMenuItem>
+                                            ) : (
+                                              <DropdownMenuItem onClick={() => openUnblock(a)}>
+                                                <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Lift block restriction
+                                              </DropdownMenuItem>
+                                            )}
                                           </DropdownMenuContent>
                                         </DropdownMenu>
                                         <Button
@@ -17712,6 +18119,429 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </>
               );
             })()}
+        </DialogContent>
+      </Dialog>
+      {/* Function 2: Move to Specific Stage Dialog */}
+      <Dialog open={!!moveToStageFor} onOpenChange={(open) => { if (!open) setMoveToStageFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightCircle className="h-5 w-5 text-primary" />
+              Move to Specific Stage
+            </DialogTitle>
+            <DialogDescription>
+              Move {moveToStageFor?.name} ({moveToStageFor?.id}) directly to another recruitment stage.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Target Stage</Label>
+              <Select
+                value={moveToStageTarget}
+                onValueChange={(v) => setMoveToStageTarget(v as ReturnTargetStage)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select target stage" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RETURN_TARGET_STAGES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Reason for moving stage *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Explain why this applicant is being moved directly to this stage..."
+                value={moveToStageReason}
+                onChange={(e) => setMoveToStageReason(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Minimum 5 characters. This administrative action will be recorded in the applicant notes.
+              </p>
+            </div>
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
+              <p className="font-medium">Workflow Note:</p>
+              <p className="mt-0.5">
+                Moving backward archives subsequent stage records. Moving forward marks prior required stages as completed with an administrative waiver.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={moveToStageBusy}
+              onClick={() => setMoveToStageFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={moveToStageBusy || moveToStageReason.trim().length < 5}
+              onClick={() => void confirmMoveToStage()}
+            >
+              {moveToStageBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Move Stage
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 3: Reopen Application Dialog */}
+      <Dialog open={!!reopenFor} onOpenChange={(open) => { if (!open) setReopenFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-emerald-600" />
+              Reopen Application
+            </DialogTitle>
+            <DialogDescription>
+              Reopen the closed application for {reopenFor?.name} ({reopenFor?.id}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Target Stage to Resume</Label>
+              <Select
+                value={reopenTarget}
+                onValueChange={(v) => setReopenTarget(v as ReturnTargetStage)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select target stage" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RETURN_TARGET_STAGES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Reason for Reopening *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Explain the justification for reconsidering this candidate..."
+                value={reopenReason}
+                onChange={(e) => setReopenReason(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Minimum 5 characters. Recorded in applicant activity notes.
+              </p>
+            </div>
+            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-200">
+              <p className="font-medium">Reopening Effect:</p>
+              <p className="mt-0.5">
+                Clears the rejected status, resets the 30-day cooldown waiting period, and restores candidate to active pipeline.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={reopenBusy}
+              onClick={() => setReopenFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={reopenBusy || reopenReason.trim().length < 5}
+              onClick={() => void confirmReopen()}
+            >
+              {reopenBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Reopen Application
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 4: Correct Hiring Decision Dialog */}
+      <Dialog open={!!correctHiringFor} onOpenChange={(open) => { if (!open) setCorrectHiringFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-600" />
+              Correct Hiring Decision
+            </DialogTitle>
+            <DialogDescription>
+              Correct hiring outcome for {correctHiringFor?.name} ({correctHiringFor?.id}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Correction Reason Type</Label>
+              <Select
+                value={correctHiringType}
+                onValueChange={(v) => setCorrectHiringType(v as "mistaken_hire" | "no_show" | "reneged")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select reason type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no_show">Candidate No-Show (Didn't attend start date)</SelectItem>
+                  <SelectItem value="reneged">Reneged Offer (Accepted then declined)</SelectItem>
+                  <SelectItem value="mistaken_hire">Mistaken Hire (Erroneously marked as hired)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Detailed Reason & Audit Notes *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Explain the background for correcting this hiring decision..."
+                value={correctHiringReason}
+                onChange={(e) => setCorrectHiringReason(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Minimum 5 characters. Reverts stage to Rejected and releases the job vacancy slot.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2 pt-1">
+              <Checkbox
+                id="apply-cooldown-check"
+                checked={correctHiringCooldown}
+                onCheckedChange={(c) => setCorrectHiringCooldown(!!c)}
+              />
+              <Label htmlFor="apply-cooldown-check" className="text-xs font-normal cursor-pointer">
+                Apply standard 30-day re-apply cooldown waiting period
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={correctHiringBusy}
+              onClick={() => setCorrectHiringFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={correctHiringBusy || correctHiringReason.trim().length < 5}
+              onClick={() => void confirmCorrectHiring()}
+            >
+              {correctHiringBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Correct Decision
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 5: Archive Applicant Dialog */}
+      <Dialog open={!!archiveFor} onOpenChange={(open) => { if (!open) setArchiveFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="h-5 w-5 text-muted-foreground" />
+              Archive Applicant
+            </DialogTitle>
+            <DialogDescription>
+              Archive {archiveFor?.name} ({archiveFor?.id}) to hide from active pipeline views.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Archive Reason / Note (Optional)</Label>
+              <Textarea
+                rows={2}
+                placeholder="Optional notes explaining why this applicant is being archived..."
+                value={archiveReason}
+                onChange={(e) => setArchiveReason(e.target.value)}
+              />
+            </div>
+            <div className="rounded-md border border-muted bg-muted/40 p-2.5 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">Archive Details:</p>
+              <p className="mt-0.5">
+                Archived applicants do not appear in normal list views unless "Show Archived" is toggled. No historical evaluations, test results, or documents are deleted.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={archiveBusy}
+              onClick={() => setArchiveFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={archiveBusy}
+              onClick={() => void confirmArchive()}
+            >
+              {archiveBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Archive Applicant
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 6: Restore Applicant Dialog */}
+      <Dialog open={!!restoreFor} onOpenChange={(open) => { if (!open) setRestoreFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArchiveRestore className="h-5 w-5 text-emerald-600" />
+              Restore Applicant
+            </DialogTitle>
+            <DialogDescription>
+              Restore {restoreFor?.name} ({restoreFor?.id}) back to the active recruitment list.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Restore Note (Optional)</Label>
+              <Textarea
+                rows={2}
+                placeholder="Optional notes for un-archiving this applicant..."
+                value={restoreReason}
+                onChange={(e) => setRestoreReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={restoreBusy}
+              onClick={() => setRestoreFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={restoreBusy}
+              onClick={() => void confirmRestore()}
+            >
+              {restoreBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Restore Applicant
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 7: Block Applicant Dialog */}
+      <Dialog open={!!blockFor} onOpenChange={(open) => { if (!open) setBlockFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ban className="h-5 w-5 text-destructive" />
+              Block Applicant (Recruitment Restriction)
+            </DialogTitle>
+            <DialogDescription>
+              Restrict {blockFor?.name} ({blockFor?.email}) from applying or participating in recruitment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Restriction Scope</Label>
+              <Select
+                value={blockScope}
+                onValueChange={(v) => setBlockScope(v as "all_jobs" | "specific_job")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select restriction scope" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all_jobs">All Positions (Universal Restriction)</SelectItem>
+                  <SelectItem value="specific_job">This Position Only ({blockFor?.position})</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Expiration Date (Optional)</Label>
+              <Input
+                type="date"
+                value={blockExpiresAt}
+                onChange={(e) => setBlockExpiresAt(e.target.value)}
+                placeholder="YYYY-MM-DD"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Leave blank for an indefinite restriction until manually lifted.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Reason for Restriction *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Provide a justified reason for blocking this applicant (e.g. misconduct, fraudulent application)..."
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Minimum 5 characters. Rejection alone does not warrant blocking.
+              </p>
+            </div>
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive">
+              <p className="font-semibold">Restriction Policy:</p>
+              <p className="mt-0.5">
+                Future applications matching this candidate (by email, phone, name, or address) will be blocked immediately upon submission.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={blockBusy}
+              onClick={() => setBlockFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={blockBusy || blockReason.trim().length < 5}
+              onClick={() => void confirmBlock()}
+            >
+              {blockBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Block Applicant
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 8: Unblock Applicant Dialog */}
+      <Dialog open={!!unblockFor} onOpenChange={(open) => { if (!open) setUnblockFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              Lift Recruitment Restriction (Unblock)
+            </DialogTitle>
+            <DialogDescription>
+              Remove recruitment restrictions for {unblockFor?.name} ({unblockFor?.email}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Reason for Lifting Restriction *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Explain why this restriction is being lifted..."
+                value={unblockReason}
+                onChange={(e) => setUnblockReason(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Minimum 5 characters. Restriction history is retained in audit logs.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={unblockBusy}
+              onClick={() => setUnblockFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={unblockBusy || unblockReason.trim().length < 5}
+              onClick={() => void confirmUnblock()}
+            >
+              {unblockBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Lift Restriction
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

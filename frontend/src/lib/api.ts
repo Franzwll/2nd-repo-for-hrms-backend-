@@ -145,6 +145,7 @@ export interface ApiApplicant {
   name: string;
   email: string;
   phone: string | null;
+  address?: string | null;
   applied_at: string | null;
   fit_score: number | null;
   status: "fit" | "other-role" | "credential" | "not-fit";
@@ -176,6 +177,17 @@ export interface ApiApplicant {
    *  cooldown_lifted_at records an HR early override. */
   rejected_at?: string | null;
   cooldown_lifted_at?: string | null;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archived_reason?: string | null;
+  is_archived?: boolean;
+  is_blocked?: boolean;
+  blocked_at?: string | null;
+  blocked_by?: string | null;
+  blocked_reason?: string | null;
+  block_scope?: string | null;
+  block_expires_at?: string | null;
+  is_active_blocked?: boolean;
   source: string | null;
   summary: string | null;
   flags_json: string[];
@@ -586,6 +598,18 @@ export const applicantsApi = {
     request<{ message: string }>(`/applicants/${id}`, { method: "DELETE" }),
   hire: (id: number | string) =>
     request<ApiApplicant>(`/applicants/${id}/hire`, { method: "POST" }),
+  /** Super Admin only — move an applicant back to an earlier stage so a step
+   *  can be redone (Rejected, Hired or still in the process). Clears the
+   *  rejection/cooldown and offer-reply trail; a Pre-onboarding New Hire
+   *  record is removed when the applicant was Hired. */
+  returnToPipeline: (
+    id: number | string,
+    body: { target_stage: string; reason: string },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/return-to-pipeline`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   /** Emails the offer (after a Final Evaluation recommended the candidate)
    *  and starts the applicant's 7-day response window. */
   sendOffer: (id: number | string, details?: string) =>
@@ -665,6 +689,64 @@ export const applicantsApi = {
       `/applicants/${id}/cooldown/override`,
       { method: "POST" },
     ),
+  /** Super Admin only — move an applicant to a selected recruitment stage. */
+  moveToStage: (
+    id: number | string,
+    body: { target_stage: string; reason: string },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/move-to-stage`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Super Admin only — reopen a closed/rejected application. */
+  reopen: (
+    id: number | string,
+    body: { target_stage?: string; reason: string },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/reopen`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Super Admin only — correct an incorrect hiring decision. */
+  correctHiring: (
+    id: number | string,
+    body: {
+      correction_type: "mistaken_hire" | "no_show" | "reneged";
+      reason: string;
+      apply_cooldown?: boolean;
+    },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/correct-hiring`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Archive an applicant from active views. */
+  archive: (id: number | string, body: { reason: string }) =>
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/archive`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Restore an applicant from archive back to active views. */
+  restore: (id: number | string, body: { reason: string }) =>
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/restore`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Super Admin only — block an applicant from recruitment activities. */
+  block: (
+    id: number | string,
+    body: { reason: string; scope?: "all_jobs" | "specific_job"; expires_at?: string | null },
+  ) =>
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/block`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Super Admin only — unblock a restricted applicant. */
+  unblock: (id: number | string, body: { reason: string }) =>
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/unblock`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export interface ApiApplicantHistoryRow {
@@ -678,7 +760,20 @@ export interface ApiApplicantHistoryRow {
   offer_status?: string | null;
   rejected_at?: string | null;
   cooldown_lifted_at?: string | null;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archived_reason?: string | null;
+  is_archived?: boolean;
+  is_blocked?: boolean;
+  blocked_at?: string | null;
+  blocked_by?: string | null;
+  blocked_reason?: string | null;
+  block_scope?: string | null;
+  block_expires_at?: string | null;
+  is_active_blocked?: boolean;
   is_current: boolean;
+  matched_rules?: string[];
+  confidence?: string;
 }
 
 export interface ApiApplicantHistory {
@@ -693,8 +788,16 @@ export interface ApiApplicantHistory {
     days_left: number;
     job_post_id: number;
   } | null;
+  block?: {
+    is_blocked: boolean;
+    reason: string | null;
+    scope: string | null;
+    applicant_code: string | null;
+    matched_rules?: string[];
+  } | null;
   cooldown_days: number;
   attempt_count: number;
+  matched_applicants_count?: number;
 }
 
 export const assessmentsApi = {
@@ -1253,7 +1356,7 @@ export const jobPostsApi = {
       body: JSON.stringify(payload),
     }),
   /** Usage/limit snapshot for the AI draft indicator (triggers no generation). */
-  aiUsage: () => request<{ success: boolean; data: JobAiUsage }>("/job-posts/ai-usage"),
+  aiUsage: (params?: { clear?: boolean }) => request<{ success: boolean; data: JobAiUsage }>(`/job-posts/ai-usage${params?.clear ? "?clear=1" : ""}`),
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
     return request<{ data: ApiJobPost[]; meta: any }>(`/job-posts${qs ? `?${qs}` : ""}`);

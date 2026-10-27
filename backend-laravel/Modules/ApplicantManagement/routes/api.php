@@ -135,6 +135,30 @@ Route::prefix('v1')
           Route::post('applicants/{applicant}/hire', [ApplicantManagementController::class, 'hire'])
                ->name('applicants.hire');
 
+          // Super Admin: return a Rejected / Hired applicant to an active
+          // stage and resume their recruitment process.
+          Route::post('applicants/{applicant}/return-to-pipeline', [ApplicantManagementController::class, 'returnToPipeline'])
+               ->name('applicants.return-to-pipeline');
+
+          Route::post('applicants/{applicant}/move-to-stage', [ApplicantManagementController::class, 'moveToStage'])
+               ->name('applicants.move-to-stage');
+
+          Route::post('applicants/{applicant}/reopen', [ApplicantManagementController::class, 'reopenApplication'])
+               ->name('applicants.reopen');
+
+          Route::post('applicants/{applicant}/correct-hiring', [ApplicantManagementController::class, 'correctHiringDecision'])
+               ->name('applicants.correct-hiring');
+
+          Route::post('applicants/{applicant}/archive', [ApplicantManagementController::class, 'archiveApplicant'])
+               ->name('applicants.archive');
+          Route::post('applicants/{applicant}/restore', [ApplicantManagementController::class, 'restoreApplicant'])
+               ->name('applicants.restore');
+
+          Route::post('applicants/{applicant}/block', [ApplicantManagementController::class, 'blockApplicant'])
+               ->name('applicants.block');
+          Route::post('applicants/{applicant}/unblock', [ApplicantManagementController::class, 'unblockApplicant'])
+               ->name('applicants.unblock');
+
           // Send email (accept / reject / offer) to applicant
           Route::post('applicants/{applicant}/send-email', [ApplicantManagementController::class, 'sendEmail'])
                ->name('applicants.send-email');

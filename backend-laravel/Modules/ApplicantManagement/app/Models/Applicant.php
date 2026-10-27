@@ -18,12 +18,22 @@ class Applicant extends Model
         'name',
         'email',
         'phone',
+        'address',
         'applied_at',
         'fit_score',
         'status',
         'stage',
         'rejected_at',
         'cooldown_lifted_at',
+        'archived_at',
+        'archived_by',
+        'archived_reason',
+        'is_blocked',
+        'blocked_at',
+        'blocked_by',
+        'blocked_reason',
+        'block_scope',
+        'block_expires_at',
         'offer_status',
         'offer_sent_at',
         'offer_expires_at',
@@ -46,6 +56,10 @@ class Applicant extends Model
         'fit_score'               => 'decimal:2',
         'rejected_at'             => 'datetime',
         'cooldown_lifted_at'      => 'datetime',
+        'archived_at'             => 'datetime',
+        'is_blocked'              => 'boolean',
+        'blocked_at'              => 'datetime',
+        'block_expires_at'        => 'datetime',
         'offer_sent_at'           => 'datetime',
         'offer_expires_at'        => 'datetime',
         'offer_start_date'        => 'date',
@@ -132,9 +146,20 @@ class Applicant extends Model
                     ->latestOfMany('final_evaluation_id');
     }
 
+    public function finalEvaluations(): HasMany
+    {
+        return $this->hasMany(FinalEvaluation::class, 'applicant_id', 'applicant_id');
+    }
+
     public function documents(): HasMany
     {
         return $this->hasMany(ApplicantDocument::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function blockHistories(): HasMany
+    {
+        return $this->hasMany(ApplicantBlockHistory::class, 'applicant_id', 'applicant_id')
+            ->orderByDesc('performed_at');
     }
 
     /* ------------------------------------------------------------------ */
@@ -185,5 +210,34 @@ class Applicant extends Model
         return $this->offer_status === 'Pending'
             && $this->offer_expires_at !== null
             && $this->offer_expires_at->isPast();
+    }
+
+    public function isBlocked(): bool
+    {
+        if (! $this->is_blocked) {
+            return false;
+        }
+
+        // If an expiration was set, check if block has expired
+        if ($this->block_expires_at !== null && $this->block_expires_at->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    public function getIsArchivedAttribute(): bool
+    {
+        return $this->isArchived();
+    }
+
+    public function getBlockReasonAttribute(): ?string
+    {
+        return $this->blocked_reason;
     }
 }
