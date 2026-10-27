@@ -62,6 +62,7 @@ class ApplicantAssessmentController extends Controller
         if (($data['result'] ?? null) === 'Failed') {
             $model->update([
                 'stage'              => 'Rejected',
+                'status'             => 'not-fit',
                 'rejected_at'        => now(),
                 'cooldown_lifted_at' => null,
             ]);

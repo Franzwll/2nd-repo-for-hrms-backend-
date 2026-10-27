@@ -66,12 +66,14 @@ class AssessmentTestController extends Controller
         }
 
         // Workflow gate: only candidates who passed the interview assessment
-        // may take the assessment test.
-        $assessment = $model->assessment()->first();
-        if (! $assessment || $assessment->result !== 'Passed') {
-            return response()->json([
-                'message' => 'This candidate cannot take the assessment test until their interview assessment is recorded and marked Passed.',
-            ], 422);
+        // may take the assessment test (unless already placed at Assessment Test stage).
+        if ($model->stage !== 'Assessment Test') {
+            $assessment = $model->assessment()->first();
+            if (! $assessment || $assessment->result !== 'Passed') {
+                return response()->json([
+                    'message' => 'This candidate cannot take the assessment test until their interview assessment is recorded and marked Passed.',
+                ], 422);
+            }
         }
 
         $data = $request->validate([
@@ -104,6 +106,7 @@ class AssessmentTestController extends Controller
         if (($data['result'] ?? null) === 'Failed') {
             $model->update([
                 'stage'              => 'Rejected',
+                'status'             => 'not-fit',
                 'rejected_at'        => now(),
                 'cooldown_lifted_at' => null,
             ]);

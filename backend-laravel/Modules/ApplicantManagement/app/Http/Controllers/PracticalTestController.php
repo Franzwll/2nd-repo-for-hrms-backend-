@@ -66,12 +66,20 @@ class PracticalTestController extends Controller
             ], 422);
         }
 
-        // Workflow gate: the assessment test must be recorded and passed first.
-        $test = $model->latestAssessmentTest()->first();
-        if (! $test || $test->result !== 'Passed') {
-            return response()->json([
-                'message' => 'This candidate cannot take the practical assessment until their assessment test is recorded and marked Passed.',
-            ], 422);
+        // Workflow gate: if assessment test is required and applicant is not already
+        // at Practical Test stage, the assessment test must be recorded and passed first.
+        $requiresAssessment = \Modules\ApplicantManagement\Services\AssessmentRequirement::required(
+            $model->jobPost,
+            null,
+            $model->jobPost?->position
+        );
+        if ($requiresAssessment && $model->stage !== 'Practical Test') {
+            $test = $model->latestAssessmentTest()->first();
+            if (! $test || $test->result !== 'Passed') {
+                return response()->json([
+                    'message' => 'This candidate cannot take the practical assessment until their assessment test is recorded and marked Passed.',
+                ], 422);
+            }
         }
 
         $data = $request->validate([
@@ -93,6 +101,7 @@ class PracticalTestController extends Controller
         if (($data['result'] ?? null) === 'Failed') {
             $model->update([
                 'stage'              => 'Rejected',
+                'status'             => 'not-fit',
                 'rejected_at'        => now(),
                 'cooldown_lifted_at' => null,
             ]);

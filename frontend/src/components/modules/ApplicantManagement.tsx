@@ -5119,18 +5119,20 @@ function ApplicantViewScreen({
   const practical = practicalTests[0];
   const final = finalEvaluations[0];
   /** Ready-checks mirror the removed Interview / Test / Practical / Final tabs. */
-  const readyForTest = a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
+  const readyForTest = requiresTest && (a.stage === "Assessment Test" || (a.stage === "Assessed" && assessment?.result === "Passed"));
   const readyForPractical =
-    (requiresTest
-      ? a.stage === "Assessment Test" && test?.result === "Passed"
-      : a.stage === "Assessed" && assessment?.result === "Passed") && requiresPrac;
+    requiresPrac &&
+    (a.stage === "Practical Test" ||
+      (requiresTest
+        ? a.stage === "Assessment Test" && test?.result === "Passed"
+        : a.stage === "Assessed" && assessment?.result === "Passed"));
   const readyForFinal =
     ((requiresTest
-      ? (a.stage === "Practical Test" || a.stage === "Assessment Test") && test?.result === "Passed"
-      : a.stage === "Assessed" && assessment?.result === "Passed") &&
+      ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Final Evaluation") && test?.result === "Passed"
+      : (a.stage === "Assessed" || a.stage === "Final Evaluation") && assessment?.result === "Passed") &&
       (!requiresPrac || practical?.result === "Passed")) ||
     (!requiresTest &&
-      a.stage === "Practical Test" &&
+      (a.stage === "Practical Test" || a.stage === "Final Evaluation") &&
       (!requiresPrac || practical?.result === "Passed"));
 
   const tier = computeTopCandidateTier(
@@ -6489,9 +6491,7 @@ function ApplicantViewScreen({
                               )}
                               Copy applicant test link
                             </Button>
-                            <Button size="sm" onClick={onStartTest}>
-                              <BookMarked className="mr-1.5 h-3.5 w-3.5" /> Start Assessment Test
-                            </Button>
+
                           </div>
                         </div>
                       ) : (
@@ -11121,19 +11121,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           a.stage === "Accepted" &&
           !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled");
         const readyForTest =
-          a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
+          requiresTest && (a.stage === "Assessment Test" || (a.stage === "Assessed" && assessment?.result === "Passed"));
         const readyForPractical =
-          (requiresTest
-            ? a.stage === "Assessment Test" && test?.result === "Passed"
-            : a.stage === "Assessed" && assessment?.result === "Passed") && requiresPrac;
+          requiresPrac &&
+          (a.stage === "Practical Test" ||
+            (requiresTest
+              ? a.stage === "Assessment Test" && test?.result === "Passed"
+              : a.stage === "Assessed" && assessment?.result === "Passed"));
         const readyForFinal =
           ((requiresTest
-            ? (a.stage === "Practical Test" || a.stage === "Assessment Test") &&
+            ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Final Evaluation") &&
               test?.result === "Passed"
-            : a.stage === "Assessed" && assessment?.result === "Passed") &&
+            : (a.stage === "Assessed" || a.stage === "Final Evaluation") && assessment?.result === "Passed") &&
             (!requiresPrac || practical?.result === "Passed")) ||
           (!requiresTest &&
-            a.stage === "Practical Test" &&
+            (a.stage === "Practical Test" || a.stage === "Final Evaluation") &&
             (!requiresPrac || practical?.result === "Passed"));
         return {
           a,
@@ -15251,7 +15253,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         a.stage !== "Rejected" ? (
                                         <>
                                           <p className="truncate text-muted-foreground">
-                                            Ready for test — start from Actions
+                                            Ready for test — copy link from Actions
                                           </p>
                                         </>
                                       ) : a.stage === "Rejected" ? (
@@ -15498,19 +15500,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                               </DropdownMenuItem>
                                             ) : null}
                                             {showStartTest ? (
-                                              <>
-                                                <DropdownMenuItem
-                                                  onClick={() => openAssessmentTest(a)}
-                                                >
-                                                  Start assessment test
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem
-                                                  disabled={inviteBusyId === a.id}
-                                                  onClick={() => void copyApplicantTestLink(a)}
-                                                >
-                                                  Copy applicant test link
-                                                </DropdownMenuItem>
-                                              </>
+                                              <DropdownMenuItem
+                                                disabled={inviteBusyId === a.id}
+                                                onClick={() => void copyApplicantTestLink(a)}
+                                              >
+                                                Copy applicant test link
+                                              </DropdownMenuItem>
                                             ) : null}
                                             {showStartPractical ? (
                                               <DropdownMenuItem onClick={() => openPractical(a)}>

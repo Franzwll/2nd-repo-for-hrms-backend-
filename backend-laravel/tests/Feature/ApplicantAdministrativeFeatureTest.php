@@ -394,5 +394,55 @@ class ApplicantAdministrativeFeatureTest extends TestCase
         $this->assertContains($archivedApplicant->applicant_id, $hiddenIds);
         $this->assertContains($blockedApplicant->applicant_id, $hiddenIds);
     }
+
+    public function test_assessment_invite_failure_rejects_applicant_and_records_cooldown(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Assessment Test Taker',
+            'email'          => 'test.taker@example.com',
+            'stage'          => 'Assessment Test',
+            'status'         => 'fit',
+        ]);
+
+        $invite = \Modules\ApplicantManagement\Models\AssessmentInvite::create([
+            'token'              => \Illuminate\Support\Str::random(48),
+            'applicant_id'       => $applicant->applicant_id,
+            'created_by_user_id' => $superAdmin->system_user_id,
+            'test_title'         => 'General Test',
+            'questions_json'     => [
+                [
+                    'title'        => 'Question 1',
+                    'options'      => ['A', 'B', 'C'],
+                    'correctIndex' => 0,
+                    'points'       => 10,
+                ],
+            ],
+            'passing_score'      => 75.00,
+            'status'             => 'Pending',
+            'expires_at'         => now()->addDays(7),
+        ]);
+
+        // Submit failing answer (chose option 1 instead of 0 -> 0% score)
+        $res = $this->postJson("/api/v1/assessment-invites/{$invite->token}/submit", [
+            'answers' => [1],
+        ]);
+
+        $res->assertOk();
+        $res->assertJsonFragment([
+            'result'      => 'Failed',
+            'total_score' => 0,
+        ]);
+
+        $applicant->refresh();
+        $this->assertEquals('Rejected', $applicant->stage);
+        $this->assertEquals('not-fit', $applicant->status);
+        $this->assertNotNull($applicant->rejected_at);
+        $this->assertEquals('Assessment Test', $applicant->rejectedAtStage());
+    }
 }
 
