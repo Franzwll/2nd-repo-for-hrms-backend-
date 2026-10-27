@@ -188,7 +188,7 @@ import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn, downloadTextFile } from "@/lib/utils";
 import { useHighlightId, highlightRowClass } from "@/hooks/useHighlight";
-import { getUser } from "@/lib/auth";
+import { getUser, roleKeyFor } from "@/lib/auth";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import {
   applicantDocumentsApi,
@@ -6719,6 +6719,7 @@ const TOP_FIVE_VISIBLE_CARDS = 3;
 
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
   const navigate = useNavigate();
+  const isSuperAdmin = role === "superadmin" || roleKeyFor(getUser()?.role) === "superadmin";
   const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
   const [showArchivedAndBlocked, setShowArchivedAndBlocked] = useState(false);
@@ -8419,6 +8420,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /* Function 2: Move to Specific Stage */
   const openMoveToStage = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may move an applicant across stages.");
+      return;
+    }
     setMoveToStageFor(a);
     setMoveToStageReason("");
     setMoveToStageTarget((a.stage as ReturnTargetStage) || "Screened");
@@ -8452,6 +8457,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /* Function 3: Reopen Application */
   const openReopen = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may reopen a closed application.");
+      return;
+    }
     setReopenFor(a);
     setReopenReason("");
     const allowed = a.allowedReturnStages && a.allowedReturnStages.length > 0
@@ -8489,6 +8498,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /* Function 4: Correct Hiring Decision */
   const openCorrectHiring = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may correct a hiring decision.");
+      return;
+    }
     setCorrectHiringFor(a);
     setCorrectHiringReason("");
     setCorrectHiringType("no_show");
@@ -8582,6 +8595,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /* Function 7: Block Applicant */
   const openBlock = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may block an applicant.");
+      return;
+    }
     setBlockFor(a);
     setBlockReason("");
     setBlockScope("all_jobs");
@@ -8617,6 +8634,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /* Function 8: Unblock Applicant */
   const openUnblock = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may lift a recruitment restriction.");
+      return;
+    }
     setUnblockFor(a);
     setUnblockReason("");
   };
@@ -15611,19 +15632,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                             ) : null}
                                             {/* Administrative Actions */}
                                             <DropdownMenuSeparator />
-                                            {a.stage !== "Rejected" ? (
-                                              <DropdownMenuItem onClick={() => openMoveToStage(a)}>
-                                                <ArrowRightCircle className="mr-2 h-3.5 w-3.5 text-primary" /> Move to stage...
-                                              </DropdownMenuItem>
-                                            ) : (
-                                              <DropdownMenuItem onClick={() => openReopen(a)}>
-                                                <RotateCcw className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Reopen application
-                                              </DropdownMenuItem>
-                                            )}
-                                            {(a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") && (
-                                              <DropdownMenuItem onClick={() => openCorrectHiring(a)}>
-                                                <ShieldAlert className="mr-2 h-3.5 w-3.5 text-amber-600" /> Correct hiring decision
-                                              </DropdownMenuItem>
+                                            {isSuperAdmin && (
+                                              <>
+                                                {a.stage !== "Rejected" ? (
+                                                  <DropdownMenuItem onClick={() => openMoveToStage(a)}>
+                                                    <ArrowRightCircle className="mr-2 h-3.5 w-3.5 text-primary" /> Move to stage...
+                                                  </DropdownMenuItem>
+                                                ) : (
+                                                  <DropdownMenuItem onClick={() => openReopen(a)}>
+                                                    <RotateCcw className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Reopen application
+                                                  </DropdownMenuItem>
+                                                )}
+                                                {(a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") && (
+                                                  <DropdownMenuItem onClick={() => openCorrectHiring(a)}>
+                                                    <ShieldAlert className="mr-2 h-3.5 w-3.5 text-amber-600" /> Correct hiring decision
+                                                  </DropdownMenuItem>
+                                                )}
+                                              </>
                                             )}
                                             {!a.isArchived ? (
                                               <DropdownMenuItem onClick={() => openArchive(a)}>
@@ -15634,17 +15659,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 <ArchiveRestore className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Restore applicant
                                               </DropdownMenuItem>
                                             )}
-                                            {!a.isActiveBlocked ? (
-                                              <DropdownMenuItem
-                                                className="text-destructive focus:text-destructive"
-                                                onClick={() => openBlock(a)}
-                                              >
-                                                <Ban className="mr-2 h-3.5 w-3.5" /> Block applicant
-                                              </DropdownMenuItem>
-                                            ) : (
-                                              <DropdownMenuItem onClick={() => openUnblock(a)}>
-                                                <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Lift block restriction
-                                              </DropdownMenuItem>
+                                            {isSuperAdmin && (
+                                              !a.isActiveBlocked ? (
+                                                <DropdownMenuItem
+                                                  className="text-destructive focus:text-destructive"
+                                                  onClick={() => openBlock(a)}
+                                                >
+                                                  <Ban className="mr-2 h-3.5 w-3.5" /> Block applicant
+                                                </DropdownMenuItem>
+                                              ) : (
+                                                <DropdownMenuItem onClick={() => openUnblock(a)}>
+                                                  <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Lift block restriction
+                                                </DropdownMenuItem>
+                                              )
                                             )}
                                           </DropdownMenuContent>
                                         </DropdownMenu>
