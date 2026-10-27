@@ -59,14 +59,21 @@ class AssessmentRequirement
         // 1. Core HCM Position flag (Department & Position module) — OWNER.
         //    Every applicant for this position must undergo the assessment test.
         $pos = $corePosition ?? ($jobPost ? $jobPost->position : null);
-        if ($pos && (bool) $pos->requires_assessment) {
-            return true;
+        if (! $pos && $jobPost && $jobPost->position_id) {
+            $pos = CorePosition::find($jobPost->position_id);
+        }
+        if (! $pos && $position) {
+            $pos = CorePosition::where('title', trim($position))->first();
+        }
+
+        if ($pos !== null && $pos->requires_assessment !== null) {
+            return (bool) $pos->requires_assessment;
         }
 
         // 2. Legacy job post flag (Recruitment Management toggle, removed).
         //    Read-only fallback for old rows — new posts never write it.
-        if ($jobPost && (bool) $jobPost->requires_assessment) {
-            return true;
+        if ($jobPost && $jobPost->requires_assessment !== null) {
+            return (bool) $jobPost->requires_assessment;
         }
 
         // 3. Fallback: designated positions list

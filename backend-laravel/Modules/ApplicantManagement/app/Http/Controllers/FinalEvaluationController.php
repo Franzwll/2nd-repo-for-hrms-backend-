@@ -113,6 +113,7 @@ class FinalEvaluationController extends Controller
             'recommendation'       => ['required', 'string', 'in:Recommended for Hire,For Another Position,Not Recommended'],
             'overall_remarks'      => ['nullable', 'string'],
             'recommended_job_post_id' => ['nullable', 'integer', 'exists:job_posts,job_post_id'],
+            'acknowledge_discrepancies' => ['nullable', 'boolean'],
         ]);
         // NOTE: overall_score / scores from the client are intentionally NOT
         // in the validation list — they are ignored and recalculated below.
@@ -152,13 +153,14 @@ class FinalEvaluationController extends Controller
                     'message' => 'Required evaluation data is incomplete — the Overall Score could not be calculated.',
                 ], 422);
             }
-            // Blocking verification: proven resume/document mismatch.
+            // Verification check: proven resume/document mismatch.
             $blocking = ApplicantDocument::where('applicant_id', $applicant)
                 ->where('verification_status', 'DISCREPANCY_FOUND')
                 ->count();
-            if ($blocking > 0) {
+            if ($blocking > 0 && ! $request->boolean('acknowledge_discrepancies')) {
                 return response()->json([
-                    'message' => 'There is an unresolved document verification discrepancy. Resolve it before recommending for hire.',
+                    'message' => 'There is an unresolved document verification discrepancy. Resolve it or acknowledge the warning before recommending for hire.',
+                    'blocking_verification_issues' => $blocking,
                 ], 422);
             }
         }
@@ -257,17 +259,18 @@ class FinalEvaluationController extends Controller
         }
 
         $overallText = $calc['overall_score'] !== null ? round($calc['overall_score'], 1).'%' : 'n/a';
+        $discrepancyNote = ($blocking ?? 0) > 0 ? " — [{$blocking} document discrepancy(ies) acknowledged by HR]" : '';
         AuditLogger::log(
             action: 'Final Evaluation Completed',
             module: 'Applicant Management',
-            severity: 'Info',
+            severity: ($blocking ?? 0) > 0 ? 'Warning' : 'Info',
             targetType: 'Final Evaluation',
             targetId: (string) $final->final_evaluation_id,
             details: "Final evaluation for {$model->name} ({$positionTitle}) completed — "
                 . "Screening {$screeningScore}%, Interview {$interviewScore}%, "
                 . ($requiresAssessment ? "Assessment {$assessmentScore}%" : 'Assessment Not Required')
                 . ($requiresPractical ? ", Practical {$practicalScore}%" : ', Practical Not Required')
-                . " — Overall {$overallText} (system calculated) — Recommendation: {$final->recommendation}."
+                . " — Overall {$overallText} (system calculated) — Recommendation: {$final->recommendation}{$discrepancyNote}."
         );
 
         NotificationService::send(

@@ -54,14 +54,21 @@ class PracticalRequirement
 
         // 1. Core HCM Position flag (Department & Position module) — OWNER.
         $pos = $corePosition ?? ($jobPost ? $jobPost->position : null);
-        if ($pos && (bool) $pos->requires_practical) {
-            return true;
+        if (! $pos && $jobPost && $jobPost->position_id) {
+            $pos = CorePosition::find($jobPost->position_id);
+        }
+        if (! $pos && $position) {
+            $pos = CorePosition::where('title', trim($position))->first();
+        }
+
+        if ($pos !== null && $pos->requires_practical !== null) {
+            return (bool) $pos->requires_practical;
         }
 
         // 2. Legacy job post flag (Recruitment Management toggle, removed).
         //    Read-only fallback for old rows — new posts never write it.
-        if ($jobPost && (bool) $jobPost->requires_practical) {
-            return true;
+        if ($jobPost && $jobPost->requires_practical !== null) {
+            return (bool) $jobPost->requires_practical;
         }
 
         return self::forPosition($position ?? $jobPost?->title ?? $pos?->title);

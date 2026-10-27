@@ -273,7 +273,7 @@ class ApplicantManagementController extends Controller
         );
 
         return response()->json(
-            new ApplicantResource($applicant->load(['jobPost.department'])),
+            new ApplicantResource($applicant->load(['jobPost.department', 'jobPost.position'])),
             201
         );
     }
@@ -316,6 +316,7 @@ class ApplicantManagementController extends Controller
     {
         $model = Applicant::with([
             'jobPost.department',
+            'jobPost.position',
             'screeningEntities',
             'screeningScores',
             'interviews',
@@ -485,6 +486,7 @@ class ApplicantManagementController extends Controller
             'data'      => $screening,
             'applicant' => new ApplicantResource($model->fresh([
                 'jobPost.department',
+                'jobPost.position',
                 'screeningEntities',
                 'screeningScores',
                 'latestScreening',
@@ -760,7 +762,7 @@ class ApplicantManagementController extends Controller
         unset($data['resume']);
 
         $model->update($data);
-        $model->refresh()->load(['jobPost.department', 'screeningEntities', 'screeningScores', 'interviews', 'assessment']);
+        $model->refresh()->load(['jobPost.department', 'jobPost.position', 'screeningEntities', 'screeningScores', 'interviews', 'assessment']);
 
         // Re-screen automatically when the resume was replaced.
         if (isset($data['resume_file_path']) && $model->job_post_id) {
@@ -986,7 +988,7 @@ class ApplicantManagementController extends Controller
             }
         }
 
-        return response()->json(new ApplicantResource($model->load(['jobPost.department'])));
+        return response()->json(new ApplicantResource($model->load(['jobPost.department', 'jobPost.position'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -1097,7 +1099,7 @@ class ApplicantManagementController extends Controller
             'reason'       => ['required', 'string', 'max:1000'],
         ]);
 
-        $model = Applicant::with(['jobPost.department'])->findOrFail($applicant);
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
         $fromStage = $model->stage;
 
         $allowedStages = $this->allowedReturnStages($model);
@@ -1210,7 +1212,7 @@ class ApplicantManagementController extends Controller
             onlyRoleNames: ['Admin', 'Super Admin'],
         );
 
-        return response()->json(new ApplicantResource($model->fresh(['jobPost.department'])));
+        return response()->json(new ApplicantResource($model->fresh(['jobPost.department', 'jobPost.position'])));
     }
 
     /**
@@ -1299,7 +1301,7 @@ class ApplicantManagementController extends Controller
             'reason'       => ['required', 'string', 'max:1000'],
         ]);
 
-        $model = Applicant::with(['jobPost.department'])->findOrFail($applicant);
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
         $fromStage = $model->stage;
         $targetStage = $validated['target_stage'];
 
@@ -1425,7 +1427,7 @@ class ApplicantManagementController extends Controller
             onlyRoleNames: ['Admin', 'Super Admin'],
         );
 
-        return response()->json(new ApplicantResource($model->fresh(['jobPost.department'])));
+        return response()->json(new ApplicantResource($model->fresh(['jobPost.department', 'jobPost.position'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -1446,7 +1448,7 @@ class ApplicantManagementController extends Controller
             'reason'       => ['required', 'string', 'max:1000'],
         ]);
 
-        $model = Applicant::with(['jobPost.department'])->findOrFail($applicant);
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
 
         if ($model->stage !== 'Rejected') {
             return response()->json([
@@ -1521,7 +1523,7 @@ class ApplicantManagementController extends Controller
             onlyRoleNames: ['Admin', 'Super Admin'],
         );
 
-        return response()->json(new ApplicantResource($model->fresh(['jobPost.department'])));
+        return response()->json(new ApplicantResource($model->fresh(['jobPost.department', 'jobPost.position'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -1543,7 +1545,7 @@ class ApplicantManagementController extends Controller
             'apply_cooldown'  => ['nullable', 'boolean'],
         ]);
 
-        $model = Applicant::with(['jobPost.department'])->findOrFail($applicant);
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
 
         if ($model->stage !== 'Hired') {
             return response()->json([
@@ -1632,7 +1634,7 @@ class ApplicantManagementController extends Controller
             onlyRoleNames: ['Admin', 'Super Admin'],
         );
 
-        return response()->json(new ApplicantResource($model->fresh(['jobPost.department'])));
+        return response()->json(new ApplicantResource($model->fresh(['jobPost.department', 'jobPost.position'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -1885,7 +1887,7 @@ class ApplicantManagementController extends Controller
 
     public function sendEmail(Request $request, int $applicant): JsonResponse
     {
-        $model = Applicant::with(['jobPost.department'])->findOrFail($applicant);
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
 
         $type = $request->input('type', 'accept'); // 'accept' | 'reject' | 'offer'
         $positionTitle = $request->input('position', $model->jobPost?->title ?? 'Position');

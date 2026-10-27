@@ -90,7 +90,20 @@ class PositionController extends Controller
 
     public function update(UpdatePositionRequest $request, Position $position): JsonResponse
     {
-        $position->update($request->validated());
+        $validated = $request->validated();
+        $position->update($validated);
+
+        if (array_key_exists('requires_assessment', $validated) || array_key_exists('requires_practical', $validated)) {
+            $sync = [];
+            if (array_key_exists('requires_assessment', $validated)) {
+                $sync['requires_assessment'] = (bool) $validated['requires_assessment'];
+            }
+            if (array_key_exists('requires_practical', $validated)) {
+                $sync['requires_practical'] = (bool) $validated['requires_practical'];
+            }
+            \Modules\RecruitmentManagement\Models\JobPost::where('position_id', $position->position_id)->update($sync);
+        }
+
         HcmCache::flush();
 
         return response()->json([

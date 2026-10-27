@@ -280,4 +280,7 @@ Route::prefix('v1')
 
           Route::post('applicant-documents/{applicantDocument}/verify', [ApplicantDocumentController::class, 'verify'])
                ->name('applicants.documents.verify');
+
+          Route::post('applicant-documents/{applicantDocument}/override', [ApplicantDocumentController::class, 'override'])
+               ->name('applicants.documents.override');
      });

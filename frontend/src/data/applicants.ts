@@ -787,9 +787,14 @@ export const ASSESSMENT_POSITIONS = [
 ];
 
 export const requiresAssessment = (
-  _position: string,
+  position: string,
   dbFlag?: boolean | null,
-) => dbFlag === true;
+) => {
+  if (typeof dbFlag === 'boolean') {
+    return dbFlag;
+  }
+  return ASSESSMENT_POSITIONS.includes(position);
+};
 
 /**
  * Positions designated to take a practical assessment. The Core HCM position
@@ -809,10 +814,15 @@ export const requiresPractical = (
   position: string,
   dbFlag?: boolean | null,
   _titleFallback?: string | null,
-) =>
-  dbFlag === true ||
-  PRACTICAL_POSITIONS.includes(position) ||
-  (_titleFallback ? PRACTICAL_POSITIONS.includes(_titleFallback) : false);
+) => {
+  if (typeof dbFlag === 'boolean') {
+    return dbFlag;
+  }
+  return (
+    PRACTICAL_POSITIONS.includes(position) ||
+    Boolean(_titleFallback && PRACTICAL_POSITIONS.includes(_titleFallback))
+  );
+};
 
 /** Top-candidate tiers per the ranking rules:
  * 1 — completed proof of resume content (COE/certificates/credentials/others,

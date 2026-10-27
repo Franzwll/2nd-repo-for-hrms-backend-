@@ -2852,6 +2852,7 @@ function ScreeningSupportDocsGrid({
   onDownload,
   reverifyingId = null,
   onReverify,
+  onOverride,
   title = "Supporting Documents",
   subtitle = "These documents help verify the applicant's information.",
   showResume = true,
@@ -2865,6 +2866,7 @@ function ScreeningSupportDocsGrid({
   onDownload: (d: ApiApplicantDocument) => void;
   reverifyingId?: string | null;
   onReverify?: ((d: ApiApplicantDocument) => void) | undefined;
+  onOverride?: ((d: ApiApplicantDocument) => void) | undefined;
   title?: string;
   subtitle?: string;
   /** The resume card belongs to "Resume & Documents"; the Supporting Document
@@ -3022,6 +3024,19 @@ function ScreeningSupportDocsGrid({
                       <p className="text-xs leading-relaxed text-muted-foreground">
                         {d.verification_result.summary}
                       </p>
+                    )}
+                    {onOverride && d.verification_status === "DISCREPANCY_FOUND" && (
+                      <div className="pt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full h-7 text-[0.7rem] border-primary/40 text-primary hover:bg-primary/10"
+                          disabled={busy}
+                          onClick={() => onOverride(d)}
+                        >
+                          <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Resolve Discrepancy (HR Override)
+                        </Button>
+                      </div>
                     )}
                     {checks.length === 0 ? (
                       <p className="text-xs italic text-muted-foreground">
@@ -5124,15 +5139,15 @@ function ApplicantViewScreen({
     requiresPrac &&
     (a.stage === "Practical Test" ||
       (requiresTest
-        ? a.stage === "Assessment Test" && test?.result === "Passed"
+        ? (a.stage === "Assessment Test" || a.stage === "Assessed") && test?.result === "Passed"
         : a.stage === "Assessed" && assessment?.result === "Passed"));
   const readyForFinal =
     ((requiresTest
-      ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Final Evaluation") && test?.result === "Passed"
+      ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") && test?.result === "Passed"
       : (a.stage === "Assessed" || a.stage === "Final Evaluation") && assessment?.result === "Passed") &&
       (!requiresPrac || practical?.result === "Passed")) ||
     (!requiresTest &&
-      (a.stage === "Practical Test" || a.stage === "Final Evaluation") &&
+      (a.stage === "Practical Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
       (!requiresPrac || practical?.result === "Passed"));
 
   const tier = computeTopCandidateTier(
@@ -5490,12 +5505,12 @@ function ApplicantViewScreen({
                     <span className="font-medium">Reason:</span> {history.block.reason}
                     {history.block.scope && (
                       <span className="ml-2 font-medium">
-                        (Scope: {history.block.scope === "all_jobs" ? "All Positions" : `Position ${history.block.scope_job_id ?? ""}`})
+                        (Scope: {history.block.scope === "all_jobs" ? "All Positions" : `Position ${(history.block as any).scope_job_id ?? ""}`})
                       </span>
                     )}
-                    {history.block.expires_at && (
+                    {(history.block as any).expires_at && (
                       <span className="ml-2">
-                        Expires: {new Date(history.block.expires_at).toLocaleDateString()}
+                        Expires: {new Date((history.block as any).expires_at).toLocaleDateString()}
                       </span>
                     )}
                   </p>
@@ -5543,19 +5558,6 @@ function ApplicantViewScreen({
                     <Badge variant="secondary" className="text-[11px]">
                       Current
                     </Badge>
-                  )}
-                  {row.matched_rules && row.matched_rules.length > 0 && (
-                    <span className="flex flex-wrap items-center gap-1">
-                      {row.matched_rules.map((rule) => (
-                        <Badge
-                          key={rule}
-                          variant="outline"
-                          className="border-primary/40 bg-primary/10 text-[10px] text-primary"
-                        >
-                          Matched: {rule}
-                        </Badge>
-                      ))}
-                    </span>
                   )}
                 </div>
               ))}
@@ -6738,7 +6740,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // Hired applicants leave the pipeline (they move to New Hire Onboarding);
     // rejected applicants stay in the list, only labelled as "Rejected".
     const listParams: Record<string, any> = { exclude_stages: "Hired" };
-    if (showArchivedAndBlocked) listParams.only_hidden = "1";
+    if (showArchivedAndBlocked) listParams["only_hidden"] = "1";
     try {
       if (!hasLoadedRef.current) setLoading(true);
       const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
@@ -6993,6 +6995,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [reverifyingDocId, setReverifyingDocId] = useState<string | null>(null);
   /** True while the ranking is being recomputed with the document evidence. */
   const [recomputingRanking, setRecomputingRanking] = useState(false);
+  /** Document discrepancy override */
+  const [overrideDocFor, setOverrideDocFor] = useState<ApiApplicantDocument | null>(null);
+  const [overrideDocReason, setOverrideDocReason] = useState("");
+  const [overrideDocBusy, setOverrideDocBusy] = useState(false);
   const [assessmentFilter, setAssessmentFilter] = useState<"ready" | "completed" | "all">("all");
   /** "Recommend to other Position" — applicant whose alternative position is
    *  being chosen; confirming saves the decision and emails the offer. */
@@ -7803,6 +7809,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       cancelled = true;
     };
   }, [review?.id]);
+
+  /** Manually overrides / resolves a supporting-document discrepancy (HR review). */
+  const overrideDocumentDiscrepancy = async (doc: ApiApplicantDocument, reason?: string) => {
+    const key = String(doc.applicant_document_id);
+    setOverrideDocBusy(true);
+    try {
+      const updated = await applicantDocumentsApi.override(doc.applicant_document_id, reason);
+      setReviewDocVerifications((prev) => ({ ...prev, [key]: updated }));
+      toast.success("Discrepancy resolved — document marked as Verified.");
+      setOverrideDocFor(null);
+      setOverrideDocReason("");
+      if (review?.dbId) {
+        const res = await applicantsApi.recomputeScreening(review.dbId);
+        const updatedApplicant = transformApiApplicant(res.applicant);
+        setRows((prev) => prev.map((r) => (r.id === updatedApplicant.id ? updatedApplicant : r)));
+        setReview((prev) => (prev && prev.id === updatedApplicant.id ? updatedApplicant : prev));
+      }
+    } catch (e: any) {
+      console.warn("Override failed:", e);
+      toast.error(e?.message || "Could not resolve the discrepancy.");
+    } finally {
+      setOverrideDocBusy(false);
+    }
+  };
 
   /** Re-runs supporting-document verification against the resume claims. */
   const reverifyDocument = async (doc: ApiApplicantDocument) => {
@@ -10191,6 +10221,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const saveFinalEvaluation = async (
     recommendation: FinalRecommendation,
     recommendedJobPostId?: string,
+    acknowledgeDiscrepancies?: boolean,
   ) => {
     if (!finalizing) return;
     // Whoever signs off the final decision must be recorded — required.
@@ -10253,6 +10284,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           evaluation_date: finalDate,
           recommendation,
           overall_remarks: finalRemarks || null,
+          acknowledge_discrepancies: Boolean(acknowledgeDiscrepancies),
           ...(recommendation === "For Another Position" && altJobPostId
             ? { recommended_job_post_id: Number(altJobPostId) }
             : {}),
@@ -10743,12 +10775,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             className="border-success/40 text-success hover:bg-success/10 hover:text-success"
             onClick={() => {
               if (!requireAssessor()) return;
-              askConfirm({
-                title: "Mark this candidate as Passed?",
-                description: `${finalizing.name} will be evaluated as "Recommended for Hire" and the offer email will be sent — the applicant has 7 days to respond.`,
-                confirmLabel: "Yes, Passed — send offer",
-                onConfirm: () => void saveFinalEvaluation("Recommended for Hire"),
-              });
+              const hasDiscrepancy = (finalPreview?.blocking_verification_issues ?? 0) > 0;
+              if (hasDiscrepancy) {
+                askConfirm({
+                  title: "Acknowledge Document Discrepancy?",
+                  description: `${finalizing.name} has ${finalPreview?.blocking_verification_issues} unresolved document verification discrepancy(ies). Do you wish to acknowledge the warning and proceed to mark as Passed / send the offer?`,
+                  confirmLabel: "Acknowledge & Send Offer",
+                  onConfirm: () => void saveFinalEvaluation("Recommended for Hire", undefined, true),
+                });
+              } else {
+                askConfirm({
+                  title: "Mark this candidate as Passed?",
+                  description: `${finalizing.name} will be evaluated as "Recommended for Hire" and the offer email will be sent — the applicant has 7 days to respond.`,
+                  confirmLabel: "Yes, Passed — send offer",
+                  onConfirm: () => void saveFinalEvaluation("Recommended for Hire"),
+                });
+              }
             }}
           >
             <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
@@ -11126,16 +11168,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           requiresPrac &&
           (a.stage === "Practical Test" ||
             (requiresTest
-              ? a.stage === "Assessment Test" && test?.result === "Passed"
+              ? (a.stage === "Assessment Test" || a.stage === "Assessed") && test?.result === "Passed"
               : a.stage === "Assessed" && assessment?.result === "Passed"));
         const readyForFinal =
           ((requiresTest
-            ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Final Evaluation") &&
+            ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
               test?.result === "Passed"
             : (a.stage === "Assessed" || a.stage === "Final Evaluation") && assessment?.result === "Passed") &&
             (!requiresPrac || practical?.result === "Passed")) ||
           (!requiresTest &&
-            (a.stage === "Practical Test" || a.stage === "Final Evaluation") &&
+            (a.stage === "Practical Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
             (!requiresPrac || practical?.result === "Passed"));
         return {
           a,
@@ -14750,24 +14792,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </Button>
                     </div>
                   </div>
-                  {showArchivedAndBlocked && (
-                    <div className="mt-3 flex items-center justify-between rounded-md border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-900 dark:text-amber-200">
-                      <div className="flex items-center gap-2">
-                        <Archive className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
-                        <span>
-                          Viewing <strong>Archived &amp; Blocked Applicants</strong> only. Active pipeline candidates are hidden.
-                        </span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs font-semibold hover:bg-amber-500/20"
-                        onClick={() => setShowArchivedAndBlocked(false)}
-                      >
-                        Return to Active Pipeline
-                      </Button>
-                    </div>
-                  )}
                   <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
                     <ListBody>
                       <Table className="table-fixed text-xs min-w-[980px]">
@@ -15596,7 +15620,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 <RotateCcw className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Reopen application
                                               </DropdownMenuItem>
                                             )}
-                                            {(a.stage === "Hired" || a.stage === "Offer" || a.status === "hired") && (
+                                            {(a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") && (
                                               <DropdownMenuItem onClick={() => openCorrectHiring(a)}>
                                                 <ShieldAlert className="mr-2 h-3.5 w-3.5 text-amber-600" /> Correct hiring decision
                                               </DropdownMenuItem>
@@ -15639,7 +15663,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 );
                               },
                             )}
-                          {pipelinePage.pageItems.length === 0 && (
+                          {!loading && pipelinePage.pageItems.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={9} className="py-10 text-center">
                                 <div className="mx-auto max-w-xs space-y-1.5">
@@ -16286,6 +16310,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           )
                         }
                         onReverify={reverifyDocument}
+                        onOverride={(d) => {
+                          setOverrideDocFor(d);
+                          setOverrideDocReason("Manually reviewed and verified by HR.");
+                        }}
                       />
 
                       <ScreeningDetailsAccordion
@@ -17582,11 +17610,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </p>
                       )}
                       {preview && preview.blocking_verification_issues > 0 && (
-                        <p className="text-xs text-destructive">
-                          ⚠ {preview.blocking_verification_issues} document verification
-                          discrepanc{preview.blocking_verification_issues === 1 ? "y" : "ies"} must
-                          be resolved before “Recommended for Hire”.
-                        </p>
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
+                          <div className="flex items-center gap-1.5 font-semibold">
+                            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                            <span>
+                              {preview.blocking_verification_issues} document verification discrepanc
+                              {preview.blocking_verification_issues === 1 ? "y" : "ies"} detected
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                            You can resolve this in Supporting Documents (via Manual Override) or proceed to recommend for hire by acknowledging the warning.
+                          </p>
+                        </div>
                       )}
                       <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 md:grid-cols-[minmax(0,240px)_minmax(0,170px)_minmax(0,1fr)]">
                         <div className="space-y-1.5">
@@ -17859,6 +17894,65 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <CheckCircle2 className="mr-1.5 h-4 w-4" />
                   )}
                   Record acceptance &amp; send to onboarding
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* RESOLVE DOCUMENT DISCREPANCY (HR OVERRIDE) */}
+      <Dialog open={!!overrideDocFor} onOpenChange={(o) => !o && setOverrideDocFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          {overrideDocFor && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 font-display text-xl">
+                  <ShieldCheck className="h-5 w-5 text-primary" /> Resolve Document Discrepancy
+                </DialogTitle>
+                <DialogDescription>
+                  Override the discrepancy for{" "}
+                  <span className="font-medium text-foreground">
+                    {overrideDocFor.title || overrideDocFor.original_name || `Document #${overrideDocFor.applicant_document_id}`}
+                  </span>
+                  . This changes the status to Verified and removes the blocking issue so the applicant can be hired.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                {overrideDocFor.verification_result?.summary && (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
+                    <span className="font-semibold">Detected Issue: </span>
+                    {overrideDocFor.verification_result.summary}
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label>HR Resolution Note / Justification (optional)</Label>
+                  <Textarea
+                    rows={3}
+                    value={overrideDocReason}
+                    onChange={(e) => setOverrideDocReason(e.target.value)}
+                    placeholder="e.g. Confirmed employment dates directly with previous employer HR."
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setOverrideDocFor(null)}
+                  disabled={overrideDocBusy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={overrideDocBusy}
+                  onClick={() => void overrideDocumentDiscrepancy(overrideDocFor, overrideDocReason)}
+                >
+                  {overrideDocBusy ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                  )}
+                  Confirm &amp; Mark Verified
                 </Button>
               </DialogFooter>
             </>

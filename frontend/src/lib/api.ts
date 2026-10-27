@@ -1185,6 +1185,11 @@ export const applicantDocumentsApi = {
    *  resume claims (e.g. after the resume was re-screened). */
   verify: (id: number | string) =>
     request<ApiApplicantDocument>(`/applicant-documents/${id}/verify`, { method: "POST" }),
+  override: (id: number | string, reason?: string) =>
+    request<ApiApplicantDocument>(`/applicant-documents/${id}/override`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   /** Streams the stored supporting-document file from the backend —
    *  same-origin (relative) so PDFs/images render inline in a new tab,
    *  with ?token= auth like the resume preview. Pass download=true to
