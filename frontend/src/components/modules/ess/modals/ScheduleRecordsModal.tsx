@@ -49,7 +49,7 @@ const STATUS_LABEL: Record<DayStatus, string> = {
   late: "Late",
   absent: "Absent",
   leave: "Leave",
-  rest: "Rest Day",
+  rest: "Off",
 };
 
 function statusOf(h: any): DayStatus | null {
@@ -166,12 +166,12 @@ function StatusDayButton({
   );
 }
 
-const LEGEND: { status: DayStatus; label: string; short: string }[] = [
-  { status: "present", label: "Present", short: "PRE" },
-  { status: "late", label: "Late", short: "LAT" },
-  { status: "absent", label: "Absent", short: "ABS" },
-  { status: "leave", label: "Leave", short: "LVE" },
-  { status: "rest", label: "Rest Day", short: "RST" },
+const LEGEND: { status: DayStatus; label: string }[] = [
+  { status: "present", label: "Present" },
+  { status: "late", label: "Late" },
+  { status: "absent", label: "Absent" },
+  { status: "leave", label: "Leave" },
+  { status: "rest", label: "Off" },
 ];
 
 const NAV_BUTTON_CLASS =
@@ -418,12 +418,10 @@ export function ScheduleRecordsModal({
               {LEGEND.map((l) => (
                 <span
                   key={l.status}
-                  title={l.label}
-                  aria-label={l.label}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-2 py-0.5 font-semibold tracking-wide"
                 >
                   <span className={cn("h-2 w-2 rounded-full", DOT_CLASS[l.status])} />
-                  {l.short}
+                  {l.label}
                 </span>
               ))}
             </div>

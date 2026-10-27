@@ -550,19 +550,11 @@ export function EssPerformanceTab() {
                 {filteredCourses.map((c) => {
                   const i = courses.indexOf(c);
                   const pct = courseProgress(c);
-                  const urgent = urgentReason(c);
                   return (
                     <div
                       key={c.id}
-                      className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl border bg-gradient-to-br ${courseTheme(i)} p-5 text-foreground shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md dark:text-white ${urgent ? "ring-2 ring-red-500/80" : ""}`}
+                      className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl border bg-gradient-to-br ${courseTheme(i)} p-5 text-foreground shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md dark:text-white`}
                     >
-                      {urgent && (
-                        <span
-                          title={urgent}
-                          aria-label={`Urgent: ${urgent}`}
-                          className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-background bg-red-600 shadow-sm dark:border-white/90"
-                        />
-                      )}
                       {/* geometric overlay */}
                       <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-50 dark:opacity-25">
                         <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[10px] border-foreground/10 dark:border-white/15" />

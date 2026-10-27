@@ -435,8 +435,9 @@ Port the mockup's engine, **re-sequenced per §10** — reading must complete **
 `idle → loading → reading → (reading_completed) → confirm → quiz(question i) → result(score/review) → certificate`
 
 The quiz is never started by the click that opens it. The bank is loaded first, then a
-**confirmation panel** shows the item count, pass mark and time limit and warns that there is
+**confirmation panel** shows the item count and time limit and warns that there is
 **one attempt only**. The countdown starts only when the employee presses **Start assessment**.
+The pass mark is not shown before or during the attempt; it appears in the post-submit result.
 
 > ⚠️ The mockup shows **reading and quiz side by side** — that is **not** the decided flow.
 > The decided flow is **read → then quiz** (§10). Do not port the side-by-side layout as-is.
@@ -463,6 +464,12 @@ The quiz is never started by the click that opens it. The bank is loaded first, 
   correct option, and a failed result offers **Close** instead of a retake button.
 - If the GET returns `409 retake_not_allowed`, Stage 2 shows a locked panel with the failed
   score and a **Review handbook** action; no questions are rendered.
+- **Read-aloud (browser TTS):** a **Listen** control reads the handbook text, and a **Listen
+  to this** control in the quiz header reads the full quiz; each quiz question and
+  result-review item also has a compact speaker button (question + options, or the employee's
+  own answer — never the answer key); the locked panel and result summary can also be read.
+  Uses the Web Speech API, is hidden when the browser does not support it, and speech stops
+  when the stage changes, the modal closes, or the player unmounts.
 - Props: `{ open, onOpenChange, course, onCompleted }`.
 
 ### 5c. `EssPerformanceTab.tsx` edits (small, localized)
@@ -512,6 +519,7 @@ The quiz is never started by the click that opens it. The bank is loaded first, 
 | 4 | Deterministic fallback bank, timer, retake, flag, **per-attempt question/option shuffle**, polish | ✅ `2aba8a1` |
 | 4.1 | Verification pass (real HTTP round-trip) + **completed-course lock** — an already-`Completed` module cannot re-open the assessment or report a stale score | ✅ this commit |
 | 4.2 | **Pre-quiz confirmation**, **no answer key in the post-submit review**, and **no retake after a failed attempt** (`quiz_failed` card state + `409 retake_not_allowed`) | ✅ this commit |
+| 4.3 | **Read-aloud (browser TTS)** for the handbook, quiz questions, result review, and locked panel | ✅ this commit |
 | 5 *(opt)* | HR admin review column (surface `completion_source` + score) | ⬜ |
 
 Rough shape: phases 0–3 = a working version; 4–5 = hardening.

@@ -331,7 +331,7 @@ export const myBenefits = [
   { name: "PhilHealth", value: "12-345678901-2", note: "Active" },
   { name: "Pag-IBIG", value: "1234-5678-9012", note: "Active + MP2" },
   { name: "BIR Tax Status", value: "S — Single", note: "TIN 123-456-789" },
-  { name: "HMO", value: "Maxicare Platinum", note: "Effective after regularization" },
+  { name: "HMO", value: "iCare Platinum", note: "Effective after regularization" },
   { name: "Insurance", value: "Group Life", note: "₱500,000 coverage" },
 ];
 

@@ -194,7 +194,7 @@ export function EssAiAssistantModal({
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
-        text: `**Employee Benefits & Statutory Support:**\n\n• **HMO Healthcare (Maxicare)**:\n  - Comprehensive Inpatient & Outpatient medical coverage.\n  - Annual Physical Examination (APE) scheduled every Q1.\n  - Dependent enrollment window is open during regularization or annual renewal.\n• **Statutory Government Contributions**:\n  - SSS, PhilHealth, and Pag-IBIG are automatically computed and remitted.\n• **Salary & Calamity Loans**:\n  - Apply directly on Member SSS / Virtual Pag-IBIG portals; HR verifies billing statements within 3 working days.`,
+        text: `**Employee Benefits & Statutory Support:**\n\n• **HMO Healthcare (iCare - Insular Health Care)**:\n  - Comprehensive Inpatient & Outpatient medical coverage.\n  - Annual Physical Examination (APE) scheduled every Q1.\n  - Dependent enrollment window is open during regularization or annual renewal.\n• **Statutory Government Contributions**:\n  - SSS, PhilHealth, and Pag-IBIG are automatically computed and remitted.\n• **Salary & Calamity Loans**:\n  - Apply directly on Member SSS / Virtual Pag-IBIG portals; HR verifies billing statements within 3 working days.`,
         timestamp: timeStr,
       };
     }
@@ -300,7 +300,7 @@ export function EssAiAssistantModal({
     {
       icon: ShieldCheck,
       title: "HMO & Medical",
-      desc: "What does my Maxicare HMO cover?",
+      desc: "What does my iCare HMO cover?",
       color: "text-purple-600 bg-purple-500/10",
       query: "What does my HMO healthcare cover?",
     },

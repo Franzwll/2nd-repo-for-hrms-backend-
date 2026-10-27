@@ -20,6 +20,8 @@ import {
   Lock,
   RotateCcw,
   ShieldCheck,
+  Square,
+  Volume2,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -115,6 +117,109 @@ function formatClock(totalSeconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/**
+ * Split text into short utterances. Chrome can silently stop a long
+ * SpeechSynthesisUtterance after ~15 seconds, so short chunks keep the
+ * handbook reading to the end.
+ */
+function buildSpeechChunks(text: string, maxLength = 240): string[] {
+  const clean = text
+    .replace(/\r/g, "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!clean) return [];
+
+  const chunks: string[] = [];
+  let current = "";
+
+  const push = () => {
+    if (current.trim()) chunks.push(current.trim());
+    current = "";
+  };
+
+  // Avoid a lookbehind regex so older Safari versions can still parse this file.
+  for (const sentence of clean.replace(/([.!?])\s+/g, "$1|").split("|")) {
+    if (sentence.length > maxLength) {
+      push();
+      for (const word of sentence.split(" ")) {
+        if (`${current} ${word}`.trim().length > maxLength) push();
+        current = current ? `${current} ${word}` : word;
+      }
+      push();
+    } else if (`${current} ${sentence}`.trim().length > maxLength) {
+      push();
+      current = sentence;
+    } else {
+      current = current ? `${current} ${sentence}` : sentence;
+    }
+  }
+
+  push();
+
+  return chunks;
+}
+
+function letter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
+function describeQuizQuestion(
+  question: { question: string; options: string[] },
+  index: number,
+): string {
+  return `Question ${index + 1}. ${question.question}. ${question.options
+    .map((option, optionIndex) => `Option ${letter(optionIndex)}. ${option}.`)
+    .join(" ")}`;
+}
+
+function SpeakControl({
+  speaking,
+  onClick,
+  label = "Listen",
+  compact = false,
+}: {
+  speaking: boolean;
+  onClick: () => void;
+  label?: string;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={speaking}
+        aria-label={speaking ? "Stop reading" : "Read aloud"}
+        title={speaking ? "Stop reading" : "Read aloud"}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+          speaking
+            ? "border-primary bg-primary/10 text-primary"
+            : "border-border/70 text-muted-foreground hover:border-primary/40 hover:text-primary"
+        }`}
+      >
+        {speaking ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+      </button>
+    );
+  }
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      className="gap-1.5 text-xs"
+      onClick={onClick}
+      aria-pressed={speaking}
+    >
+      {speaking ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+      {speaking ? "Stop" : label}
+    </Button>
+  );
+}
+
 /** Lightweight handbook renderer: headings, bullets and paragraphs (no MD dep). */
 function HandbookText({ text }: { text: string }) {
   const blocks = text
@@ -180,7 +285,84 @@ export function LmsActivityPlayer({
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [showFile, setShowFile] = useState(false);
 
+  // Text-to-speech is feature-detected after mount so SSR markup matches the
+  // first client render (the Web Speech API is browser-only).
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [speakingKey, setSpeakingKey] = useState<string | null>(null);
+  const speechRunRef = useRef(0);
+
   const singleStage = mode === "handbook" || mode === "quiz";
+
+  useEffect(() => {
+    setSpeechSupported(typeof window !== "undefined" && "speechSynthesis" in window);
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    speechRunRef.current += 1;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeakingKey(null);
+  }, []);
+
+  const speak = useCallback(
+    (key: string, text: string) => {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+      const synth = window.speechSynthesis;
+      const wasSpeaking = speakingKey === key;
+
+      speechRunRef.current += 1;
+      synth.cancel();
+
+      if (wasSpeaking) {
+        setSpeakingKey(null);
+        return;
+      }
+
+      const chunks = buildSpeechChunks(text);
+      if (chunks.length === 0) return;
+
+      const runId = speechRunRef.current;
+      setSpeakingKey(key);
+
+      chunks.forEach((chunk, index) => {
+        const utterance = new SpeechSynthesisUtterance(chunk);
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.lang = "en-US";
+        utterance.onend = () => {
+          if (speechRunRef.current === runId && index === chunks.length - 1) {
+            setSpeakingKey(null);
+          }
+        };
+        utterance.onerror = () => {
+          if (speechRunRef.current === runId) setSpeakingKey(null);
+        };
+        synth.speak(utterance);
+      });
+    },
+    [speakingKey],
+  );
+
+  // Stop audio when the modal closes, the stage changes, or the player unmounts.
+  useEffect(
+    () => () => {
+      speechRunRef.current += 1;
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!open) stopSpeaking();
+  }, [open, stopSpeaking]);
+
+  useEffect(() => {
+    stopSpeaking();
+  }, [stage, stopSpeaking]);
 
   const loadMaterial = useCallback(async (): Promise<LmsMaterial | null> => {
     try {
@@ -451,15 +633,25 @@ export function LmsActivityPlayer({
                     Mandatory
                   </Badge>
                 )}
-                {material.file_url && (
+                {(material.content || material.file_url) && (
                   <div className="ml-auto flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowFile((v) => !v)}
-                      className="font-semibold text-primary hover:underline"
-                    >
-                      {showFile ? "Show text version" : "Open original file"}
-                    </button>
+                    {material.content && speechSupported && (
+                      <SpeakControl
+                        speaking={speakingKey === "handbook"}
+                        onClick={() =>
+                          speak("handbook", `${material.course.title}. ${material.content}`)
+                        }
+                      />
+                    )}
+                    {material.file_url && (
+                      <button
+                        type="button"
+                        onClick={() => setShowFile((v) => !v)}
+                        className="font-semibold text-primary hover:underline"
+                      >
+                        {showFile ? "Show text version" : "Open original file"}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -503,10 +695,6 @@ export function LmsActivityPlayer({
                   <span className="font-semibold text-foreground">{quiz.total_items}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Pass mark</span>
-                  <span className="font-semibold text-foreground">{quiz.pass_mark}%</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Time limit</span>
                   <span className="font-semibold text-foreground">
                     {formatClock(quiz.time_limit_seconds)}
@@ -517,8 +705,7 @@ export function LmsActivityPlayer({
               <div className="flex max-w-md items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-left text-[11px] text-amber-800 dark:text-amber-300">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>
-                  You get <strong>one attempt</strong>. If you do not reach the {quiz.pass_mark}%
-                  pass mark, this assessment cannot be retaken.
+                  You get <strong>one attempt</strong>. This assessment cannot be retaken.
                 </p>
               </div>
 
@@ -554,6 +741,19 @@ export function LmsActivityPlayer({
                 </p>
               )}
               <div className="flex flex-wrap items-center justify-center gap-2">
+                {speechSupported && (
+                  <SpeakControl
+                    speaking={speakingKey === "locked"}
+                    onClick={() =>
+                      speak(
+                        "locked",
+                        `Assessment not passed. ${
+                          errorMsg || "You did not pass this assessment. Retakes are not allowed."
+                        }${lockedScore != null ? ` Your score: ${lockedScore} percent.` : ""}`,
+                      )
+                    }
+                  />
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -657,19 +857,32 @@ export function LmsActivityPlayer({
                   value={(answeredCount / Math.max(1, quiz.total_items)) * 100}
                   className="h-1.5 w-24"
                 />
-                <span className="text-[11px] text-muted-foreground">
-                  Pass mark {quiz.pass_mark}%
-                </span>
-                {secondsLeft != null && (
-                  <span
-                    className={`ml-auto flex items-center gap-1 font-mono text-xs font-bold ${
-                      secondsLeft <= 60 ? "text-red-600" : "text-foreground"
-                    }`}
-                    title="Time remaining"
-                  >
-                    <Clock className="h-3.5 w-3.5" /> {formatClock(secondsLeft)}
-                  </span>
-                )}
+                <div className="ml-auto flex items-center gap-2">
+                  {speechSupported && (
+                    <SpeakControl
+                      speaking={speakingKey === "quiz-all"}
+                      onClick={() =>
+                        speak(
+                          "quiz-all",
+                          `Quiz. ${quiz.total_items} questions. ${quiz.questions
+                            .map((q, index) => describeQuizQuestion(q, index))
+                            .join(" ")}`,
+                        )
+                      }
+                      label="Listen to this"
+                    />
+                  )}
+                  {secondsLeft != null && (
+                    <span
+                      className={`flex items-center gap-1 font-mono text-xs font-bold ${
+                        secondsLeft <= 60 ? "text-red-600" : "text-foreground"
+                      }`}
+                      title="Time remaining"
+                    >
+                      <Clock className="h-3.5 w-3.5" /> {formatClock(secondsLeft)}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {quiz.questions.map((q, index) => (
@@ -680,7 +893,16 @@ export function LmsActivityPlayer({
                   <legend className="px-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                     Question {index + 1} of {quiz.total_items}
                   </legend>
-                  <p className="text-sm font-semibold text-foreground">{q.question}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground">{q.question}</p>
+                    {speechSupported && (
+                      <SpeakControl
+                        compact
+                        speaking={speakingKey === `quiz-${q.id}`}
+                        onClick={() => speak(`quiz-${q.id}`, describeQuizQuestion(q, index))}
+                      />
+                    )}
+                  </div>
                   <div className="mt-2 space-y-1.5">
                     {q.options.map((option, optionIndex) => {
                       const selected = answers[q.id] === optionIndex;
@@ -777,9 +999,27 @@ export function LmsActivityPlayer({
                 </div>
               </div>
 
-              <p className="text-[11px] text-muted-foreground">
-                Your answers are shown below. Correct answers are not disclosed.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Your answers are shown below. Correct answers are not disclosed.
+                </p>
+                {speechSupported && (
+                  <SpeakControl
+                    speaking={speakingKey === "result-summary"}
+                    onClick={() =>
+                      speak(
+                        "result-summary",
+                        `Assessment ${
+                          result.passed ? "passed" : "not passed"
+                        }. Score ${result.score} percent. ${result.correct_count} of ${
+                          result.total_count
+                        } correct.${result.passed ? "" : " This assessment cannot be retaken."}`,
+                      )
+                    }
+                    label="Listen to result"
+                  />
+                )}
+              </div>
 
               <div className="space-y-2">
                 {result.review.map((item, index) => (
@@ -802,9 +1042,29 @@ export function LmsActivityPlayer({
                         )}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-foreground">
-                          {index + 1}. {item.question}
-                        </p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-semibold text-foreground">
+                            {index + 1}. {item.question}
+                          </p>
+                          {speechSupported && (
+                            <SpeakControl
+                              compact
+                              speaking={speakingKey === `review-${item.id}`}
+                              onClick={() =>
+                                speak(
+                                  `review-${item.id}`,
+                                  `Question ${index + 1}. ${item.question}. ${
+                                    item.your_index != null
+                                      ? `Your answer: ${letter(item.your_index)}. ${
+                                          item.options[item.your_index] ?? ""
+                                        }.`
+                                      : "No answer selected."
+                                  } ${item.is_correct ? "Correct." : "Incorrect."}`,
+                                )
+                              }
+                            />
+                          )}
+                        </div>
                         <p
                           className={`mt-1.5 rounded px-2 py-1 text-[11px] ${
                             item.is_correct
@@ -813,7 +1073,7 @@ export function LmsActivityPlayer({
                           }`}
                         >
                           {item.your_index != null
-                            ? `Your answer: ${String.fromCharCode(65 + item.your_index)}. ${
+                            ? `Your answer: ${letter(item.your_index)}. ${
                                 item.options[item.your_index] ?? ""
                               }`
                             : "No answer selected."}
@@ -834,7 +1094,7 @@ export function LmsActivityPlayer({
               <>
                 <p className="text-[11px] text-muted-foreground">
                   {readDone || alreadyCompleted
-                    ? "Reading completed — the quiz is unlocked."
+                    ? "Reading completed — the quiz is ready to take."
                     : "Mark the handbook as read to unlock the quiz."}
                 </p>
                 {readDone || alreadyCompleted ? (

@@ -501,7 +501,7 @@ class EssPortalController extends Controller
                 ['benefit_name' => 'Social Security System (SSS)', 'reference_value' => $employee->sss_number ?: '34-8921034-7', 'note' => 'Active monthly employer/employee contribution'],
                 ['benefit_name' => 'PhilHealth Insurance', 'reference_value' => $employee->philhealth_number ?: '12-050493821-4', 'note' => 'Category: Employed / Formal Sector'],
                 ['benefit_name' => 'Pag-IBIG / HDMF Fund', 'reference_value' => $employee->pagibig_number ?: '1210-9834-2918', 'note' => 'Regular HDMF Savings + MP2 Eligible'],
-                ['benefit_name' => 'Company HMO Plan (Maxicare)', 'reference_value' => 'MAX-8849-2026', 'note' => 'PHP 150,000 MBL per illness / 2 dependents covered'],
+                ['benefit_name' => 'Company HMO Plan (iCare)', 'reference_value' => 'IC-8849-1234', 'note' => 'PHP 150,000 MBL per illness / 2 dependents covered'],
                 ['benefit_name' => 'Duty Meals & Transportation Subsidy', 'reference_value' => 'PHP 3,000 / mo', 'note' => 'Non-taxable de minimis allowance'],
             ];
 

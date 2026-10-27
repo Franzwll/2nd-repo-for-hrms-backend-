@@ -88,7 +88,7 @@ const SUGGESTED_PROMPTS = [
   {
     icon: ShieldCheck,
     title: "HMO & Medical",
-    desc: "What does my Maxicare healthcare coverage include?",
+    desc: "What does my iCare healthcare coverage include?",
     color: "text-purple-600 bg-purple-500/10",
     query: "What does my HMO healthcare cover?",
   },
