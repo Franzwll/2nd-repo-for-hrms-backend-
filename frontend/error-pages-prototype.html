@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HRMS Error Pages — Oxford Suites Makati</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── Design tokens (from the Oxford Suites Makati HRMS) ─── */
+    :root {
+      --radius: 0.375rem;
+      --font-display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+      --font-sans: "Jost", ui-sans-serif, system-ui, sans-serif;
+
+      --background: oklch(0.988 0.005 85);
+      --foreground: oklch(0.24 0.02 30);
+      --card: oklch(1 0 0);
+      --card-foreground: oklch(0.24 0.02 30);
+      --primary: oklch(0.427 0.166 22.5);
+      --primary-foreground: oklch(0.985 0.006 85);
+      --muted: oklch(0.945 0.013 84);
+      --muted-foreground: oklch(0.52 0.022 45);
+      --accent: oklch(0.72 0.104 85);
+      --gold: oklch(0.72 0.104 85);
+      --gold-soft: oklch(0.955 0.032 88);
+      --border: oklch(0.9 0.012 80);
+      --destructive: oklch(0.535 0.187 26);
+    }
+
+    .dark {
+      --background: oklch(0.165 0.01 55);
+      --foreground: oklch(0.93 0.015 60);
+      --card: oklch(0.245 0.011 55);
+      --card-foreground: oklch(0.93 0.015 60);
+      --primary: oklch(0.53 0.19 22);
+      --primary-foreground: oklch(0.97 0.01 58);
+      --muted: oklch(0.325 0.011 59);
+      --muted-foreground: oklch(0.73 0.018 56);
+      --accent: oklch(0.78 0.11 88);
+      --gold: oklch(0.78 0.11 88);
+      --gold-soft: oklch(0.345 0.04 93);
+      --border: oklch(0.43 0.012 56);
+      --destructive: oklch(0.66 0.18 23);
+    }
+
+    /* ─── Reset & base ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      overflow-x: hidden;
+      transition: background-color 0.5s ease, color 0.4s ease;
+    }
+
+    .dark body {
+      background-image: radial-gradient(
+        1200px 500px at 50% -10%,
+        oklch(0.53 0.19 22 / 9%),
+        transparent 70%
+      );
+    }
+
+    h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; }
+
+    /* ─── Prototype controls (top bar) ─── */
+    .proto-bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 24px;
+      background: color-mix(in oklch, var(--card) 80%, transparent);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      transition: background 0.4s, border-color 0.4s;
+    }
+
+    .proto-bar__brand {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: var(--primary);
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .proto-bar__brand svg { width: 22px; height: 22px; }
+
+    .proto-tabs {
+      display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;
+    }
+
+    .proto-tab {
+      padding: 6px 16px; border-radius: 999px; border: none;
+      font-family: var(--font-sans); font-size: 0.8rem; font-weight: 500;
+      color: var(--muted-foreground); background: transparent;
+      cursor: pointer; transition: all 0.25s ease;
+      letter-spacing: 0.02em;
+    }
+
+    .proto-tab:hover {
+      color: var(--foreground);
+      background: var(--muted);
+    }
+
+    .proto-tab.active {
+      color: var(--primary-foreground);
+      background: var(--primary);
+      box-shadow: 0 2px 12px oklch(0.427 0.166 22.5 / 30%);
+    }
+
+    .dark .proto-tab.active {
+      box-shadow: 0 2px 12px oklch(0.53 0.19 22 / 35%);
+    }
+
+    .theme-toggle {
+      width: 38px; height: 38px; border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--card);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.3s;
+      color: var(--foreground);
+    }
+    .theme-toggle:hover {
+      background: var(--muted);
+      transform: rotate(15deg);
+    }
+    .theme-toggle svg { width: 18px; height: 18px; }
+
+    /* ─── Error page container ─── */
+    .error-page {
+      display: none;
+      min-height: 100vh;
+      padding: 88px 24px 44px;
+      position: relative;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .error-page.active {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ─── Ambient background particles ─── */
+    .ambient-layer {
+      position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+    }
+
+    .ambient-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.12;
+      animation: orbFloat 20s ease-in-out infinite;
+    }
+
+    .dark .ambient-orb { opacity: 0.08; }
+
+    .ambient-orb:nth-child(1) {
+      width: 400px; height: 400px;
+      background: var(--primary);
+      top: -100px; right: -100px;
+      animation-delay: 0s;
+    }
+    .ambient-orb:nth-child(2) {
+      width: 300px; height: 300px;
+      background: var(--gold);
+      bottom: -80px; left: -60px;
+      animation-delay: -7s;
+      animation-duration: 25s;
+    }
+    .ambient-orb:nth-child(3) {
+      width: 200px; height: 200px;
+      background: var(--accent);
+      top: 40%; left: 60%;
+      animation-delay: -14s;
+      animation-duration: 22s;
+    }
+
+    @keyframes orbFloat {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(30px, -40px) scale(1.1); }
+      66% { transform: translate(-20px, 20px) scale(0.95); }
+    }
+
+    /* ─── Grid pattern ─── */
+    .grid-pattern {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.3;
+      mask-image: radial-gradient(ellipse at center, black 0%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 0%, transparent 70%);
+    }
+
+    .dark .grid-pattern { opacity: 0.15; }
+
+    /* ─── Content card ─── */
+    .error-content {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      max-width: 500px;
+      width: 100%;
+      margin: auto;
+      padding: 8px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      animation: contentEntry 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes contentEntry {
+      from { opacity: 0; transform: translateY(24px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ─── SVG illustration wrapper ─── */
+    .error-illustration {
+      margin: 0 auto 12px;
+      width: 250px;
+      height: 195px;
+      position: relative;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: visible;
+    }
+
+    /* ─── Error code (giant number with lining figures) ─── */
+    .error-code {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 5.25rem;
+      font-variant-numeric: lining-nums tabular-nums;
+      font-feature-settings: "lnum" 1;
+      line-height: 1.05;
+      letter-spacing: 0.01em;
+      background: linear-gradient(135deg, var(--primary) 20%, var(--gold) 85%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0 auto 6px;
+      padding: 4px 20px;
+      display: inline-block;
+      animation: codeShimmer 4s ease-in-out infinite;
+      background-size: 200% 200%;
+      position: relative;
+      overflow: visible;
+      text-align: center;
+    }
+
+    @keyframes codeShimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    /* ─── Gold divider/rule ─── */
+    .gold-rule {
+      height: 1px;
+      width: 70px;
+      margin: 6px auto 18px;
+      background: linear-gradient(to right, transparent, var(--gold) 30%, var(--gold) 70%, transparent);
+      opacity: 0.6;
+    }
+
+    /* ─── Title ─── */
+    .error-title {
+      font-family: var(--font-display);
+      font-size: 1.95rem;
+      font-weight: 600;
+      color: var(--foreground);
+      margin: 0 0 10px;
+      line-height: 1.25;
+      text-wrap: balance;
+    }
+
+    /* ─── Description ─── */
+    .error-desc {
+      font-size: 0.95rem;
+      color: var(--muted-foreground);
+      line-height: 1.6;
+      margin: 0 auto 28px;
+      max-width: 420px;
+      text-wrap: pretty;
+    }
+
+    /* ─── Button group ─── */
+    .error-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 24px;
+      border-radius: var(--radius);
+      font-family: var(--font-sans);
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, transparent 0%, oklch(1 0 0 / 12%) 100%);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .btn:hover::before { opacity: 1; }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      box-shadow: 0 2px 16px oklch(0.427 0.166 22.5 / 25%),
+                  0 1px 3px oklch(0 0 0 / 10%);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px oklch(0.427 0.166 22.5 / 35%),
+                  0 2px 6px oklch(0 0 0 / 15%);
+    }
+
+    .btn-primary:active { transform: translateY(0); }
+
+    .btn-secondary {
+      background: var(--card);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--muted);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px oklch(0 0 0 / 8%);
+    }
+
+    .btn-secondary:active { transform: translateY(0); }
+
+    .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* ─── SVG Illustrations ─── */
+    .illus {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Floating animation for illustration elements */
+    .float-slow { animation: floatSlow 6s ease-in-out infinite; }
+    .float-med { animation: floatMed 4s ease-in-out infinite; }
+    .float-fast { animation: floatFast 3s ease-in-out infinite; }
+
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes floatMed {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-7px) rotate(2.5deg); }
+    }
+
+    @keyframes floatFast {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+
+    /* Pulse animation for dots and status indicators (scale in-place) */
+    .pulse {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.35; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.15); }
+    }
+
+    /* Spin animation for loading elements */
+    .spin-slow { animation: spin 8s linear infinite; }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Dash animation for path drawing */
+    .dash-anim {
+      stroke-dasharray: 200;
+      stroke-dashoffset: 200;
+      animation: dashDraw 3s ease-in-out infinite alternate;
+    }
+
+    @keyframes dashDraw {
+      to { stroke-dashoffset: 0; }
+    }
+
+    /* ─── Glitch effect for 500 (non-destructive luxury flicker) ─── */
+    .glitch-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .glitch-container::before,
+    .glitch-container::after {
+      content: attr(data-text);
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 5.25rem;
+      font-variant-numeric: lining-nums tabular-nums;
+      font-feature-settings: "lnum" 1;
+      line-height: 1.05;
+      letter-spacing: 0.01em;
+      padding: 4px 20px;
+      pointer-events: none;
+    }
+
+    .glitch-container::before {
+      color: var(--destructive);
+      opacity: 0;
+      animation: glitchRed 3.5s infinite;
+      mix-blend-mode: multiply;
+    }
+
+    .dark .glitch-container::before {
+      mix-blend-mode: screen;
+    }
+
+    .glitch-container::after {
+      color: var(--gold);
+      opacity: 0;
+      animation: glitchGold 3.5s infinite;
+      mix-blend-mode: multiply;
+    }
+
+    .dark .glitch-container::after {
+      mix-blend-mode: screen;
+    }
+
+    @keyframes glitchRed {
+      0%, 88%, 100% { opacity: 0; transform: translate(0); }
+      89% { opacity: 0.6; transform: translate(-3px, 1px); }
+      91% { opacity: 0.8; transform: translate(3px, -1px); }
+      93% { opacity: 0; transform: translate(0); }
+    }
+
+    @keyframes glitchGold {
+      0%, 89%, 100% { opacity: 0; transform: translate(0); }
+      90% { opacity: 0.6; transform: translate(3px, 1px); }
+      92% { opacity: 0.75; transform: translate(-2px, -1px); }
+      94% { opacity: 0; transform: translate(0); }
+    }
+
+    /* ─── Shield icon animation for 403 ─── */
+    .shield-pulse {
+      animation: shieldPulse 3s ease-in-out infinite;
+    }
+
+    @keyframes shieldPulse {
+      0%, 100% { filter: drop-shadow(0 0 0px var(--primary)); }
+      50% { filter: drop-shadow(0 0 16px oklch(0.427 0.166 22.5 / 30%)); }
+    }
+
+    /* ─── Wrench animation for 503 ─── */
+    .wrench-turn {
+      transform-box: fill-box;
+      transform-origin: center center;
+      animation: wrenchTurn 4s ease-in-out infinite;
+    }
+
+    @keyframes wrenchTurn {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(20deg); }
+      50% { transform: rotate(-15deg); }
+      75% { transform: rotate(10deg); }
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 640px) {
+      .proto-bar { padding: 10px 16px; flex-direction: column; gap: 8px; }
+      .proto-tabs { gap: 4px; }
+      .proto-tab { padding: 5px 12px; font-size: 0.72rem; }
+      .error-code { font-size: 3.75rem; padding: 4px 12px; }
+      .glitch-container::before,
+      .glitch-container::after { font-size: 3.75rem; padding: 4px 12px; }
+      .error-title { font-size: 1.55rem; }
+      .error-desc { font-size: 0.875rem; margin-bottom: 22px; }
+      .error-page { padding: 130px 16px 36px; }
+      .error-illustration { width: 200px; height: 155px; margin-bottom: 10px; overflow: visible; }
+    }
+
+    /* ─── Page transition ─── */
+    .error-page.entering .error-content {
+      animation: contentEntry 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    /* ─── Scanline overlay for 500 ─── */
+    .scanlines {
+      position: absolute; inset: 0; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        oklch(0 0 0 / 3%) 2px,
+        oklch(0 0 0 / 3%) 4px
+      );
+      opacity: 0;
+      animation: scanlineFlash 4s ease-in-out infinite;
+    }
+
+    @keyframes scanlineFlash {
+      0%, 95%, 100% { opacity: 0; }
+      96% { opacity: 0.5; }
+      97% { opacity: 0; }
+      98% { opacity: 0.3; }
+    }
+
+    /* ─── Noise texture overlay ─── */
+    .noise {
+      position: absolute; inset: 0; pointer-events: none;
+      opacity: 0.015;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 256px 256px;
+    }
+
+    .dark .noise { opacity: 0.03; }
+  </style>
+</head>
+<body>
+
+<!-- ═══ PROTOTYPE CONTROLS ═══ -->
+<div class="proto-bar">
+  <div class="proto-bar__brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+    HRMS Error Pages
+  </div>
+  <div class="proto-tabs">
+    <button class="proto-tab active" data-page="404">404</button>
+    <button class="proto-tab" data-page="403">403</button>
+    <button class="proto-tab" data-page="429">429</button>
+    <button class="proto-tab" data-page="500">500</button>
+    <button class="proto-tab" data-page="503">503</button>
+  </div>
+  <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+    <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+    <svg class="moon-icon" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+    </svg>
+  </button>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     404 — NOT FOUND
+     ═══════════════════════════════════════════════════════ -->
+<div class="error-page active" id="page-404">
+  <div class="ambient-layer">
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+  </div>
+  <div class="grid-pattern"></div>
+  <div class="noise"></div>
+
+  <div class="error-content">
+    <!-- SVG Illustration: Lost compass -->
+    <div class="error-illustration">
+      <svg class="illus" viewBox="-20 -20 320 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Ground shadow -->
+        <ellipse cx="140" cy="200" rx="90" ry="10" fill="var(--muted)" opacity="0.5"/>
+
+        <!-- Map sheet -->
+        <g class="float-slow" style="animation-delay: -1s">
+          <rect x="60" y="70" width="160" height="110" rx="4" fill="var(--card)" stroke="var(--border)" stroke-width="1.5"/>
+          <!-- Map grid lines -->
+          <line x1="60" y1="97" x2="220" y2="97" stroke="var(--border)" stroke-width="0.8"/>
+          <line x1="60" y1="124" x2="220" y2="124" stroke="var(--border)" stroke-width="0.8"/>
+          <line x1="60" y1="151" x2="220" y2="151" stroke="var(--border)" stroke-width="0.8"/>
+          <line x1="110" y1="70" x2="110" y2="180" stroke="var(--border)" stroke-width="0.8"/>
+          <line x1="160" y1="70" x2="160" y2="180" stroke="var(--border)" stroke-width="0.8"/>
+
+          <!-- Dotted path -->
+          <path class="dash-anim" d="M80 160 Q100 130 120 140 T160 110 T200 90" stroke="var(--primary)" stroke-width="2" stroke-dasharray="6 4" fill="none" stroke-linecap="round"/>
+
+          <!-- Map pin (destination) -->
+          <g transform="translate(195, 75)">
+            <path d="M0 18 C0 18 -12 6 -12 -2 C-12 -8.6 -6.6 -14 0 -14 C6.6 -14 12 -8.6 12 -2 C12 6 0 18 0 18Z" fill="var(--primary)"/>
+            <circle cx="0" cy="-3" r="4" fill="var(--primary-foreground)"/>
+          </g>
+        </g>
+
+        <!-- Compass -->
+        <g class="float-med" transform="translate(90, 30)" style="animation-delay: -3s">
+          <circle cx="0" cy="0" r="22" fill="var(--card)" stroke="var(--gold)" stroke-width="1.5"/>
+          <g class="spin-slow">
+            <polygon points="0,-14 4,0 0,4 -4,0" fill="var(--primary)"/>
+            <polygon points="0,14 4,0 0,-4 -4,0" fill="var(--muted-foreground)" opacity="0.4"/>
+          </g>
+          <circle cx="0" cy="0" r="3" fill="var(--gold)"/>
+        </g>
+
+        <!-- Question mark -->
+        <g class="float-fast" transform="translate(220, 45)" style="animation-delay: -2s">
+          <text font-family="var(--font-display)" font-size="36" font-weight="700" fill="var(--gold)" opacity="0.6">?</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="error-code">404</div>
+    <div class="gold-rule"></div>
+
+    <h1 class="error-title">We can't find that page</h1>
+    <p class="error-desc">
+      The page you're looking for doesn't exist or has been moved.
+      Let's get you back on track.
+    </p>
+
+    <div class="error-actions">
+      <button class="btn btn-primary" onclick="window.location.reload()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        Try again
+      </button>
+      <a href="/" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Go home
+      </a>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     403 — FORBIDDEN
+     ═══════════════════════════════════════════════════════ -->
+<div class="error-page" id="page-403">
+  <div class="ambient-layer">
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+  </div>
+  <div class="grid-pattern"></div>
+  <div class="noise"></div>
+
+  <div class="error-content">
+    <div class="error-illustration">
+      <svg class="illus" viewBox="-20 -20 320 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Ground shadow -->
+        <ellipse cx="140" cy="200" rx="80" ry="8" fill="var(--muted)" opacity="0.5"/>
+
+        <!-- Door frame -->
+        <g class="float-slow" style="animation-delay: -2s">
+          <rect x="90" y="50" width="100" height="145" rx="4" fill="var(--card)" stroke="var(--border)" stroke-width="1.5"/>
+          <!-- Door panel -->
+          <rect x="95" y="55" width="90" height="135" rx="2" fill="var(--muted)" opacity="0.3"/>
+          <!-- Door handle -->
+          <circle cx="170" cy="125" r="5" fill="var(--gold)" stroke="var(--gold)" stroke-width="1"/>
+          <!-- Keyhole -->
+          <g transform="translate(170, 125)">
+            <circle cx="0" cy="0" r="2" fill="var(--card)"/>
+            <rect x="-1" y="2" width="2" height="5" rx="1" fill="var(--card)"/>
+          </g>
+        </g>
+
+        <!-- Shield with lock -->
+        <g class="shield-pulse" transform="translate(140, 95)">
+          <path d="M0 -40 L30 -25 L30 5 C30 25 15 40 0 48 C-15 40 -30 25 -30 5 L-30 -25 Z"
+                fill="var(--primary)" opacity="0.15"
+                stroke="var(--primary)" stroke-width="1.5"/>
+          <!-- Lock body -->
+          <rect x="-12" y="-8" width="24" height="20" rx="3" fill="var(--primary)" opacity="0.9"/>
+          <!-- Lock shackle -->
+          <path d="M-7 -8 L-7 -16 C-7 -23 7 -23 7 -16 L7 -8" fill="none" stroke="var(--primary)" stroke-width="3" stroke-linecap="round"/>
+          <!-- Keyhole in lock -->
+          <circle cx="0" cy="0" r="3" fill="var(--primary-foreground)"/>
+          <rect x="-1.5" y="3" width="3" height="5" rx="1.5" fill="var(--primary-foreground)"/>
+        </g>
+
+        <!-- Sparkle effects -->
+        <g class="pulse" style="animation-delay: 0s">
+          <circle cx="65" cy="65" r="2" fill="var(--gold)"/>
+        </g>
+        <g class="pulse" style="animation-delay: -0.7s">
+          <circle cx="215" cy="80" r="1.5" fill="var(--gold)"/>
+        </g>
+        <g class="pulse" style="animation-delay: -1.3s">
+          <circle cx="75" cy="160" r="1.8" fill="var(--primary)"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="error-code">403</div>
+    <div class="gold-rule"></div>
+
+    <h1 class="error-title">Access denied</h1>
+    <p class="error-desc">
+      You don't have permission to view this page. If you believe this is an error,
+      please contact your HR administrator.
+    </p>
+
+    <div class="error-actions">
+      <a href="/" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Go home
+      </a>
+      <button class="btn btn-secondary" onclick="history.back()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Go back
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     429 — TOO MANY REQUESTS
+     ═══════════════════════════════════════════════════════ -->
+<div class="error-page" id="page-429">
+  <div class="ambient-layer">
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+  </div>
+  <div class="grid-pattern"></div>
+  <div class="noise"></div>
+
+  <div class="error-content">
+    <div class="error-illustration">
+      <svg class="illus" viewBox="-20 -20 320 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Ground shadow -->
+        <ellipse cx="140" cy="200" rx="70" ry="8" fill="var(--muted)" opacity="0.5"/>
+
+        <!-- Hourglass body -->
+        <g class="float-slow">
+          <!-- Top triangle -->
+          <path d="M105 55 L175 55 L140 120 Z" fill="var(--card)" stroke="var(--border)" stroke-width="1.5" stroke-linejoin="round"/>
+          <!-- Bottom triangle -->
+          <path d="M105 185 L175 185 L140 120 Z" fill="var(--card)" stroke="var(--border)" stroke-width="1.5" stroke-linejoin="round"/>
+
+          <!-- Top cap -->
+          <rect x="95" y="48" width="90" height="8" rx="4" fill="var(--gold)" opacity="0.8"/>
+          <!-- Bottom cap -->
+          <rect x="95" y="184" width="90" height="8" rx="4" fill="var(--gold)" opacity="0.8"/>
+
+          <!-- Sand in top (diminishing) -->
+          <path d="M120 70 L160 70 L140 100 Z" fill="var(--gold)" opacity="0.3"/>
+
+          <!-- Sand stream -->
+          <line x1="140" y1="100" x2="140" y2="140" stroke="var(--gold)" stroke-width="2" opacity="0.5">
+            <animate attributeName="opacity" values="0.5;0.2;0.5" dur="1s" repeatCount="indefinite"/>
+          </line>
+
+          <!-- Sand in bottom (accumulating) -->
+          <path d="M118 175 L162 175 L140 148 Z" fill="var(--gold)" opacity="0.5"/>
+        </g>
+
+        <!-- Flying request arrows -->
+        <g class="float-fast" style="animation-delay: 0s">
+          <path d="M40 90 L60 90 L55 85 M60 90 L55 95" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+        </g>
+        <g class="float-fast" style="animation-delay: -0.5s">
+          <path d="M50 110 L70 110 L65 105 M70 110 L65 115" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+        </g>
+        <g class="float-fast" style="animation-delay: -1s">
+          <path d="M45 130 L65 130 L60 125 M65 130 L60 135" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+        </g>
+
+        <!-- Bounced arrows (right side) -->
+        <g class="float-fast" style="animation-delay: -0.3s">
+          <path d="M240 85 L220 85 L225 80 M220 85 L225 90" stroke="var(--destructive, var(--primary))" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+        </g>
+        <g class="float-fast" style="animation-delay: -0.8s">
+          <path d="M235 115 L215 115 L220 110 M215 115 L220 120" stroke="var(--destructive, var(--primary))" stroke-width="2" stroke-linecap="round" opacity="0.35"/>
+        </g>
+
+        <!-- Sparkle -->
+        <g class="pulse" style="animation-delay: -0.5s">
+          <circle cx="200" cy="60" r="2" fill="var(--gold)"/>
+        </g>
+        <g class="pulse" style="animation-delay: -1.2s">
+          <circle cx="80" cy="170" r="1.5" fill="var(--gold)"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="error-code">429</div>
+    <div class="gold-rule"></div>
+
+    <h1 class="error-title">Slow down a moment</h1>
+    <p class="error-desc">
+      You've sent too many requests in a short time. Please wait a moment
+      before trying again.
+    </p>
+
+    <div class="error-actions">
+      <button class="btn btn-primary" onclick="window.location.reload()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        Try again
+      </button>
+      <a href="/" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Go home
+      </a>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     500 — SERVER ERROR
+     ═══════════════════════════════════════════════════════ -->
+<div class="error-page" id="page-500">
+  <div class="ambient-layer">
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+  </div>
+  <div class="grid-pattern"></div>
+  <div class="noise"></div>
+  <div class="scanlines"></div>
+
+  <div class="error-content">
+    <div class="error-illustration">
+      <svg class="illus" viewBox="-20 -20 320 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Ground shadow -->
+        <ellipse cx="140" cy="200" rx="80" ry="8" fill="var(--muted)" opacity="0.5"/>
+
+        <!-- Server rack -->
+        <g class="float-slow" style="animation-delay: -1s">
+          <!-- Server body -->
+          <rect x="80" y="50" width="120" height="145" rx="6" fill="var(--card)" stroke="var(--border)" stroke-width="1.5"/>
+
+          <!-- Server unit 1 -->
+          <rect x="90" y="60" width="100" height="30" rx="3" fill="var(--muted)" opacity="0.4"/>
+          <circle cx="105" cy="75" r="4" fill="var(--destructive)">
+            <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>
+          </circle>
+          <rect x="120" y="70" width="35" height="3" rx="1.5" fill="var(--border)"/>
+          <rect x="120" y="77" width="25" height="3" rx="1.5" fill="var(--border)"/>
+
+          <!-- Server unit 2 -->
+          <rect x="90" y="98" width="100" height="30" rx="3" fill="var(--muted)" opacity="0.4"/>
+          <circle cx="105" cy="113" r="4" fill="var(--destructive)">
+            <animate attributeName="opacity" values="1;0.3;1" dur="1.3s" repeatCount="indefinite"/>
+          </circle>
+          <rect x="120" y="108" width="35" height="3" rx="1.5" fill="var(--border)"/>
+          <rect x="120" y="115" width="25" height="3" rx="1.5" fill="var(--border)"/>
+
+          <!-- Server unit 3 -->
+          <rect x="90" y="136" width="100" height="30" rx="3" fill="var(--muted)" opacity="0.4"/>
+          <circle cx="105" cy="151" r="4" fill="var(--muted-foreground)" opacity="0.3"/>
+          <rect x="120" y="146" width="35" height="3" rx="1.5" fill="var(--border)"/>
+          <rect x="120" y="153" width="25" height="3" rx="1.5" fill="var(--border)"/>
+        </g>
+
+        <!-- Warning triangle -->
+        <g class="float-fast" transform="translate(205, 60)" style="animation-delay: -1.5s">
+          <path d="M0 -18 L16 12 L-16 12 Z" fill="var(--gold)" opacity="0.9"/>
+          <text x="0" y="8" font-family="var(--font-sans)" font-size="16" font-weight="700" fill="var(--foreground)" text-anchor="middle">!</text>
+        </g>
+
+        <!-- Sparks -->
+        <g class="pulse" style="animation-delay: 0s">
+          <path d="M60 100 L70 95 L65 105 L75 100" stroke="var(--gold)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="pulse" style="animation-delay: -0.8s">
+          <path d="M225 140 L235 135 L230 145 L240 140" stroke="var(--gold)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="error-code glitch-container" data-text="500">500</div>
+    <div class="gold-rule"></div>
+
+    <h1 class="error-title">This page didn't load</h1>
+    <p class="error-desc">
+      Something went wrong on our end. You can try refreshing
+      or head back home.
+    </p>
+
+    <div class="error-actions">
+      <button class="btn btn-primary" onclick="window.location.reload()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        Try again
+      </button>
+      <a href="/" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Go home
+      </a>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     503 — MAINTENANCE / UNAVAILABLE
+     ═══════════════════════════════════════════════════════ -->
+<div class="error-page" id="page-503">
+  <div class="ambient-layer">
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+  </div>
+  <div class="grid-pattern"></div>
+  <div class="noise"></div>
+
+  <div class="error-content">
+    <div class="error-illustration">
+      <svg class="illus" viewBox="-20 -20 320 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Ground shadow -->
+        <ellipse cx="140" cy="200" rx="80" ry="8" fill="var(--muted)" opacity="0.5"/>
+
+        <!-- Gear large -->
+        <g class="spin-slow" style="transform-origin: 130px 110px">
+          <circle cx="130" cy="110" r="35" fill="none" stroke="var(--gold)" stroke-width="3" opacity="0.3"/>
+          <!-- Gear teeth -->
+          <rect x="125" y="72" width="10" height="12" rx="2" fill="var(--gold)" opacity="0.3"/>
+          <rect x="125" y="136" width="10" height="12" rx="2" fill="var(--gold)" opacity="0.3"/>
+          <rect x="92" y="105" width="12" height="10" rx="2" fill="var(--gold)" opacity="0.3"/>
+          <rect x="156" y="105" width="12" height="10" rx="2" fill="var(--gold)" opacity="0.3"/>
+          <!-- Diagonal teeth -->
+          <rect x="100" y="82" width="10" height="12" rx="2" fill="var(--gold)" opacity="0.3" transform="rotate(-45 105 88)"/>
+          <rect x="150" y="82" width="10" height="12" rx="2" fill="var(--gold)" opacity="0.3" transform="rotate(45 155 88)"/>
+          <rect x="100" y="126" width="10" height="12" rx="2" fill="var(--gold)" opacity="0.3" transform="rotate(45 105 132)"/>
+          <rect x="150" y="126" width="10" height="12" rx="2" fill="var(--gold)" opacity="0.3" transform="rotate(-45 155 132)"/>
+          <circle cx="130" cy="110" r="12" fill="var(--card)" stroke="var(--gold)" stroke-width="2" opacity="0.5"/>
+        </g>
+
+        <!-- Gear small -->
+        <g class="spin-slow" style="transform-origin: 180px 85px; animation-direction: reverse; animation-duration: 5s">
+          <circle cx="180" cy="85" r="20" fill="none" stroke="var(--primary)" stroke-width="2.5" opacity="0.3"/>
+          <rect x="176" y="62" width="8" height="8" rx="2" fill="var(--primary)" opacity="0.3"/>
+          <rect x="176" y="100" width="8" height="8" rx="2" fill="var(--primary)" opacity="0.3"/>
+          <rect x="157" y="81" width="8" height="8" rx="2" fill="var(--primary)" opacity="0.3"/>
+          <rect x="195" y="81" width="8" height="8" rx="2" fill="var(--primary)" opacity="0.3"/>
+          <circle cx="180" cy="85" r="7" fill="var(--card)" stroke="var(--primary)" stroke-width="1.5" opacity="0.5"/>
+        </g>
+
+        <!-- Wrench -->
+        <g class="wrench-turn" transform="translate(140, 130)">
+          <path d="M-8 30 L-4 -10 C-4 -16 4 -16 4 -10 L8 30 Z" fill="var(--muted-foreground)" opacity="0.5"/>
+          <circle cx="0" cy="-10" r="7" fill="none" stroke="var(--muted-foreground)" stroke-width="2" opacity="0.5"/>
+        </g>
+
+        <!-- Sparkles -->
+        <g class="pulse" style="animation-delay: -0.3s">
+          <circle cx="70" cy="80" r="2" fill="var(--gold)"/>
+        </g>
+        <g class="pulse" style="animation-delay: -1s">
+          <circle cx="230" cy="130" r="1.5" fill="var(--gold)"/>
+        </g>
+        <g class="pulse" style="animation-delay: -1.7s">
+          <circle cx="210" cy="170" r="2" fill="var(--primary)"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="error-code">503</div>
+    <div class="gold-rule"></div>
+
+    <h1 class="error-title">We'll be right back</h1>
+    <p class="error-desc">
+      The HRMS is currently undergoing scheduled maintenance to improve
+      your experience. We'll be back shortly.
+    </p>
+
+    <div class="error-actions">
+      <button class="btn btn-primary" onclick="window.location.reload()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        Refresh
+      </button>
+      <a href="/" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Go home
+      </a>
+    </div>
+  </div>
+</div>
+
+
+<script>
+  // ─── Tab switching ───
+  const tabs = document.querySelectorAll('.proto-tab');
+  const pages = document.querySelectorAll('.error-page');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const pageId = tab.dataset.page;
+
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      pages.forEach(p => {
+        p.classList.remove('active', 'entering');
+      });
+
+      const target = document.getElementById('page-' + pageId);
+      target.classList.add('active', 'entering');
+
+      // Re-trigger entry animation
+      const content = target.querySelector('.error-content');
+      content.style.animation = 'none';
+      content.offsetHeight; // force reflow
+      content.style.animation = '';
+    });
+  });
+
+  // ─── Theme toggle ───
+  const toggle = document.getElementById('themeToggle');
+  const sunIcon = toggle.querySelector('.sun-icon');
+  const moonIcon = toggle.querySelector('.moon-icon');
+
+  toggle.addEventListener('click', () => {
+    const html = document.documentElement;
+    html.classList.toggle('dark');
+    const isDark = html.classList.contains('dark');
+    sunIcon.style.display = isDark ? 'none' : 'block';
+    moonIcon.style.display = isDark ? 'block' : 'none';
+  });
+</script>
+
+</body>
+</html>
