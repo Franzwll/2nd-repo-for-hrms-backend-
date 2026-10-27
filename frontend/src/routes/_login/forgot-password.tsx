@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowLeft, Mail, Send } from "lucide-react";
+import { ArrowLeft, KeyRound, Lock, Mail, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/Logo";
@@ -57,22 +57,32 @@ function ForgotPasswordPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-5 py-12 sm:px-10">
-      <div className="w-full max-w-md">
-        <div className="mb-10 flex justify-center">
-          <Link to="/" aria-label="Oxford Suites Makati">
-            <Logo mark="maroon" />
-          </Link>
-        </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-x-hidden bg-[#faf8f5] px-5 pt-28 pb-12 sm:px-10 sm:pt-32 lg:pt-12">
+      {/* Ambient background decoration */}
+      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-gold/10 blur-3xl" />
 
+      {/* Brand lockup imitating Sign In's position & sizing:
+          Top-left corner, responsive scale (scale-125 on mobile, scale-150 on sm, scale-170 on lg) */}
+      <Link
+        to="/"
+        aria-label="Oxford Suites Makati — home"
+        className="absolute left-6 top-6 z-20 origin-left scale-125 drop-shadow-sm transition-transform hover:scale-[1.28] sm:left-8 sm:top-8 sm:scale-150 sm:hover:scale-[1.53] lg:left-12 lg:top-10 lg:scale-170 lg:hover:scale-[1.73]"
+      >
+        <Logo mark="maroon" tone="primary" />
+      </Link>
+
+      {/* Form Container (Clean & Frameless without card border or white background) */}
+      <div className="relative z-10 w-full max-w-md">
         {sent ? (
-          <div className="rounded-2xl border border-gold/40 bg-[#faf6ef] p-8 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gold/20">
-              <Send className="h-5 w-5 text-[#8a6d1f]" />
+          <div className="rounded-2xl border border-gold/40 bg-white/70 backdrop-blur-xs p-8 text-center shadow-xs">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gold/20 shadow-xs">
+              <Send className="h-6 w-6 text-[#8a6d1f]" />
             </div>
             <h2 className="font-display text-2xl font-semibold">Check your inbox</h2>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              A password reset link has been sent to {email.trim()}. It expires in 60 minutes.
+              A password reset link has been sent to{" "}
+              <span className="font-medium text-foreground">{email.trim()}</span>. It expires in 60 minutes.
             </p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Didn't receive it? Check your spam folder, or try again after a minute.
@@ -83,15 +93,21 @@ function ForgotPasswordPage() {
           </div>
         ) : (
           <>
-            <h2 className="mt-2 text-center font-display text-4xl font-semibold">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
+              <KeyRound className="h-6 w-6" />
+            </div>
+
+            <p className="text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
+              Password Recovery
+            </p>
+            <h2 className="mt-1.5 text-center font-display text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
               Forgot password?
             </h2>
-            <p className="mt-2 text-center text-sm text-muted-foreground">
+            <p className="mt-2 text-center text-sm leading-relaxed text-muted-foreground">
               Enter your work email and we'll send you a secure link to set a new password.
             </p>
-            <div className="my-7" />
 
-            <form className="space-y-5" onSubmit={handleSubmit}>
+            <form className="mt-7 space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-1.5">
                 <FloatingInput
                   id="email"
@@ -101,16 +117,22 @@ function ForgotPasswordPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   leftIcon={<Mail className="h-4 w-4" />}
                   autoComplete="username"
+                  className="bg-white/80"
                 />
               </div>
 
               {error && (
-                <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <p className="rounded-md bg-destructive/10 px-3 py-2 text-center text-xs text-destructive">
                   {error}
                 </p>
               )}
 
-              <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full cursor-pointer font-semibold shadow-md hover:shadow-lg transition-all active:scale-[0.99]"
+                disabled={submitting}
+              >
                 {submitting ? "Sending…" : "Send reset link"}
               </Button>
 
@@ -125,7 +147,7 @@ function ForgotPasswordPage() {
           </>
         )}
 
-        <p className="mt-7 text-center text-sm text-muted-foreground">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           <Link
             to="/login"
             className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"

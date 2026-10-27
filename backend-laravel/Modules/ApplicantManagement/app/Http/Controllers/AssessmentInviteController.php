@@ -56,11 +56,13 @@ class AssessmentInviteController extends Controller
             ], 422);
         }
 
-        $assessment = $model->assessment()->first();
-        if (! $assessment || $assessment->result !== 'Passed') {
-            return response()->json([
-                'message' => 'This candidate cannot take the assessment test until their interview assessment is recorded and marked Passed.',
-            ], 422);
+        if ($model->stage !== 'Assessment Test') {
+            $assessment = $model->assessment()->first();
+            if (! $assessment || $assessment->result !== 'Passed') {
+                return response()->json([
+                    'message' => 'This candidate cannot take the assessment test until their interview assessment is recorded and marked Passed.',
+                ], 422);
+            }
         }
 
         $data = $request->validate([
@@ -211,9 +213,18 @@ class AssessmentInviteController extends Controller
             'submitted_at' => now(),
         ]);
 
-        // Advance applicant stage (out-of-order safety), matching AssessmentTestController.
-        if ($applicant && in_array($applicant->stage, ['Screened', 'Interview Scheduled', 'Assessed', 'Accepted', 'Practical Test'], true)) {
-            $applicant->update(['stage' => 'Assessment Test']);
+        // Advance applicant stage or reject on failure — matching AssessmentTestController.
+        if ($applicant) {
+            if ($result === 'Failed') {
+                $applicant->update([
+                    'stage'              => 'Rejected',
+                    'status'             => 'not-fit',
+                    'rejected_at'        => now(),
+                    'cooldown_lifted_at' => null,
+                ]);
+            } elseif (in_array($applicant->stage, ['Screened', 'Interview Scheduled', 'Assessed', 'Accepted', 'Practical Test'], true)) {
+                $applicant->update(['stage' => 'Assessment Test']);
+            }
         }
 
         $name = $applicant?->name ?? 'Applicant';

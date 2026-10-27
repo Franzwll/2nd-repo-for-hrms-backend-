@@ -106,10 +106,6 @@ export function InterviewEvaluationForm({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-[0.7rem] text-muted-foreground">
-            Defaults to you (the logged-in user) — change it if another interviewer conducted this
-            interview. Required.
-          </p>
         </div>
         <div className="space-y-1.5">
           <Label>Interview date</Label>
@@ -185,7 +181,7 @@ export function InterviewEvaluationForm({
         className={cn(
           "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end",
           stickyFooter &&
-            "sticky bottom-0 z-10 -mx-3 border-t border-border bg-background px-3 py-2.5",
+            "sticky bottom-0 z-30 -mx-3 border-t border-border bg-white px-3 py-2.5 shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.25)] dark:bg-neutral-900",
         )}
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

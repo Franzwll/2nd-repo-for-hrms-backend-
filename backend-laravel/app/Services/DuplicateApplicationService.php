@@ -150,6 +150,8 @@ class DuplicateApplicationService
             'eligible_after_label' => $eligibleAfter->format('M j, Y'),
             'applied_label' => $rejectedAt->format('M j, Y'),
             'days_left' => $daysLeft,
+            'cooldown_days' => $days,
+            'is_eligible' => false,
             'job_post_id' => (int) $row->job_post_id,
         ];
     }
@@ -169,6 +171,19 @@ class DuplicateApplicationService
             'rejected_at' => $cooldown['rejected_at'] ?? null,
             'eligible_after' => $cooldown['eligible_after'] ?? null,
             'days_left' => $cooldown['days_left'] ?? null,
+        ];
+    }
+
+    /**
+     * 403 payload for an applicant restricted by HR from applying.
+     */
+    public static function blockResponse(array $blockInfo): array
+    {
+        return [
+            'code' => 'APPLICANT_BLOCKED',
+            'message' => "Application restricted: " . ($blockInfo['reason'] ?? 'Applicant is restricted from recruitment activities.'),
+            'existing_applicant_code' => $blockInfo['applicant_code'] ?? null,
+            'scope' => $blockInfo['scope'] ?? 'all_jobs',
         ];
     }
 }

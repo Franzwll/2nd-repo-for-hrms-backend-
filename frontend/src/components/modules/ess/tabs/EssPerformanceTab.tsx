@@ -323,8 +323,7 @@ export function EssPerformanceTab() {
             <button
               type="button"
               onClick={closeModuleDetail}
-              className="inline-flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400 hover:underline"
-              className="inline-flex cursor-pointer items-center gap-1.5 font-semibold text-amber-600 hover:underline"
+              className="inline-flex cursor-pointer items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400 hover:underline"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Learning Materials
             </button>

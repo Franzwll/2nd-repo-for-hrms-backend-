@@ -16,6 +16,7 @@ class ApplicantResource extends JsonResource
             'name'            => $this->name,
             'email'           => $this->email,
             'phone'           => $this->phone,
+            'address'         => $this->address,
             'applied_at'      => $this->applied_at?->toISOString(),
             'fit_score'       => $this->fit_score !== null ? (float) $this->fit_score : null,
             'status'          => $this->status,
@@ -24,6 +25,19 @@ class ApplicantResource extends JsonResource
                period, cooldown_lifted_at records an HR early override. */
             'rejected_at'      => $this->rejected_at?->toISOString(),
             'cooldown_lifted_at' => $this->cooldown_lifted_at?->toISOString(),
+            'archived_at'      => $this->archived_at?->toISOString(),
+            'archived_by'      => $this->archived_by,
+            'archived_reason'  => $this->archived_reason,
+            'is_archived'      => $this->isArchived(),
+            'is_blocked'       => (bool) $this->is_blocked,
+            'blocked_at'       => $this->blocked_at?->toISOString(),
+            'blocked_by'       => $this->blocked_by,
+            'blocked_reason'   => $this->blocked_reason,
+            'block_scope'      => $this->block_scope,
+            'block_expires_at' => $this->block_expires_at?->toISOString(),
+            'is_active_blocked'=> $this->isBlocked(),
+            'rejected_at_stage'=> $this->stage === 'Rejected' ? $this->rejectedAtStage() : null,
+            'allowed_return_stages' => $this->allowedReturnStages(),
             /* Offer workflow — set when the final evaluation decision emails
                the applicant an offer (7-day response window) and the reply is
                recorded by HR. */

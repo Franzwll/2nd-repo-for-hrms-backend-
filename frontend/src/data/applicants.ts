@@ -82,6 +82,7 @@ export type Applicant = {
   name: string;
   email: string;
   phone: string;
+  address?: string | null;
   position: string;
   jobId: string;
   appliedAt: string;
@@ -134,6 +135,19 @@ export type Applicant = {
    *  cooldown_lifted_at records an HR early override. */
   rejectedAt?: string | null;
   cooldownLiftedAt?: string | null;
+  archivedAt?: string | null;
+  archivedBy?: string | null;
+  archivedReason?: string | null;
+  isArchived?: boolean;
+  isBlocked?: boolean;
+  blockedAt?: string | null;
+  blockedBy?: string | null;
+  blockedReason?: string | null;
+  blockScope?: string | null;
+  blockExpiresAt?: string | null;
+  isActiveBlocked?: boolean;
+  rejectedAtStage?: string | null;
+  allowedReturnStages?: string[] | null;
 };
 
 export const statusMeta: Record<
@@ -773,9 +787,14 @@ export const ASSESSMENT_POSITIONS = [
 ];
 
 export const requiresAssessment = (
-  _position: string,
+  position: string,
   dbFlag?: boolean | null,
-) => dbFlag === true;
+) => {
+  if (typeof dbFlag === 'boolean') {
+    return dbFlag;
+  }
+  return ASSESSMENT_POSITIONS.includes(position);
+};
 
 /**
  * Positions designated to take a practical assessment. The Core HCM position
@@ -795,10 +814,15 @@ export const requiresPractical = (
   position: string,
   dbFlag?: boolean | null,
   _titleFallback?: string | null,
-) =>
-  dbFlag === true ||
-  PRACTICAL_POSITIONS.includes(position) ||
-  (_titleFallback ? PRACTICAL_POSITIONS.includes(_titleFallback) : false);
+) => {
+  if (typeof dbFlag === 'boolean') {
+    return dbFlag;
+  }
+  return (
+    PRACTICAL_POSITIONS.includes(position) ||
+    Boolean(_titleFallback && PRACTICAL_POSITIONS.includes(_titleFallback))
+  );
+};
 
 /** Top-candidate tiers per the ranking rules:
  * 1 — completed proof of resume content (COE/certificates/credentials/others,
@@ -866,6 +890,7 @@ export type AuditActionType =
   | "Offer Declined"
   | "Verification Document Uploaded"
   | "Status Change"
+  | "Applicant Returned to Recruitment"
   | "Applicant Added";
 
 export type AuditEntry = {

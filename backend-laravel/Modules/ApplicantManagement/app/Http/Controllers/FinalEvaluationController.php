@@ -8,6 +8,7 @@ use App\Services\AuditLogger;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Modules\ApplicantManagement\Http\Resources\ApplicantResource;
 use Modules\ApplicantManagement\Http\Resources\FinalEvaluationResource;
@@ -112,6 +113,7 @@ class FinalEvaluationController extends Controller
             'recommendation'       => ['required', 'string', 'in:Recommended for Hire,For Another Position,Not Recommended'],
             'overall_remarks'      => ['nullable', 'string'],
             'recommended_job_post_id' => ['nullable', 'integer', 'exists:job_posts,job_post_id'],
+            'acknowledge_discrepancies' => ['nullable', 'boolean'],
         ]);
         // NOTE: overall_score / scores from the client are intentionally NOT
         // in the validation list — they are ignored and recalculated below.
@@ -151,13 +153,14 @@ class FinalEvaluationController extends Controller
                     'message' => 'Required evaluation data is incomplete — the Overall Score could not be calculated.',
                 ], 422);
             }
-            // Blocking verification: proven resume/document mismatch.
+            // Verification check: proven resume/document mismatch.
             $blocking = ApplicantDocument::where('applicant_id', $applicant)
                 ->where('verification_status', 'DISCREPANCY_FOUND')
                 ->count();
-            if ($blocking > 0) {
+            if ($blocking > 0 && ! $request->boolean('acknowledge_discrepancies')) {
                 return response()->json([
-                    'message' => 'There is an unresolved document verification discrepancy. Resolve it before recommending for hire.',
+                    'message' => 'There is an unresolved document verification discrepancy. Resolve it or acknowledge the warning before recommending for hire.',
+                    'blocking_verification_issues' => $blocking,
                 ], 422);
             }
         }
@@ -237,7 +240,7 @@ class FinalEvaluationController extends Controller
                 'offer_status'     => null,
                 'offer_sent_at'    => null,
                 'offer_expires_at' => null,
-                'rejected_at'      => $model->rejected_at ?? now(),
+                'rejected_at'      => now(),
             ]);
         } elseif (in_array($recommendation, ['Recommended for Hire', 'For Another Position'], true)) {
             // Recommending the candidate supersedes any stale pending offer —
@@ -256,17 +259,18 @@ class FinalEvaluationController extends Controller
         }
 
         $overallText = $calc['overall_score'] !== null ? round($calc['overall_score'], 1).'%' : 'n/a';
+        $discrepancyNote = ($blocking ?? 0) > 0 ? " — [{$blocking} document discrepancy(ies) acknowledged by HR]" : '';
         AuditLogger::log(
             action: 'Final Evaluation Completed',
             module: 'Applicant Management',
-            severity: 'Info',
+            severity: ($blocking ?? 0) > 0 ? 'Warning' : 'Info',
             targetType: 'Final Evaluation',
             targetId: (string) $final->final_evaluation_id,
             details: "Final evaluation for {$model->name} ({$positionTitle}) completed — "
                 . "Screening {$screeningScore}%, Interview {$interviewScore}%, "
                 . ($requiresAssessment ? "Assessment {$assessmentScore}%" : 'Assessment Not Required')
                 . ($requiresPractical ? ", Practical {$practicalScore}%" : ', Practical Not Required')
-                . " — Overall {$overallText} (system calculated) — Recommendation: {$final->recommendation}."
+                . " — Overall {$overallText} (system calculated) — Recommendation: {$final->recommendation}{$discrepancyNote}."
         );
 
         NotificationService::send(
@@ -399,8 +403,6 @@ class FinalEvaluationController extends Controller
     {
         OfferService::expireOverdue();
 
-        $model = Applicant::with(['jobPost'])->findOrFail($applicant);
-
         $data = $request->validate([
             'response'   => ['required', 'string', 'in:accepted,declined'],
             'start_date' => ['required_if:response,accepted', 'nullable', 'date'],
@@ -418,112 +420,120 @@ class FinalEvaluationController extends Controller
                 ?? $request->user()?->username,
         ];
 
-        if ($model->offer_status === 'Accepted') {
-            return response()->json(['message' => 'This applicant already accepted the offer.'], 422);
-        }
+        return DB::transaction(function () use ($applicant, $data, $responseMeta) {
+            $model = Applicant::with(['jobPost'])->lockForUpdate()->findOrFail($applicant);
 
-        if ($data['response'] === 'accepted') {
-            if ($model->offerResponseExpired()) {
-                // Window lapsed before HR recorded the reply — declined
-                // applicant, so no cooldown (welcome back anytime).
-                $model->update(['offer_status' => 'Declined', 'stage' => 'Rejected', 'rejected_at' => null]);
-
+            if ($model->stage !== 'Offer' || $model->offer_status !== 'Pending') {
                 return response()->json([
-                    'message' => 'The ' . OfferService::RESPONSE_WINDOW_DAYS . '-day response window expired — '
-                        . 'the applicant is treated as declined (Failed).',
+                    'message' => 'This applicant is not awaiting an offer response.',
+                    'current_stage' => $model->stage,
+                    'current_offer_status' => $model->offer_status,
                 ], 422);
             }
 
-            $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
-            if (! $final || $final->recommendation === 'Not Recommended') {
-                return response()->json([
-                    'message' => 'A final evaluation recommending this candidate is required before accepting.',
-                ], 422);
-            }
+            if ($data['response'] === 'accepted') {
+                if ($model->offerResponseExpired()) {
+                    // Window lapsed before HR recorded the reply — declined
+                    // applicant, so no cooldown (welcome back anytime).
+                    $model->update(['offer_status' => 'Declined', 'stage' => 'Rejected', 'rejected_at' => null]);
 
-            // For Another Position — the applicant now joins the recommended
-            // post, so their job post (and the new hire derived from it)
-            // points at the right position/department.
-            if ($final->recommendation === 'For Another Position' && $final->recommended_job_post_id) {
-                $model->job_post_id = $final->recommended_job_post_id;
-            }
-
-            $model->stage = 'Hired';
-            $model->offer_status = 'Accepted';
-            $model->offer_start_date = $data['start_date'];
-            $model->fill($responseMeta);
-            $model->save();
-
-            // Filling a slot: auto-closes the job post when vacancies reach 0.
-            if ($model->jobPost) {
-                try {
-                    $model->jobPost->fillOneSlot();
-                } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning('Job post slot fill failed for post ' . $model->job_post_id . ': ' . $e->getMessage());
+                    return response()->json([
+                        'message' => 'The ' . OfferService::RESPONSE_WINDOW_DAYS . '-day response window expired — '
+                            . 'the applicant is treated as declined (Failed).',
+                    ], 422);
                 }
+
+                $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+                if (! $final || $final->recommendation === 'Not Recommended') {
+                    return response()->json([
+                        'message' => 'A final evaluation recommending this candidate is required before accepting.',
+                    ], 422);
+                }
+
+                // For Another Position — the applicant now joins the recommended
+                // post, so their job post (and the new hire derived from it)
+                // points at the right position/department.
+                if ($final->recommendation === 'For Another Position' && $final->recommended_job_post_id) {
+                    $model->job_post_id = $final->recommended_job_post_id;
+                }
+
+                $model->stage = 'Hired';
+                $model->offer_status = 'Accepted';
+                $model->offer_start_date = $data['start_date'];
+                $model->fill($responseMeta);
+                $model->save();
+
+                // Filling a slot: auto-closes the job post when vacancies reach 0.
+                if ($model->jobPost) {
+                    try {
+                        $model->jobPost->fillOneSlot();
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning('Job post slot fill failed for post ' . $model->job_post_id . ': ' . $e->getMessage());
+                    }
+                }
+
+                // File the accepted applicant into New Hire Onboarding right here
+                // on the server (idempotent per applicant). The browser handoff
+                // used to be the only creator, so a reload could silently drop the
+                // hire; doing it server-side guarantees the Pre-onboarding record.
+                $newHire = null;
+                try {
+                    $newHire = NewHireIntakeService::fileApplicant(
+                        $model->applicant_id,
+                        ['start_date' => $data['start_date']]
+                    );
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('New hire intake failed for applicant ' . $model->applicant_id . ': ' . $e->getMessage());
+                }
+
+                AuditLogger::log(
+                    action: 'Applicant Accepted Offer',
+                    module: 'Applicant Management',
+                    severity: 'Info',
+                    targetType: 'Applicant',
+                    targetId: (string) $model->applicant_id,
+                    details: "{$model->name} accepted the offer for {$model->jobPost?->title} — "
+                        . 'start of work ' . $data['start_date']
+                        . ($newHire ? " (filed under New Hire Onboarding as Pre-onboarding, {$newHire->new_hire_code}). " : ' (New Hire Onboarding intake pending). ')
+                        . "Replied via {$data['channel']}"
+                        . (! empty($data['note']) ? " — {$data['note']}" : '') . '.'
+                );
+
+                NotificationService::send(
+                    title: "Offer accepted: {$model->name}",
+                    body: "Start of work " . $data['start_date'] . ' — filing under Pre-onboarding.',
+                    module: 'Applicant Management',
+                    type: 'success',
+                    targetType: 'Applicant',
+                    targetId: (string) $model->applicant_id,
+                    onlyRoleNames: ['Admin', 'Super Admin']
+                );
+
+                return response()->json(new ApplicantResource($model->fresh()->load(['jobPost.department'])));
             }
 
-            // File the accepted applicant into New Hire Onboarding right here
-            // on the server (idempotent per applicant). The browser handoff
-            // used to be the only creator, so a reload could silently drop the
-            // hire; doing it server-side guarantees the Pre-onboarding record.
-            $newHire = null;
-            try {
-                $newHire = NewHireIntakeService::fileApplicant(
-                    $model->applicant_id,
-                    ['start_date' => $data['start_date']]
-                );
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('New hire intake failed for applicant ' . $model->applicant_id . ': ' . $e->getMessage());
-            }
+            // Declined — failed in the pipeline, no onboarding. Decliners are
+            // welcome back anytime: no rejected_at, so no cooldown.
+            $model->update([
+                'stage'        => 'Rejected',
+                'offer_status' => 'Declined',
+                'rejected_at'  => null,
+                ...$responseMeta,
+            ]);
 
             AuditLogger::log(
-                action: 'Applicant Accepted Offer',
+                action: 'Applicant Declined Offer',
                 module: 'Applicant Management',
-                severity: 'Info',
+                severity: 'Warning',
                 targetType: 'Applicant',
                 targetId: (string) $model->applicant_id,
-                details: "{$model->name} accepted the offer for {$model->jobPost?->title} — "
-                    . 'start of work ' . $data['start_date']
-                    . ($newHire ? " (filed under New Hire Onboarding as Pre-onboarding, {$newHire->new_hire_code}). " : ' (New Hire Onboarding intake pending). ')
+                details: "{$model->name} declined the offer — recorded as Failed in the Pipeline Overview. "
                     . "Replied via {$data['channel']}"
                     . (! empty($data['note']) ? " — {$data['note']}" : '') . '.'
             );
 
-            NotificationService::send(
-                title: "Offer accepted: {$model->name}",
-                body: "Start of work " . $data['start_date'] . ' — filing under Pre-onboarding.',
-                module: 'Applicant Management',
-                type: 'success',
-                targetType: 'Applicant',
-                targetId: (string) $model->applicant_id,
-                onlyRoleNames: ['Admin', 'Super Admin']
-            );
-
             return response()->json(new ApplicantResource($model->fresh()->load(['jobPost.department'])));
-        }
-
-        // Declined — failed in the pipeline, no onboarding. Decliners are
-        // welcome back anytime: no rejected_at, so no cooldown.
-        $model->update([
-            'stage'        => 'Rejected',
-            'offer_status' => 'Declined',
-            'rejected_at'  => null,
-            ...$responseMeta,
-        ]);
-
-        AuditLogger::log(
-            action: 'Applicant Declined Offer',
-            module: 'Applicant Management',
-            severity: 'Warning',
-            targetType: 'Applicant',
-            targetId: (string) $model->applicant_id,
-            details: "{$model->name} declined the offer — recorded as Failed in the Pipeline Overview. "
-                . "Replied via {$data['channel']}"
-                . (! empty($data['note']) ? " — {$data['note']}" : '') . '.'
-        );
-
-        return response()->json(new ApplicantResource($model->fresh()->load(['jobPost.department'])));
+        });
     }
 
     /* PUT /api/v1/final-evaluations/{finalEvaluation} */

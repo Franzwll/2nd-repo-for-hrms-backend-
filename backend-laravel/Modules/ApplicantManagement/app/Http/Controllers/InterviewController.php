@@ -247,14 +247,7 @@ class InterviewController extends Controller
 
     public function zoomSignature(Request $request, int $interview): JsonResponse
     {
-        $model = Interview::findOrFail($interview);
-
-        if ($model->mode !== 'Virtual' || empty($model->zoom_meeting_id)) {
-            return response()->json([
-                'message' => 'This interview has no Zoom meeting to embed yet.',
-                'sdk_configured' => ZoomMeetingService::sdkConfigured(),
-            ], 428);
-        }
+        $model = Interview::with('applicant.jobPost')->findOrFail($interview);
 
         if (! ZoomMeetingService::sdkConfigured()) {
             return response()->json([
@@ -263,11 +256,20 @@ class InterviewController extends Controller
             ], 501);
         }
 
-        // Meetings created before the waiting room was disabled still put the
-        // applicant outside until the host admits them — which the embedded
-        // view cannot do. Repair the meeting each time the host opens the
-        // room (no-op without the matching Zoom update scope).
-        ZoomMeetingService::disableWaitingRoom((string) $model->zoom_meeting_id);
+        // Self-heal the stored meeting before minting a signature: a meeting
+        // that was deleted/retired on Zoom, or one still carrying a waiting
+        // room, cannot be joined from the embedded host view. Recreating it
+        // here means HR never gets a signature Zoom is guaranteed to refuse.
+        if (ZoomMeetingService::ensureJoinable($model, $model->applicant?->jobPost?->title)) {
+            $model->save();
+        }
+
+        if ($model->mode !== 'Virtual' || empty($model->zoom_meeting_id)) {
+            return response()->json([
+                'message' => 'This interview has no Zoom meeting to embed yet.',
+                'sdk_configured' => true,
+            ], 428);
+        }
 
         $role = (int) $request->input('role', 0);
         $role = $role === 1 ? 1 : 0;

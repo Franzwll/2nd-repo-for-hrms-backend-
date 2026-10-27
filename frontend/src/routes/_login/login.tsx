@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { Eye, EyeOff, Lock, LogIn, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
@@ -14,6 +14,7 @@ import suite2b from "@/assets/o-suite(2)b.png";
 import { Logo } from "@/components/brand/Logo";
 import { LoginFooter } from "@/components/brand/LoginFooter";
 import { Button } from "@/components/ui/button";
+import { Preloader } from "@/components/ui/preloader";
 import { FloatingInput } from "@/components/ui/floating-input";
 import { Label } from "@/components/ui/label";
 import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/turnstile";
@@ -137,6 +138,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [signingInTarget, setSigningInTarget] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [ready, setReady] = useState(false);
@@ -219,7 +221,7 @@ function LoginPage() {
             : res.user.role === "Admin"
               ? "/admin"
               : "/employee";
-        navigate({ to: target });
+        setSigningInTarget(target);
         return;
       }
 
@@ -242,7 +244,7 @@ function LoginPage() {
             : res.user.role === "Admin"
               ? "/admin"
               : "/employee";
-        navigate({ to: target });
+        setSigningInTarget(target);
         return;
       }
 
@@ -275,6 +277,8 @@ function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col lg:grid lg:grid-cols-[1.1fr_1fr] lg:grid-rows-none">
+      {/* Workspace preloader when user signs in without OTP */}
+      {signingInTarget && <Preloader onComplete={() => navigate({ to: signingInTarget })} />}
       {/* Preloader screen until first image frame decodes */}
       {!ready && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white">
@@ -382,8 +386,12 @@ function LoginPage() {
           whole group vertically centered; lg+: side-by-side, vertically centered */}
       <div className="mb-auto flex items-start justify-center bg-background px-5 pt-3 pb-9 sm:px-10 lg:mb-0 lg:items-center lg:px-12 lg:py-12">
         <div className="w-full max-w-md sm:max-w-lg lg:max-w-md">
-          <h2 className="mt-2 text-center font-display text-4xl font-semibold">Sign in</h2>
-          <p className="mt-2 text-center text-sm text-muted-foreground">
+          {/* Header Icon & Eyebrow matching Forgot Password and OTP Verification */}
+
+          <h2 className="mt-1.5 text-center font-display text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
+            Sign in
+          </h2>
+          <p className="mt-2 text-center text-sm leading-relaxed text-muted-foreground">
             Sign in with your work credentials.
           </p>
           <div className="my-7" />
@@ -452,7 +460,7 @@ function LoginPage() {
             </div>
           </form>
 
-          <p className="mt-7 text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-sm text-muted-foreground">
             Looking for work?{" "}
             <Link to="/jobs" className="font-medium text-primary hover:underline">
               Browse job openings

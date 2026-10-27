@@ -28,7 +28,7 @@ export function LoginFooter() {
     "font-semibold text-foreground underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary hover:text-primary cursor-pointer";
 
   return (
-    <footer className="mt-10 border-t border-border/60 pt-4 text-[11px] leading-relaxed text-muted-foreground">
+    <footer className="mt-4 border-t border-border/60 pt-4 text-[11px] leading-relaxed text-muted-foreground">
       <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
         <Link to="/support" className={linkCls}>
           <span className="inline-flex items-center gap-1">

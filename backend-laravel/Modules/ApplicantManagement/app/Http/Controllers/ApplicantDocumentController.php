@@ -94,6 +94,49 @@ class ApplicantDocumentController extends Controller
         return response()->json(new ApplicantDocumentResource($document));
     }
 
+    /* POST /api/v1/applicant-documents/{applicantDocument}/override */
+    /* Allows HR to manually resolve / override a document discrepancy.     */
+    public function override(Request $request, int $applicantDocument): JsonResponse
+    {
+        $document = ApplicantDocument::with('applicant')->findOrFail($applicantDocument);
+
+        $data = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+            'status' => ['nullable', 'string', 'in:VERIFIED,UNABLE_TO_VERIFY'],
+        ]);
+
+        $newStatus = $data['status'] ?? 'VERIFIED';
+        $reason = trim((string) ($data['reason'] ?? 'Manually verified and resolved by HR.'));
+        $user = $request->user();
+        $resolverName = $user?->full_name ?? $user?->username ?? 'HR Staff';
+
+        $resJson = is_array($document->verification_result_json) ? $document->verification_result_json : [];
+        $resJson['overridden'] = true;
+        $resJson['override_by'] = $resolverName;
+        $resJson['override_reason'] = $reason;
+        $resJson['overridden_at'] = now()->toIso8601String();
+        $resJson['summary'] = "Manual HR Resolution ({$resolverName}): {$reason}";
+
+        $document->update([
+            'verification_status'      => $newStatus,
+            'verification_result_json' => $resJson,
+            'verified_at'              => now(),
+        ]);
+
+        AuditLogger::log(
+            action: 'Document Verification Overridden',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Applicant Document',
+            targetId: (string) $document->applicant_document_id,
+            details: "Verification for document '{$document->original_name}' (applicant {$document->applicant?->name}) was manually resolved to {$newStatus} by {$resolverName}. Reason: {$reason}"
+        );
+
+        app(DocumentVerificationService::class)->refreshRanking($document->applicant, 'manual verification override');
+
+        return response()->json(new ApplicantDocumentResource($document->fresh()));
+    }
+
     /* DELETE /api/v1/applicant-documents/{applicantDocument} */
     public function destroy(int $applicantDocument): JsonResponse
     {
