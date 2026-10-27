@@ -36,6 +36,8 @@ class ApplicantResource extends JsonResource
             'block_scope'      => $this->block_scope,
             'block_expires_at' => $this->block_expires_at?->toISOString(),
             'is_active_blocked'=> $this->isBlocked(),
+            'rejected_at_stage'=> $this->stage === 'Rejected' ? $this->rejectedAtStage() : null,
+            'allowed_return_stages' => $this->allowedReturnStages(),
             /* Offer workflow — set when the final evaluation decision emails
                the applicant an offer (7-day response window) and the reply is
                recorded by HR. */

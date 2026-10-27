@@ -146,6 +146,8 @@ export type Applicant = {
   blockScope?: string | null;
   blockExpiresAt?: string | null;
   isActiveBlocked?: boolean;
+  rejectedAtStage?: string | null;
+  allowedReturnStages?: string[] | null;
 };
 
 export const statusMeta: Record<

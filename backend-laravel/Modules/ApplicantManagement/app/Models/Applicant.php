@@ -240,4 +240,74 @@ class Applicant extends Model
     {
         return $this->blocked_reason;
     }
+
+    public function rejectedAtStage(): string
+    {
+        if ($this->offer_status !== null || $this->offer_sent_at !== null) {
+            return 'Offer';
+        }
+
+        if ($this->finalEvaluations()->exists()) {
+            return 'Final Evaluation';
+        }
+
+        if ($this->practicalTests()->exists()) {
+            return 'Practical Test';
+        }
+
+        if ($this->assessmentTests()->exists()) {
+            return 'Assessment Test';
+        }
+
+        if ($this->assessments()->exists()) {
+            return 'Assessed';
+        }
+
+        if ($this->interviews()->exists()) {
+            return 'Interview Scheduled';
+        }
+
+        return 'Screened';
+    }
+
+    public function allowedReturnStages(): array
+    {
+        $order = [
+            'Screened'            => 0,
+            'Accepted'            => 1,
+            'Interview Scheduled' => 2,
+            'Assessed'            => 3,
+            'Assessment Test'     => 4,
+            'Practical Test'      => 5,
+            'Final Evaluation'    => 6,
+            'Offer'               => 7,
+            'Hired'               => 8,
+        ];
+
+        $active = ['Screened', 'Accepted', 'Interview Scheduled', 'Assessed', 'Assessment Test', 'Practical Test', 'Final Evaluation'];
+
+        if ($this->stage === 'Rejected') {
+            $failedStage = $this->rejectedAtStage();
+            $maxAllowedStage = $failedStage === 'Assessed' ? 'Interview Scheduled' : $failedStage;
+            $maxIndex = $order[$maxAllowedStage] ?? 0;
+
+            $allowed = array_values(array_filter(
+                $active,
+                fn (string $s): bool => ($order[$s] ?? 99) <= $maxIndex,
+            ));
+
+            return $allowed !== [] ? $allowed : ['Screened'];
+        }
+
+        if (! isset($order[$this->stage])) {
+            return [];
+        }
+
+        $currentIndex = $order[$this->stage];
+
+        return array_values(array_filter(
+            $active,
+            fn (string $s): bool => ($order[$s] ?? 99) < $currentIndex,
+        ));
+    }
 }

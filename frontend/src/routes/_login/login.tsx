@@ -460,7 +460,7 @@ function LoginPage() {
             </div>
           </form>
 
-          <p className="mt-7 text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-sm text-muted-foreground">
             Looking for work?{" "}
             <Link to="/jobs" className="font-medium text-primary hover:underline">
               Browse job openings

@@ -58,8 +58,14 @@ class ApplicantAssessmentController extends Controller
 
         $assessment = ApplicantAssessment::create($data);
 
-        // Advance applicant stage
-        if (in_array($model->stage, ['Screened', 'Interview Scheduled'])) {
+        // Advance applicant stage or reject on failure
+        if (($data['result'] ?? null) === 'Failed') {
+            $model->update([
+                'stage'              => 'Rejected',
+                'rejected_at'        => now(),
+                'cooldown_lifted_at' => null,
+            ]);
+        } elseif (in_array($model->stage, ['Screened', 'Interview Scheduled'])) {
             $model->update(['stage' => 'Assessed']);
         }
 

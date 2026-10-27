@@ -374,6 +374,8 @@ class LandingController extends Controller
      */
     public function extractResume(Request $request): JsonResponse
     {
+        ScreeningService::raiseTimeLimit();
+
         $request->validate([
             'resume' => ['required', 'file', self::uploadExtensionRule(), 'max:20480'],
         ]);
@@ -423,6 +425,8 @@ class LandingController extends Controller
      */
     public function classifyDocument(Request $request): JsonResponse
     {
+        ScreeningService::raiseTimeLimit();
+
         $request->validate([
             'file' => ['required', 'file', self::uploadExtensionRule(), 'max:20480'],
             // NOTE: 'boolean' rule rejects the strings FormData sends
@@ -453,6 +457,8 @@ class LandingController extends Controller
     }
 
     public function apply(JobApplicationRequest $request): JsonResponse    {
+        ScreeningService::raiseTimeLimit();
+
         $jobPost = JobPost::find($request->integer('job_post_id'));
 
         if (! $jobPost || ! $jobPost->active || ! in_array($jobPost->status, ['published', 'Open']) || $jobPost->remainingSlots() <= 0) {

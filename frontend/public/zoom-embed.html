@@ -30,8 +30,11 @@
     <script>
       (function () {
         function report(msg) {
-          if (window.__zoomEmbedBoot) return;
+          // NOTE: must keep working AFTER boot — the join itself can fail
+          // later (e.g. "Already has other meetings in progress"), and a
+          // swallowed error leaves the parent stuck until its timeout.
           window.__zoomEmbedBoot = true;
+          window.__zoomReported = true;
           var el = document.getElementById("zoom-err");
           if (el) {
             el.style.display = "block";
@@ -61,22 +64,168 @@
             return;
           }
           var client = NS.createClient();
+          var joining = false;
+          var joined = false;
+          var leaving = false;
+
+          /* Leave the meeting (once) and tell the parent it is safe to drop
+             this iframe. Zoom keeps the account "inside" a room whose iframe
+             vanished before the SDK left, which makes the next join fail with
+             "Already has other meetings in progress".
+
+             With `end` set the HOST also terminates the meeting instead of
+             just leaving it. A finished Zoom meeting otherwise stays
+             "started" for its whole scheduled duration (60 min) and blocks
+             every other interview hosted by the same account. Ending it frees
+             the account immediately. Attendees (role 0) cannot end it, so
+             they just leave. */
+          function leaveMeeting(end) {
+            if (leaving) {
+              parent.postMessage({ zoomLeft: true }, "*");
+              return;
+            }
+            leaving = true;
+            joined = false;
+            function done() {
+              parent.postMessage({ zoomLeft: true }, "*");
+            }
+            var isHost = false;
+            try {
+              isHost = typeof client.isHost === "function" && client.isHost();
+            } catch (e) {
+              /* host state not ready — treat as attendee */
+            }
+            try {
+              var p =
+                end && isHost && typeof client.endMeeting === "function"
+                  ? client.endMeeting()
+                  : client.leaveMeeting();
+              if (p && typeof p.then === "function") p.then(done, done);
+              else done();
+            } catch (e) {
+              done();
+            }
+          }
 
           /* -------- toolbar helpers (the SDK's own buttons are the only
              public way to toggle the camera / open audio settings) -------- */
+          function labelOf(el) {
+            if (!el) return "";
+            var attr =
+              (el.getAttribute &&
+                (el.getAttribute("title") || el.getAttribute("aria-label"))) ||
+              "";
+            var text = el.innerText || el.textContent || "";
+            return String(attr || text).replace(/\s+/g, " ").trim();
+          }
+          function isVisible(el) {
+            if (!el || !el.isConnected) return false;
+            var rects = el.getClientRects && el.getClientRects();
+            if (!rects || rects.length === 0) return false;
+            try {
+              var style = window.getComputedStyle(el);
+              if (style.visibility === "hidden" || style.display === "none") return false;
+              if (style.opacity === "0") return false;
+            } catch (e) {
+              /* assume visible */
+            }
+            return true;
+          }
           function findToolbarButton(re) {
-            var btns = document.querySelectorAll("button[title]");
-            for (var i = 0; i < btns.length; i++) {
-              var t = btns[i].getAttribute("title") || "";
-              if (re.test(t)) return btns[i];
+            // Match title / aria-label first (stable across locales we ship),
+            // then visible text so a toolbar rendered without titles (or a
+            // menu item like More → Settings) is still reachable.
+            var sels = [
+              "button[title]",
+              "button[aria-label]",
+              'button,[role="button"],[role="menuitem"],a[title],a[aria-label]',
+            ];
+            for (var s = 0; s < sels.length; s++) {
+              var nodes = document.querySelectorAll(sels[s]);
+              for (var i = 0; i < nodes.length; i++) {
+                var label = labelOf(nodes[i]);
+                // Long labels are containers, not controls.
+                if (label && label.length <= 48 && re.test(label) && isVisible(nodes[i])) {
+                  return nodes[i];
+                }
+              }
             }
             return null;
           }
           function clickToolbarButton(re) {
             var btn = findToolbarButton(re);
             if (!btn) return false;
-            btn.click();
+            try {
+              btn.click();
+            } catch (e) {
+              return false;
+            }
             return true;
+          }
+          function clickFirstToolbar(res) {
+            for (var i = 0; i < res.length; i++) {
+              if (clickToolbarButton(res[i])) return res[i];
+            }
+            return null;
+          }
+
+          /* -------- audio settings --------
+             There is no single "Audio Settings" toolbar button in the
+             embedded SDK. Depending on build/state the entry point is one of:
+               · a direct "Audio" toolbar button (older builds),
+               · More → Settings → Audio tab (most builds), or
+               · "Join Audio" when computer audio hasn't been joined yet. */
+          function openAudioNotice() {
+            parent.postMessage(
+              {
+                zoomNotice:
+                  "Couldn't open Zoom's audio menu automatically — use the More menu in the meeting toolbar, then Settings → Audio.",
+              },
+              "*",
+            );
+          }
+          function openAudioMenu(attempt) {
+            attempt = attempt || 0;
+            // 1) Direct audio button / already-open audio panel.
+            if (clickFirstToolbar([/^audio$/i, /^audio settings$/i])) return;
+            // 2) More → Settings → Audio.
+            if (clickFirstToolbar([/^more( options)?$/i])) {
+              setTimeout(function () {
+                if (!clickFirstToolbar([/^settings$/i, /^meeting settings$/i])) {
+                  if (attempt < 2) return openAudioMenu(attempt + 1);
+                  return openAudioNotice();
+                }
+                setTimeout(function () {
+                  if (
+                    clickFirstToolbar([
+                      /^audio$/i,
+                      /^audio settings$/i,
+                      /^speaker & microphone$/i,
+                    ])
+                  ) {
+                    return;
+                  }
+                  if (attempt < 2) return openAudioMenu(attempt + 1);
+                  openAudioNotice();
+                }, 500);
+              }, 450);
+              return;
+            }
+            // 3) Audio not joined yet — join it, then re-run the menu route.
+            if (
+              attempt === 0 &&
+              clickFirstToolbar([
+                /^join audio$/i,
+                /^join with computer audio$/i,
+                /^computer audio$/i,
+              ])
+            ) {
+              setTimeout(function () {
+                openAudioMenu(attempt + 1);
+              }, 1000);
+              return;
+            }
+            openAudioNotice();
           }
 
           /* -------- state reporting -------- */
@@ -167,6 +316,36 @@
             /* older SDK without events — parent simply never gets the hints */
           }
 
+          /* -------- join failure watchdog --------
+             The SDK can render a join refusal in its own UI WITHOUT rejecting
+             the client.join() promise (e.g. "Fail to join the meeting. Already
+             has other meetings in progress."). When that happens the parent
+             only sees its own timeout and never learns the real reason, so it
+             cannot retry as a participant. Watch the rendered text and report
+             the refusal as soon as Zoom shows it. */
+          var JOIN_FAIL_RE =
+            /already has other meetings? in progress|other meetings? in progress|meeting has not started|has not started the meeting|wait for the host|waiting for the host|invalid meeting|meeting (?:does not exist|has been deleted|is invalid|not found)|not a valid meeting|meeting is full|invalid signature|signature (?:is )?(?:invalid|expired)/i;
+          function watchJoinFailure() {
+            var deadline = Date.now() + 45000;
+            var timer = setInterval(function () {
+              if (joined || leaving || window.__zoomReported || Date.now() > deadline) {
+                clearInterval(timer);
+                return;
+              }
+              var text = "";
+              try {
+                text = (document.body && document.body.innerText) || "";
+              } catch (e) {
+                /* ignore */
+              }
+              var match = JOIN_FAIL_RE.exec(text);
+              if (match) {
+                clearInterval(timer);
+                report("Zoom join failed: " + match[0]);
+              }
+            }, 700);
+          }
+
           /* -------- join + control command handling -------- */
           function handleCommand(d) {
             var cmd = d.command;
@@ -209,19 +388,7 @@
               return;
             }
             if (cmd === "open-audio") {
-              var opened =
-                clickToolbarButton(/^audio$/i) ||
-                clickToolbarButton(/^join audio$/i) ||
-                clickToolbarButton(/^settings$/i);
-              if (!opened) {
-                parent.postMessage(
-                  {
-                    zoomNotice:
-                      "Zoom's audio menu isn't available right now — try again once the meeting is fully loaded.",
-                  },
-                  "*",
-                );
-              }
+              openAudioMenu(0);
               return;
             }
             if (cmd === "chat-send") {
@@ -277,11 +444,20 @@
           window.addEventListener("message", function (ev) {
             var d = ev.data || {};
             if (!d || typeof d !== "object") return;
+            if (d.type === "zoom-leave") {
+              leaveMeeting(d.end === true);
+              return;
+            }
             if (d.type === "zoom-command") {
               handleCommand(d);
               return;
             }
             if (d.type !== "zoom-join") return;
+            // Guard against a double join: the parent may retry with a fresh
+            // iframe, but a duplicate join in THIS document would occupy a
+            // second meeting slot on the account.
+            if (joining || joined) return;
+            joining = true;
             var root = document.getElementById("zoom-root");
             if (!root) {
               report("Zoom embed page missing #zoom-root.");
@@ -294,6 +470,7 @@
             // the full iframe box is what it should be told to fill.
             var w = Math.max(320, Math.round(window.innerWidth));
             var h = Math.max(200, Math.round(window.innerHeight));
+            watchJoinFailure();
             client
               .init({
                 zoomAppRoot: root,
@@ -372,21 +549,29 @@
                 }
                 setTimeout(postSelfState, 800);
                 setTimeout(postSelfState, 3000);
+                joined = true;
+                joining = false;
                 parent.postMessage({ zoomEmbedJoined: true }, "*");
               })
               .catch(function (e) {
+                joining = false;
                 report(
                   "Zoom join failed: " +
                     String((e && (e.reason || e.message)) || e),
                 );
               });
           });
-          window.addEventListener("beforeunload", function () {
-            try {
-              client.leaveMeeting();
-            } catch (e) {
-              /* ignore */
-            }
+          // An iframe removed from the page is destroyed without firing
+          // `beforeunload`; `pagehide`/`unload` do fire, so leave on all of
+          // them. leaveOnPageUnload also covers the SDK's own hooks.
+          ["pagehide", "unload", "beforeunload"].forEach(function (evt) {
+            window.addEventListener(evt, function () {
+              try {
+                leaveMeeting(true);
+              } catch (e) {
+                /* ignore */
+              }
+            });
           });
           ready();
         } catch (e) {

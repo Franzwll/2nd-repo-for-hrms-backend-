@@ -188,6 +188,8 @@ export interface ApiApplicant {
   block_scope?: string | null;
   block_expires_at?: string | null;
   is_active_blocked?: boolean;
+  rejected_at_stage?: string | null;
+  allowed_return_stages?: string[] | null;
   source: string | null;
   summary: string | null;
   flags_json: string[];

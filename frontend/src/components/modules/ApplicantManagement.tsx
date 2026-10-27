@@ -306,6 +306,8 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
     blockScope: a.block_scope ?? null,
     blockExpiresAt: a.block_expires_at ?? null,
     isActiveBlocked: a.is_active_blocked ?? Boolean(a.is_blocked),
+    rejectedAtStage: a.rejected_at_stage ?? null,
+    allowedReturnStages: a.allowed_return_stages ?? null,
   };
 }
 
@@ -5152,13 +5154,13 @@ function ApplicantViewScreen({
   const stepStates: StageProgressState[] = (() => {
     /* "Accepted" means accepted *for interview* — the pipeline is not closed,
        so it must not read as finished here. */
-    const closed = ["Offer", "Hired", "Rejected"].includes(a.stage);
+    const isOfferOrHired = ["Offer", "Hired"].includes(a.stage);
     const staged = [
-      /* 0 Screening */ closed || a.stage !== "Screened",
-      /* 1 Interview */ closed || !!assessment,
-      /* 2 Test      */ requiresTest ? closed || !!test : false,
-      /* 3 Practical */ requiresPrac ? closed || !!practical : false,
-      /* 4 Final     */ closed || !!final || a.stage === "Final Evaluation",
+      /* 0 Screening */ isOfferOrHired || a.stage === "Rejected" || a.stage !== "Screened",
+      /* 1 Interview */ isOfferOrHired || !!assessment,
+      /* 2 Test      */ requiresTest ? isOfferOrHired || !!test : false,
+      /* 3 Practical */ requiresPrac ? isOfferOrHired || !!practical : false,
+      /* 4 Final     */ isOfferOrHired || !!final || a.stage === "Final Evaluation",
     ];
     const states: StageProgressState[] = staged.map((s) => (s ? "done" : "pending"));
     // A stage the role skips is never "worked on": leave it out when locating
@@ -5167,7 +5169,7 @@ function ApplicantViewScreen({
     const currentIdx = states.findIndex((s, i) => applicable(i) && s === "pending");
     if (!requiresTest && (currentIdx === -1 || currentIdx > 2)) states[2] = "done";
     if (!requiresPrac && (currentIdx === -1 || currentIdx > 3)) states[3] = "done";
-    if (currentIdx !== -1) states[currentIdx] = "current";
+    if (a.stage !== "Rejected" && currentIdx !== -1) states[currentIdx] = "current";
     return states;
   })();
 
@@ -5584,17 +5586,25 @@ function ApplicantViewScreen({
                     : i === 3
                       ? (practical?.result ?? null)
                       : null;
+              const isFailed =
+                verdict === "Failed" ||
+                (i === 4 && final?.recommendation === "Not Recommended") ||
+                (i === 0 && a.stage === "Rejected" && !assessment && !test && !practical && !final);
               const statusText = skipped
                 ? done
                   ? "Not required — Completed"
                   : "Not required"
-                : done
-                  ? verdict
-                    ? `Completed · ${verdict}`
-                    : "Completed"
-                  : current
-                    ? "In Progress"
-                    : "Pending";
+                : isFailed
+                  ? `Failed${verdict ? ` · ${verdict}` : ""}`
+                  : done
+                    ? verdict
+                      ? `Completed · ${verdict}`
+                      : "Completed"
+                    : a.stage === "Rejected"
+                      ? "Disqualified"
+                      : current
+                        ? "In Progress"
+                        : "Pending";
               const isLast = i === VIEW_MILESTONES.length - 1;
 
               // Connector to the next node: green behind a completed stage, a
@@ -5631,14 +5641,22 @@ function ApplicantViewScreen({
                     className={cn(
                       "relative z-10 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-bold transition-all",
                       "hover:ring-4 hover:ring-primary/25 disabled:cursor-not-allowed disabled:hover:ring-0",
-                      done
-                        ? "bg-success text-success-foreground"
-                        : current
-                          ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/15"
-                          : "bg-muted text-muted-foreground",
+                      isFailed
+                        ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/15"
+                        : done
+                          ? "bg-success text-success-foreground"
+                          : current
+                            ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/15"
+                            : "bg-muted text-muted-foreground",
                     )}
                   >
-                    {done ? <Check className="h-4 w-4" strokeWidth={3} /> : i + 1}
+                    {isFailed ? (
+                      <X className="h-4 w-4" strokeWidth={3} />
+                    ) : done ? (
+                      <Check className="h-4 w-4" strokeWidth={3} />
+                    ) : (
+                      i + 1
+                    )}
                   </button>
                   <span
                     className={cn(
@@ -6701,7 +6719,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const navigate = useNavigate();
   const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
-  const [includeArchived, setIncludeArchived] = useState(false);
+  const [showArchivedAndBlocked, setShowArchivedAndBlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   /* Only the very first load shows skeletons. The 20s background poll and the
      focus/visibility re-read refresh silently, so the table stays clickable
@@ -6720,7 +6738,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // Hired applicants leave the pipeline (they move to New Hire Onboarding);
     // rejected applicants stay in the list, only labelled as "Rejected".
     const listParams: Record<string, any> = { exclude_stages: "Hired" };
-    if (includeArchived) listParams.include_archived = "1";
+    if (showArchivedAndBlocked) listParams.only_hidden = "1";
     try {
       if (!hasLoadedRef.current) setLoading(true);
       const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
@@ -6774,7 +6792,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       hasLoadedRef.current = true;
       setLoading(false);
     }
-  }, [includeArchived]);
+  }, [showArchivedAndBlocked]);
 
   useEffect(() => {
     void loadApplicantRecords();
@@ -6858,9 +6876,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  is pre-filled with this person — they are the one processing the step —
    *  and stays editable so a different interviewer can be recorded. */
   const [currentUserId, setCurrentUserId] = useState("");
+  /** Display name of the signed-in host. The Zoom room header shows whoever is
+   *  actually in the meeting rather than the interviewer stored on the booking
+   *  (which can point at someone else, e.g. when HR starts the call). */
+  const [currentStaffName, setCurrentStaffName] = useState("");
   useEffect(() => {
     const user = getUser();
     if (user?.system_user_id) setCurrentUserId(String(user.system_user_id));
+    if (user?.full_name) setCurrentStaffName(user.full_name);
   }, []);
   /** The logged-in user's id, but only when they are a selectable system user
    *  (before the user list loads we trust the session value so the field is
@@ -7042,6 +7065,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [zoomRoom, setZoomRoom] = useState<{ applicant: Applicant; interview: Interview } | null>(
     null,
   );
+  // Leaving the Zoom room ends the meeting for the applicant too, so every
+  // manual exit (X, Leave, Escape, overlay, tab close) asks first.
+  const [zoomLeaveConfirm, setZoomLeaveConfirm] = useState(false);
   const [zoomMicOn, setZoomMicOn] = useState(true);
   const [zoomCamOn, setZoomCamOn] = useState(true);
   const [zoomEmbed, setZoomEmbed] = useState<ZoomEmbedState>({ status: "idle" });
@@ -8365,7 +8391,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const openMoveToStage = (a: Applicant) => {
     setMoveToStageFor(a);
     setMoveToStageReason("");
-    setMoveToStageTarget("Screened");
+    setMoveToStageTarget((a.stage as ReturnTargetStage) || "Screened");
   };
 
   const confirmMoveToStage = async () => {
@@ -8398,7 +8424,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const openReopen = (a: Applicant) => {
     setReopenFor(a);
     setReopenReason("");
-    setReopenTarget("Screened");
+    const allowed = a.allowedReturnStages && a.allowedReturnStages.length > 0
+      ? a.allowedReturnStages
+      : ["Screened", "Accepted"];
+    const defaultStage = (allowed[allowed.length - 1] as ReturnTargetStage) || "Screened";
+    setReopenTarget(defaultStage);
   };
 
   const confirmReopen = async () => {
@@ -8782,19 +8812,71 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setZoomRoom({ applicant: a, interview: iv });
   };
 
-  const closeZoomRoom = () => {
+  const closeZoomRoom = async () => {
     try {
       zoomStreamRef.current?.getTracks().forEach((t) => t.stop());
     } catch {
       /* ignore */
     }
     zoomStreamRef.current = null;
+    // Tell the embedded SDK to LEAVE the meeting before the dialog (and its
+    // iframe) is unmounted. Otherwise Zoom keeps the account inside the room
+    // and the next "Start Zoom Interview" is rejected with "Already has other
+    // meetings in progress" — most visible right after a reschedule, when a
+    // brand-new meeting has to be started.
+    try {
+      await zoomEmbedRef.current?.leave();
+    } catch {
+      /* leaving is best-effort — never block closing the room */
+    }
     setZoomRoom(null);
+    setZoomLeaveConfirm(false);
     // Scoring already lives inside the Zoom room, so leaving must not pop
     // the standalone Interview form afterwards. On-site interviews never
     // enter this path — their form still opens via Start Interview.
     setEvaluating(null);
   };
+
+  /** Ask before leaving an active Zoom room: `leave()` ends the meeting on the
+   *  host side, which also disconnects the applicant. */
+  const requestCloseZoomRoom = () => {
+    if (!zoomRoom) return;
+    setZoomLeaveConfirm(true);
+  };
+
+  // A browser tab close / reload also leaves the meeting, so warn there too.
+  useEffect(() => {
+    if (!zoomRoom) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "Leaving this page will end the Zoom interview for the applicant too.";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [zoomRoom]);
+
+  /** Keep an OPEN Zoom room pointed at the current interview row. A
+   *  reschedule can mint a brand-new meeting (new join link / meeting id)
+   *  while the room is still mounted; without this the video pane stays in
+   *  the retired meeting and the Invite drawer keeps showing the old link. */
+  useEffect(() => {
+    if (!zoomRoom) return;
+    const fresh = interviews.find((x) => x.id === zoomRoom.interview.id);
+    if (!fresh) return;
+    const changed =
+      fresh.zoomJoinUrl !== zoomRoom.interview.zoomJoinUrl ||
+      fresh.zoomMeetingId !== zoomRoom.interview.zoomMeetingId ||
+      fresh.date !== zoomRoom.interview.date ||
+      fresh.time !== zoomRoom.interview.time ||
+      fresh.mode !== zoomRoom.interview.mode ||
+      fresh.interviewer !== zoomRoom.interview.interviewer ||
+      fresh.status !== zoomRoom.interview.status;
+    if (changed) {
+      setZoomRoom((prev) => (prev ? { ...prev, interview: fresh } : prev));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interviews, zoomRoom?.interview.id]);
 
   const handleSaveZoomNotes = async () => {
     if (!zoomRoom || zoomNotesSaving) return;
@@ -9591,8 +9673,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         // Secondary stage sync — the assessment row is already saved and the
         // backend advances the stage in the same request, so a refusal here
         // must not make the recorded interview look like it was lost.
+        const isFailed = result === "Failed";
+        const nextStage = isFailed ? "Rejected" : "Assessed";
         await applicantsApi
-          .update(evaluating.dbId, { stage: "Assessed" })
+          .update(evaluating.dbId, { stage: nextStage })
           .catch((e) => console.warn("Stage sync deferred for interview assessment:", e));
         // Persist the verdict time on the interview record as well.
         if (completedInterview?.dbId) {
@@ -9627,7 +9711,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       },
       ...prev,
     ]);
-    setStage(evaluating.id, "Assessed");
+    const isFailedEval = result === "Failed";
+    const nextStageEval = isFailedEval ? "Rejected" : "Assessed";
+    setStage(evaluating.id, nextStageEval);
+    if (isFailedEval) {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === evaluating.id
+            ? { ...r, stage: "Rejected", rejectedAt: new Date().toISOString() }
+            : r,
+        ),
+      );
+    }
     setInterviews((prev) =>
       prev.map((i) =>
         i.applicant === evaluating.name
@@ -9850,14 +9945,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       // Secondary stage sync — the test row is already saved and the backend
       // advances the stage in the same request, so a refusal here must not
       // make the recorded test look like it was lost.
+      const isFailed = result === "Failed";
+      const nextStage = isFailed ? "Rejected" : "Assessment Test";
       await applicantsApi
-        .update(testingTest.dbId, { stage: "Assessment Test" })
+        .update(testingTest.dbId, { stage: nextStage })
         .catch((e) => console.warn("Stage sync deferred for assessment test:", e));
     }
 
     setAssessmentTests((prev) => [row, ...prev]);
     setTestAnswerMap((prev) => ({ ...prev, [row.id]: { ...testAnswers } }));
-    setStage(testingTest.id, "Assessment Test");
+    const isFailedTest = result === "Failed";
+    const nextStageTest = isFailedTest ? "Rejected" : "Assessment Test";
+    setStage(testingTest.id, nextStageTest);
+    if (isFailedTest) {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === testingTest.id
+            ? { ...r, stage: "Rejected", rejectedAt: new Date().toISOString() }
+            : r,
+        ),
+      );
+    }
     addAudit({
       actionType: "Assessment Test Recorded",
       target: testingTest.name,
@@ -9991,13 +10099,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       // Secondary stage sync — the practical row is already saved and the
       // backend advances the stage in the same request, so a refusal here must
       // not make the recorded assessment look like it was lost.
+      const isFailed = result === "Failed";
+      const nextStage = isFailed ? "Rejected" : "Practical Test";
       await applicantsApi
-        .update(testingPractical.dbId, { stage: "Practical Test" })
+        .update(testingPractical.dbId, { stage: nextStage })
         .catch((e) => console.warn("Stage sync deferred for practical assessment:", e));
     }
 
     setPracticalTests((prev) => [row, ...prev]);
-    setStage(testingPractical.id, "Practical Test");
+    const isFailedPrac = result === "Failed";
+    const nextStagePrac = isFailedPrac ? "Rejected" : "Practical Test";
+    setStage(testingPractical.id, nextStagePrac);
+    if (isFailedPrac) {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === testingPractical.id
+            ? { ...r, stage: "Rejected", rejectedAt: new Date().toISOString() }
+            : r,
+        ),
+      );
+    }
     addAudit({
       actionType: "Practical Assessment Recorded",
       target: testingPractical.name,
@@ -11031,7 +11152,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         };
       })
       .filter(({ a, interview, liveInterview, assessment, test, practical, final }) => {
-        if (!includeArchived && a.isArchived) return false;
+        if (showArchivedAndBlocked) {
+          if (!a.isArchived && !a.isActiveBlocked) return false;
+        } else {
+          if (a.isArchived || a.isActiveBlocked) return false;
+        }
         if (pipelinePosition !== "all" && a.position !== pipelinePosition) return false;
         if (pipelineStage !== "all" && a.stage !== pipelineStage) return false;
         if (
@@ -11091,7 +11216,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     pipelineSearch,
     pipelineResult,
     pipelineScheduledDate,
-    includeArchived,
+    showArchivedAndBlocked,
   ]);
 
   const pipelineSort = useSort(pipelineRows, {
@@ -14613,16 +14738,34 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       )}
                       <Button
                         size="sm"
-                        variant={includeArchived ? "secondary" : "outline"}
+                        variant={showArchivedAndBlocked ? "secondary" : "outline"}
                         className="h-9 gap-1.5 px-3 text-xs"
-                        onClick={() => setIncludeArchived((v) => !v)}
-                        title="Toggle visibility of archived applicants"
+                        onClick={() => setShowArchivedAndBlocked((v) => !v)}
+                        title="Toggle between active pipeline and archived/blocked applicants"
                       >
                         <Archive className="h-3.5 w-3.5" />
-                        {includeArchived ? "Hide Archived" : "Show Archived"}
+                        {showArchivedAndBlocked ? "Show Active Pipeline" : "Show Archived & Blocked"}
                       </Button>
                     </div>
                   </div>
+                  {showArchivedAndBlocked && (
+                    <div className="mt-3 flex items-center justify-between rounded-md border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-900 dark:text-amber-200">
+                      <div className="flex items-center gap-2">
+                        <Archive className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+                        <span>
+                          Viewing <strong>Archived &amp; Blocked Applicants</strong> only. Active pipeline candidates are hidden.
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs font-semibold hover:bg-amber-500/20"
+                        onClick={() => setShowArchivedAndBlocked(false)}
+                      >
+                        Return to Active Pipeline
+                      </Button>
+                    </div>
+                  )}
                   <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
                     <ListBody>
                       <Table className="table-fixed text-xs min-w-[980px]">
@@ -15449,10 +15592,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                             ) : null}
                                             {/* Administrative Actions */}
                                             <DropdownMenuSeparator />
-                                            <DropdownMenuItem onClick={() => openMoveToStage(a)}>
-                                              <ArrowRightCircle className="mr-2 h-3.5 w-3.5 text-primary" /> Move to stage...
-                                            </DropdownMenuItem>
-                                            {a.stage === "Rejected" && (
+                                            {a.stage !== "Rejected" ? (
+                                              <DropdownMenuItem onClick={() => openMoveToStage(a)}>
+                                                <ArrowRightCircle className="mr-2 h-3.5 w-3.5 text-primary" /> Move to stage...
+                                              </DropdownMenuItem>
+                                            ) : (
                                               <DropdownMenuItem onClick={() => openReopen(a)}>
                                                 <RotateCcw className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Reopen application
                                               </DropdownMenuItem>
@@ -16407,7 +16551,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           behind collapsible drawers so nothing competes with the call.
           Opens from "Start Zoom Interview" for Virtual interviews inside
           their slot window. */}
-      <Dialog open={!!zoomRoom} onOpenChange={(o) => !o && closeZoomRoom()}>
+      <Dialog open={!!zoomRoom} onOpenChange={(o) => !o && requestCloseZoomRoom()}>
         <DialogContent
           className="flex max-h-[94vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl lg:h-[var(--zoom-room-h)] lg:max-w-[92vw] xl:max-w-[min(1600px,92vw)]"
           style={
@@ -16442,7 +16586,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </DialogTitle>
                     <DialogDescription className="min-w-0 truncate text-xs">
                       {zoomRoom.applicant.position} · {zoomRoom.interview.time} · Virtual ·{" "}
-                      {zoomRoom.interview.interviewer}
+                      {currentStaffName || zoomRoom.interview.interviewer || "You"}
                     </DialogDescription>
                   </div>
                 </div>
@@ -16486,7 +16630,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </span>
                     )}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={closeZoomRoom}>
+                  <Button size="sm" variant="ghost" onClick={requestCloseZoomRoom}>
                     <PhoneOff className="mr-1.5 h-3.5 w-3.5" /> Leave
                   </Button>
                 </div>
@@ -16505,9 +16649,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <div className="relative aspect-video w-full max-h-full">
                       <ZoomEmbeddedMeeting
                         ref={zoomEmbedRef}
+                        // A reschedule mints a new meeting; remount so the
+                        // previous iframe leaves that room before the new one
+                        // is joined (otherwise two accounts/rooms collide).
+                        key={`${zoomRoom.interview.dbId ?? "draft"}:${
+                          zoomRoom.interview.zoomMeetingId ?? "no-meeting"
+                        }`}
                         interviewDbId={zoomRoom.interview.dbId ?? null}
                         joinUrl={zoomRoom.interview.zoomJoinUrl ?? null}
-                        userName={zoomRoom.interview.interviewer || zoomRoom.applicant.name}
+                        userName={
+                          currentStaffName ||
+                          zoomRoom.interview.interviewer ||
+                          zoomRoom.applicant.name
+                        }
                         onStateChange={handleZoomEmbedState}
                         onChatMessage={handleZoomChatMessage}
                         onChatHistory={handleZoomChatHistory}
@@ -16932,6 +17086,32 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Leaving the Zoom room ends the meeting on the host side — the
+          applicant is disconnected too — so confirm before closing. */}
+      <AlertDialog open={zoomLeaveConfirm} onOpenChange={setZoomLeaveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>End this Zoom interview?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Leaving the meeting will <strong>end the Zoom interview for everyone</strong>,
+              including {zoomRoom?.applicant.name ?? "the applicant"}. Any unsaved interview notes
+              or scores will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay in meeting</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                void closeZoomRoom();
+              }}
+            >
+              Leave &amp; end meeting
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ASSESSMENT TEST RUNNER — candidate-facing quiz (mock data, auto-checked) */}
       <Dialog
@@ -18130,63 +18310,158 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               Move to Specific Stage
             </DialogTitle>
             <DialogDescription>
-              Move {moveToStageFor?.name} ({moveToStageFor?.id}) directly to another recruitment stage.
+              Administratively adjust {moveToStageFor?.name}&apos;s stage in the recruitment pipeline.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Target Stage</Label>
-              <Select
-                value={moveToStageTarget}
-                onValueChange={(v) => setMoveToStageTarget(v as ReturnTargetStage)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select target stage" />
-                </SelectTrigger>
-                <SelectContent>
-                  {RETURN_TARGET_STAGES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+          {moveToStageFor?.stage === "Rejected" ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <XCircle className="h-4 w-4" /> Applicant is currently Rejected
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  Move to Stage is not permitted for rejected candidates. To reconsider or re-evaluate this candidate, please use &quot;Reopen Application&quot;.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setMoveToStageFor(null)}>
+                  Close
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => {
+                    const applicant = moveToStageFor;
+                    setMoveToStageFor(null);
+                    if (applicant) openReopen(applicant);
+                  }}
+                >
+                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Switch to Reopen Application
+                </Button>
+              </DialogFooter>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Reason for moving stage *</Label>
-              <Textarea
-                rows={3}
-                placeholder="Explain why this applicant is being moved directly to this stage..."
-                value={moveToStageReason}
-                onChange={(e) => setMoveToStageReason(e.target.value)}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Minimum 5 characters. This administrative action will be recorded in the applicant notes.
-              </p>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Current Stage:</span>
+                <Badge variant="outline" className="font-semibold text-foreground">
+                  {moveToStageFor?.stage}
+                </Badge>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Target Stage</Label>
+                <Select
+                  value={moveToStageTarget}
+                  onValueChange={(v) => setMoveToStageTarget(v as ReturnTargetStage)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select target stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RETURN_TARGET_STAGES.filter((s) => s.value !== "Offer").map((s) => {
+                      const STAGE_ORDER_MAP: Record<string, number> = {
+                        Screened: 0,
+                        Accepted: 1,
+                        "Interview Scheduled": 2,
+                        Assessed: 3,
+                        "Assessment Test": 4,
+                        "Practical Test": 5,
+                        "Final Evaluation": 6,
+                        Offer: 7,
+                      };
+                      const curIdx = STAGE_ORDER_MAP[moveToStageFor?.stage ?? ""] ?? 0;
+                      const tgtIdx = STAGE_ORDER_MAP[s.value] ?? 0;
+                      const dir = tgtIdx < curIdx ? " (⏪ Rollback)" : tgtIdx > curIdx ? " (⏩ Advance)" : " (Current)";
+                      return (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}{dir}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(() => {
+                const STAGE_ORDER_MAP: Record<string, number> = {
+                  Screened: 0,
+                  Accepted: 1,
+                  "Interview Scheduled": 2,
+                  Assessed: 3,
+                  "Assessment Test": 4,
+                  "Practical Test": 5,
+                  "Final Evaluation": 6,
+                  Offer: 7,
+                };
+                const curIdx = STAGE_ORDER_MAP[moveToStageFor?.stage ?? ""] ?? 0;
+                const tgtIdx = STAGE_ORDER_MAP[moveToStageTarget] ?? 0;
+
+                if (tgtIdx < curIdx) {
+                  return (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
+                      <p className="font-medium flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Rollback Notice:
+                      </p>
+                      <p className="mt-0.5">
+                        Moving backward to <strong>{moveToStageTarget}</strong> will reset downstream test and evaluation records so the applicant can repeat the process cleanly.
+                      </p>
+                    </div>
+                  );
+                } else if (tgtIdx > curIdx) {
+                  return (
+                    <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-2.5 text-xs text-blue-800 dark:text-blue-200">
+                      <p className="font-medium flex items-center gap-1">
+                        <Info className="h-3.5 w-3.5" /> Advance Notice:
+                      </p>
+                      <p className="mt-0.5">
+                        Moving forward to <strong>{moveToStageTarget}</strong> requires that all prior stages (screening, interview, and test assessments) were completed and passed.
+                      </p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="rounded-md border bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                    Candidate is already at {moveToStageTarget}. Choose a different target stage to move.
+                  </div>
+                );
+              })()}
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Reason for moving stage *</Label>
+                <Textarea
+                  rows={3}
+                  placeholder="Explain why this applicant is being administratively moved..."
+                  value={moveToStageReason}
+                  onChange={(e) => setMoveToStageReason(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Minimum 5 characters. Logged in audit trail with Super Admin attribution.
+                </p>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  disabled={moveToStageBusy}
+                  onClick={() => setMoveToStageFor(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={
+                    moveToStageBusy ||
+                    moveToStageReason.trim().length < 5 ||
+                    moveToStageTarget === moveToStageFor?.stage
+                  }
+                  onClick={() => void confirmMoveToStage()}
+                >
+                  {moveToStageBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Confirm Move
+                </Button>
+              </DialogFooter>
             </div>
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
-              <p className="font-medium">Workflow Note:</p>
-              <p className="mt-0.5">
-                Moving backward archives subsequent stage records. Moving forward marks prior required stages as completed with an administrative waiver.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={moveToStageBusy}
-              onClick={() => setMoveToStageFor(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={moveToStageBusy || moveToStageReason.trim().length < 5}
-              onClick={() => void confirmMoveToStage()}
-            >
-              {moveToStageBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Move Stage
-            </Button>
-          </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -18199,63 +18474,106 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               Reopen Application
             </DialogTitle>
             <DialogDescription>
-              Reopen the closed application for {reopenFor?.name} ({reopenFor?.id}).
+              Reconsider {reopenFor?.name} ({reopenFor?.id}) by returning them to an eligible pipeline stage.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Target Stage to Resume</Label>
-              <Select
-                value={reopenTarget}
-                onValueChange={(v) => setReopenTarget(v as ReturnTargetStage)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select target stage" />
-                </SelectTrigger>
-                <SelectContent>
-                  {RETURN_TARGET_STAGES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+          {reopenFor?.isActiveBlocked ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <Ban className="h-4 w-4" /> Applicant is Blocked
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  This applicant has an active recruitment restriction. You must unblock them before reopening their application.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setReopenFor(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Reason for Reopening *</Label>
-              <Textarea
-                rows={3}
-                placeholder="Explain the justification for reconsidering this candidate..."
-                value={reopenReason}
-                onChange={(e) => setReopenReason(e.target.value)}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Minimum 5 characters. Recorded in applicant activity notes.
-              </p>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-between rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Rejected at:</span>
+                <span className="font-semibold text-destructive flex items-center gap-1">
+                  <XCircle className="h-3.5 w-3.5" />
+                  {reopenFor?.rejectedAtStage || "Screening"}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Resume Application at Stage</Label>
+                <Select
+                  value={reopenTarget}
+                  onValueChange={(v) => setReopenTarget(v as ReturnTargetStage)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select target stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(() => {
+                      const allowed = reopenFor?.allowedReturnStages && reopenFor.allowedReturnStages.length > 0
+                        ? reopenFor.allowedReturnStages
+                        : ["Screened", "Accepted"];
+                      return RETURN_TARGET_STAGES.filter((s) => allowed.includes(s.value)).map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ));
+                    })()}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Upcoming stages the applicant never qualified for are excluded.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Reason for Reopening *</Label>
+                <Textarea
+                  rows={3}
+                  placeholder="Explain the justification for reconsidering this candidate..."
+                  value={reopenReason}
+                  onChange={(e) => setReopenReason(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Minimum 5 characters. Stamped in the audit log and lifts the 30-day cooldown.
+                </p>
+              </div>
+
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-200">
+                <p className="font-medium flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Reopening Effects:
+                </p>
+                <ul className="mt-1 list-disc pl-4 space-y-0.5 text-[11.5px]">
+                  <li>Clears the &quot;Rejected&quot; status and resets the 30-day cooldown.</li>
+                  <li>Wipes failed evaluation data at the target stage for a fresh evaluation.</li>
+                  <li>Restores candidate to the active recruitment list.</li>
+                </ul>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  disabled={reopenBusy}
+                  onClick={() => setReopenFor(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={reopenBusy || reopenReason.trim().length < 5}
+                  onClick={() => void confirmReopen()}
+                >
+                  {reopenBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Confirm Reopen
+                </Button>
+              </DialogFooter>
             </div>
-            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-200">
-              <p className="font-medium">Reopening Effect:</p>
-              <p className="mt-0.5">
-                Clears the rejected status, resets the 30-day cooldown waiting period, and restores candidate to active pipeline.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={reopenBusy}
-              onClick={() => setReopenFor(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={reopenBusy || reopenReason.trim().length < 5}
-              onClick={() => void confirmReopen()}
-            >
-              {reopenBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Reopen Application
-            </Button>
-          </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -18356,7 +18674,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             <div className="rounded-md border border-muted bg-muted/40 p-2.5 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">Archive Details:</p>
               <p className="mt-0.5">
-                Archived applicants do not appear in normal list views unless "Show Archived" is toggled. No historical evaluations, test results, or documents are deleted.
+                Archived applicants do not appear in normal list views unless "Show Archived & Blocked" is toggled. No historical evaluations, test results, or documents are deleted.
               </p>
             </div>
           </div>

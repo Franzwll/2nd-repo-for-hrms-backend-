@@ -288,5 +288,111 @@ class ApplicantAdministrativeFeatureTest extends TestCase
             'reason'       => 'Formal appeal reviewed and restriction lifted',
         ]);
     }
+
+    public function test_move_to_stage_blocks_rejected_applicants(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Rejected Applicant',
+            'email'          => 'rejected.mover@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'rejected_at'    => now(),
+        ]);
+
+        $res = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/move-to-stage", [
+            'target_stage' => 'Interview Scheduled',
+            'reason'       => 'Trying to bypass rejection via move stage',
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJsonFragment([
+            'message' => "{$applicant->name} is currently Rejected. Please use 'Reopen Application' to reconsider this candidate.",
+        ]);
+    }
+
+    public function test_reopen_application_blocks_skipping_to_upcoming_uncompleted_stages(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        // Applicant failed at screening (no interview or tests exist)
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Screening Failed Applicant',
+            'email'          => 'screening.fail@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'rejected_at'    => now(),
+        ]);
+
+        // Attempting to reopen directly to Final Evaluation (which was never reached)
+        $res = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/reopen", [
+            'target_stage' => 'Final Evaluation',
+            'reason'       => 'Trying to reopen to upcoming stage',
+        ]);
+
+        $res->assertStatus(422);
+        $this->assertStringContainsString('cannot skip directly to upcoming uncompleted stages', $res->json('message'));
+    }
+
+    public function test_merged_hidden_view_returns_only_archived_and_blocked_applicants(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $activeApplicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Active Normal Applicant',
+            'email'          => 'active.normal@example.com',
+            'stage'          => 'Screened',
+            'status'         => 'fit',
+        ]);
+
+        $archivedApplicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Archived Only Applicant',
+            'email'          => 'archived.only@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'archived_at'    => now(),
+            'archived_reason'=> 'Old cycle',
+        ]);
+
+        $blockedApplicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Blocked Only Applicant',
+            'email'          => 'blocked.only@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'is_blocked'     => true,
+            'blocked_at'     => now(),
+            'blocked_reason' => 'Violation',
+        ]);
+
+        // 1. Default index: neither archived nor blocked are returned
+        $defaultRes = $this->actingAs($superAdmin, 'sanctum')->getJson('/api/v1/applicants');
+        $defaultRes->assertOk();
+        $defaultIds = collect($defaultRes->json('data'))->pluck('applicant_id')->all();
+        $this->assertContains($activeApplicant->applicant_id, $defaultIds);
+        $this->assertNotContains($archivedApplicant->applicant_id, $defaultIds);
+        $this->assertNotContains($blockedApplicant->applicant_id, $defaultIds);
+
+        // 2. Merged hidden view: ONLY archived and blocked are returned
+        $hiddenRes = $this->actingAs($superAdmin, 'sanctum')->getJson('/api/v1/applicants?only_hidden=1');
+        $hiddenRes->assertOk();
+        $hiddenIds = collect($hiddenRes->json('data'))->pluck('applicant_id')->all();
+        $this->assertNotContains($activeApplicant->applicant_id, $hiddenIds);
+        $this->assertContains($archivedApplicant->applicant_id, $hiddenIds);
+        $this->assertContains($blockedApplicant->applicant_id, $hiddenIds);
+    }
 }
 

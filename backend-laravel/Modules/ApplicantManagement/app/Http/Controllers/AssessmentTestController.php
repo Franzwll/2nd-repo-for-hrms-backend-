@@ -100,8 +100,14 @@ class AssessmentTestController extends Controller
 
         $test = AssessmentTest::create($data);
 
-        // Advance applicant stage (out-of-order safety)
-        if (in_array($model->stage, ['Screened', 'Interview Scheduled', 'Assessed', 'Accepted'], true)) {
+        // Advance applicant stage or reject on failure
+        if (($data['result'] ?? null) === 'Failed') {
+            $model->update([
+                'stage'              => 'Rejected',
+                'rejected_at'        => now(),
+                'cooldown_lifted_at' => null,
+            ]);
+        } elseif (in_array($model->stage, ['Screened', 'Interview Scheduled', 'Assessed', 'Accepted'], true)) {
             $model->update(['stage' => 'Assessment Test']);
         }
 

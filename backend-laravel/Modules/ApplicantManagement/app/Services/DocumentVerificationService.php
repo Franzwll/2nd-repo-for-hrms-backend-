@@ -43,13 +43,19 @@ class DocumentVerificationService
      */
     public function verifyDocument(ApplicantDocument $document): ApplicantDocument
     {
-        $document = $this->runVerification($document);
+        ScreeningService::raiseTimeLimit();
+        $deadline = ScreeningService::requestDeadline();
+
+        $document = $this->runVerification(
+            $document,
+            ScreeningService::documentTimeout($deadline)
+        );
 
         // Feed the fresh verification result into the applicant's ranking:
         // the screening score/status is recomputed with the document
         // evidence, so the percentage, rank order and official status stay
         // in sync (a discrepancy flips the candidate to Invalid credential).
-        $this->refreshRanking($document->applicant, 'document verification');
+        $this->refreshRanking($document->applicant, 'document verification', $deadline);
 
         return $document;
     }
@@ -63,8 +69,13 @@ class DocumentVerificationService
      * recomputes it once with the complete evidence set, which avoids one
      * reclassification call per file.
      */
-    public function verifyPendingDocuments(Applicant $applicant): int
+    public function verifyPendingDocuments(Applicant $applicant, ?float $deadline = null): int
     {
+        if ($deadline === null) {
+            ScreeningService::raiseTimeLimit();
+            $deadline = ScreeningService::requestDeadline();
+        }
+
         $documents = $applicant->documents()
             ->where(function ($query) {
                 $query->whereIn('verification_status', self::PENDING_STATUSES)
@@ -75,8 +86,19 @@ class DocumentVerificationService
 
         $verified = 0;
         foreach ($documents as $document) {
+            // Stop before PHP kills the request: the remaining documents stay
+            // PENDING and are verified on the next screening/recompute.
+            if (ScreeningService::remainingTime($deadline, 0) < 10) {
+                Log::warning(sprintf(
+                    'Screening time budget exhausted — %d pending document(s) for applicant %d left unverified.',
+                    $documents->count() - $verified,
+                    $applicant->applicant_id
+                ));
+                break;
+            }
+
             try {
-                $this->runVerification($document);
+                $this->runVerification($document, ScreeningService::documentTimeout($deadline));
                 $verified++;
             } catch (\Throwable $e) {
                 Log::warning(sprintf(
@@ -96,7 +118,7 @@ class DocumentVerificationService
      * ranking. verifyDocument() wraps this with a ranking refresh;
      * verifyPendingDocuments() batches it.
      */
-    public function runVerification(ApplicantDocument $document): ApplicantDocument
+    public function runVerification(ApplicantDocument $document, ?int $timeoutSeconds = null): ApplicantDocument
     {
         $document->update(['verification_status' => 'PROCESSING']);
 
@@ -142,7 +164,8 @@ class DocumentVerificationService
                 $document->original_name ?: basename($filePath),
                 (string) $document->doc_type,
                 $resumeProfile,
-                $this->referenceData()
+                $this->referenceData(),
+                timeoutSeconds: $timeoutSeconds ?? 60
             );
 
             if (!($result['ok'] ?? false)) {
@@ -207,14 +230,14 @@ class DocumentVerificationService
      * removed. Failures are logged and never bubble up: a document action must
      * always complete for HR even when the NLP service is offline.
      */
-    public function refreshRanking(?Applicant $applicant, string $reason = 'document verification'): void
+    public function refreshRanking(?Applicant $applicant, string $reason = 'document verification', ?float $deadline = null): void
     {
         if (! $applicant) {
             return;
         }
 
         try {
-            $screening = app(ScreeningService::class)->recomputeWithDocuments($applicant);
+            $screening = app(ScreeningService::class)->recomputeWithDocuments($applicant, $deadline);
             if (! $screening) {
                 return;
             }

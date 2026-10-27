@@ -94,17 +94,28 @@ class ApplicantManagementController extends Controller
             }
         }
 
-        // Archive filter: hide archived by default unless requested
-        if ($request->boolean('include_archived')) {
+        // Archive & Blocked filter:
+        if ($request->boolean('only_hidden') || $request->boolean('only_archived_or_blocked')) {
+            // Merged view: show ONLY archived OR blocked applicants
+            $query->where(function ($q) {
+                $q->whereNotNull('archived_at')
+                  ->orWhere('is_blocked', true);
+            });
+        } elseif ($request->boolean('include_archived')) {
             // Keep all including archived
         } elseif ($request->boolean('only_archived')) {
             $query->whereNotNull('archived_at');
         } else {
-            $query->whereNull('archived_at');
+            // Default: normal pipeline view — HIDE archived and HIDE blocked
+            $query->whereNull('archived_at')
+                  ->where(function ($q) {
+                      $q->where('is_blocked', false)
+                        ->orWhereNull('is_blocked');
+                  });
         }
 
-        // Filter by blocked flag if specified
-        if ($request->has('is_blocked')) {
+        // Filter by blocked flag if explicitly specified and not in merged hidden view
+        if ($request->has('is_blocked') && ! $request->boolean('only_hidden') && ! $request->boolean('only_archived_or_blocked')) {
             $query->where('is_blocked', $request->boolean('is_blocked'));
         }
 
@@ -439,14 +450,17 @@ class ApplicantManagementController extends Controller
 
     public function recomputeScreening(int $applicant): JsonResponse
     {
+        ScreeningService::raiseTimeLimit();
+        $deadline = ScreeningService::requestDeadline();
+
         $model = Applicant::with('jobPost')->findOrFail($applicant);
 
         /* Documents uploaded before the resume was screened were never
            compared (PENDING). Verify them first so a manual recompute really
            reflects every uploaded paper, not just the ones checked by hand. */
-        app(DocumentVerificationService::class)->verifyPendingDocuments($model);
+        app(DocumentVerificationService::class)->verifyPendingDocuments($model, $deadline);
 
-        $screening = $this->screening->recomputeWithDocuments($model);
+        $screening = $this->screening->recomputeWithDocuments($model, $deadline);
 
         if (! $screening) {
             return response()->json([
@@ -674,6 +688,10 @@ class ApplicantManagementController extends Controller
 
     public function extractResume(Request $request): JsonResponse
     {
+        // OCR/extraction is synchronous; keep PHP from killing the request
+        // before NlpService::extractResume()'s own 30s timeout can return.
+        ScreeningService::raiseTimeLimit();
+
         $validated = $request->validate([
             'resume' => ['required', 'file', 'max:20480'],
         ]);
@@ -1203,24 +1221,24 @@ class ApplicantManagementController extends Controller
     {
         $targetIndex = self::RETURN_STAGE_ORDER[$targetStage] ?? 0;
 
-        // Stages > 5: Final Evaluation
-        if ($targetIndex <= 5) {
+        // Stages >= 6: Final Evaluation
+        if ($targetIndex <= 6) {
             FinalEvaluation::where('applicant_id', $model->applicant_id)->delete();
         }
 
-        // Stages > 4: Practical Test
-        if ($targetIndex <= 4) {
+        // Stages >= 5: Practical Test
+        if ($targetIndex <= 5) {
             $model->practicalTests()->delete();
         }
 
-        // Stages > 3: Assessment Test & Invites
-        if ($targetIndex <= 3) {
+        // Stages >= 4: Assessment Test & Invites
+        if ($targetIndex <= 4) {
             $model->assessmentTests()->delete();
             AssessmentInvite::where('applicant_id', $model->applicant_id)->delete();
         }
 
-        // Stages > 2: Interview Assessment (Assessed verdict)
-        if ($targetIndex <= 2) {
+        // Stages >= 3: Interview Assessment (Assessed verdict)
+        if ($targetIndex <= 3) {
             $model->assessments()->delete();
             if ($targetIndex === 2) {
                 // When returning to Interview Scheduled, reset completed interview back to Scheduled
@@ -1228,7 +1246,7 @@ class ApplicantManagementController extends Controller
             }
         }
 
-        // Stages > 1: Interview Scheduling
+        // Stages >= 2: Interview Scheduling
         if ($targetIndex <= 1) {
             $model->interviews()->delete();
         }
@@ -1285,6 +1303,12 @@ class ApplicantManagementController extends Controller
         $fromStage = $model->stage;
         $targetStage = $validated['target_stage'];
 
+        if ($fromStage === 'Rejected' || $model->status === 'rejected') {
+            return response()->json([
+                'message' => "{$model->name} is currently Rejected. Please use 'Reopen Application' to reconsider this candidate.",
+            ], 422);
+        }
+
         if ($fromStage === $targetStage) {
             return response()->json([
                 'message' => "{$model->name} is already at {$targetStage}.",
@@ -1304,7 +1328,7 @@ class ApplicantManagementController extends Controller
             ], 422);
         }
 
-        $isMovingBackward = ($currentIndex === null || in_array($fromStage, ['Hired', 'Rejected'], true) || $targetIndex < $currentIndex);
+        $isMovingBackward = ($currentIndex === null || $fromStage === 'Hired' || $targetIndex < $currentIndex);
 
         if ($isMovingBackward) {
             // Backward move: clean up downstream records
@@ -1331,17 +1355,26 @@ class ApplicantManagementController extends Controller
             }
         } else {
             // Forward move: validate prerequisites
-            if ($targetIndex >= 2 && ! $model->screenings()->exists()) {
-                return response()->json(['message' => "Moving to {$targetStage} requires a completed screening."], 422);
+            if ($targetIndex >= 2) {
+                $screening = $model->screenings()->latest('screening_id')->first();
+                if ($screening && $screening->screening_result === 'Rejected') {
+                    return response()->json(['message' => "Moving to {$targetStage} requires a passing screening."], 422);
+                }
             }
             if ($targetIndex >= 3 && ! $model->interviews()->exists()) {
                 return response()->json(['message' => "Moving to {$targetStage} requires an interview."], 422);
             }
-            if ($targetIndex >= 4 && ! $model->assessments()->exists()) {
-                return response()->json(['message' => "Moving to {$targetStage} requires an interview assessment."], 422);
+            if ($targetIndex >= 4) {
+                $latestAssessment = $model->assessments()->latest('assessment_id')->first();
+                if (! $latestAssessment || $latestAssessment->result !== 'Passed') {
+                    return response()->json(['message' => "Moving to {$targetStage} requires a passed interview assessment."], 422);
+                }
             }
-            if ($targetIndex >= 5 && ! $model->assessmentTests()->exists()) {
-                return response()->json(['message' => "Moving to {$targetStage} requires an assessment test."], 422);
+            if ($targetIndex >= 5) {
+                $latestTest = $model->assessmentTests()->latest('assessment_test_id')->first();
+                if (! $latestTest || $latestTest->result !== 'Passed') {
+                    return response()->json(['message' => "Moving to {$targetStage} requires a passed assessment test."], 422);
+                }
             }
             if ($targetIndex >= 6) {
                 $requiresPractical = \Modules\ApplicantManagement\Services\PracticalRequirement::required(
@@ -1349,8 +1382,11 @@ class ApplicantManagementController extends Controller
                     $model->jobPost?->title,
                     $model->jobPost?->position
                 );
-                if ($requiresPractical && ! $model->practicalTests()->exists()) {
-                    return response()->json(['message' => "Moving to {$targetStage} requires a practical assessment."], 422);
+                if ($requiresPractical) {
+                    $latestPractical = $model->practicalTests()->latest('practical_test_id')->first();
+                    if (! $latestPractical || $latestPractical->result !== 'Passed') {
+                        return response()->json(['message' => "Moving to {$targetStage} requires a passed practical assessment."], 422);
+                    }
                 }
             }
             if ($targetIndex >= 7) {
@@ -1425,6 +1461,16 @@ class ApplicantManagementController extends Controller
         }
 
         $targetStage = $validated['target_stage'] ?? 'Screened';
+
+        $failedAtStage = $model->rejectedAtStage();
+        $failedIndex = self::RETURN_STAGE_ORDER[$failedAtStage] ?? 0;
+        $targetIndex = self::RETURN_STAGE_ORDER[$targetStage] ?? 0;
+
+        if ($targetIndex > $failedIndex) {
+            return response()->json([
+                'message' => "Cannot reopen {$model->name} to {$targetStage}. Candidate was rejected at {$failedAtStage} and cannot skip directly to upcoming uncompleted stages.",
+            ], 422);
+        }
 
         // Check active duplicate
         $existing = ApplicantRecognitionService::findDuplicate(
