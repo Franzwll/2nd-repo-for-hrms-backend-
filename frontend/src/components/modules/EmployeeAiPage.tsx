@@ -25,7 +25,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { getUser } from "@/lib/auth";
 import { renderRichText } from "@/lib/rich-text";
-import { myProfile } from "@/data/ess";
 import { cn } from "@/lib/utils";
 import { chatbotApi, essApi, type ApiChatbotSource, type ApiEssOverview } from "@/lib/api";
 
@@ -93,7 +92,7 @@ export function EmployeeAiPage() {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
   const user = mounted ? getUser() : null;
-  const userName = user?.full_name || myProfile.name;
+  const userName = user?.full_name || "";
   const firstName = userName.split(" ")[0] || "there";
 
   const [input, setInput] = useState("");

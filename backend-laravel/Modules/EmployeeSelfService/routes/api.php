@@ -27,6 +27,7 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     Route::get('my-context', [EssPortalController::class, 'getMyContext']);
     Route::get('my-overview', [EssPortalController::class, 'getOverview']);
     Route::get('my-schedule', [EssPortalController::class, 'getSchedule']);
+    Route::get('colleagues', [EssPortalController::class, 'getColleagues']);
     Route::get('my-attendance', [EssPortalController::class, 'getMyAttendance']);
     Route::get('my-leaves', [EssPortalController::class, 'getLeaves']);
     Route::get('my-benefits', [EssPortalController::class, 'getBenefits']);

@@ -3,7 +3,6 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
-import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
 import { myPayroll } from "@/data/ess";
 import {
@@ -100,7 +99,6 @@ export function EmployeeEss({
   const navigate = useNavigate();
   // Global Quick Action Modals
   const [clockModalOpen, setClockModalOpen] = useState(false);
-  const [payslipModalOpen, setPayslipModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Sync category query parameter from TanStack Router URL (e.g. ?category=Attendance)

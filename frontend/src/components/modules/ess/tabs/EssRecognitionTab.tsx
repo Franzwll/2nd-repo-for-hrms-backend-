@@ -41,8 +41,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { getUser } from "@/lib/auth";
-import { myProfile } from "@/data/ess";
 import { essApi, type ApiRecognitionItem } from "@/lib/api";
+import { useEssProfile } from "@/hooks/useEssProfile";
 
 export interface RecognitionPost {
   id: string;
@@ -83,17 +83,6 @@ export interface RecognitionPost {
     timestamp: string;
   };
 }
-
-export const COLLEAGUES = [
-  { name: "Maria Santos", role: "Guest Relations Officer · Front Office", initials: "MS" },
-  { name: "Kevin Dela Cruz", role: "Kitchen Line Staff · F&B", initials: "KD" },
-  { name: "Chef Marco Rossi", role: "Executive Chef · F&B", initials: "MR" },
-  { name: "Ricardo Gomez", role: "Senior Room Attendant · Housekeeping", initials: "RG" },
-  { name: "Elena Torres", role: "Housekeeping Supervisor · Housekeeping", initials: "ET" },
-  { name: "Paolo Cruz", role: "Payroll Officer · HR", initials: "PC" },
-  { name: "Chef Marco D. Santos", role: "Executive Sous Chef · Kitchen", initials: "MS" },
-  { name: "Anna Bautista", role: "Front Desk Agent · Front Office", initials: "AB" },
-];
 
 const CORE_VALUES = [
   {
@@ -138,77 +127,6 @@ const CORE_VALUES = [
   },
 ] as const;
 
-const INITIAL_POSTS: RecognitionPost[] = [
-  {
-    id: "rec-1",
-    senderName: "Chef Marco Rossi",
-    senderRole: "Executive Chef · F&B",
-    senderInitials: "MR",
-    recipientName: "Kevin Dela Cruz",
-    recipientRole: "Kitchen Line Staff · F&B",
-    recipientInitials: "KD",
-    coreValue: "Teamwork & Malasakit",
-    message: "Stepped up during the 200-guest executive banquet dinner rush and ensured flawless plating and zero delays!",
-    timestamp: "2 hours ago",
-    isoDate: "2026-08-21T09:30:00Z",
-    reactions: { clap: 14, heart: 8, star: 6, fire: 5 },
-    userReactions: ["clap", "star"],
-    shares: 6,
-  },
-  {
-    id: "rec-2",
-    senderName: "Paolo Cruz",
-    senderRole: "Payroll Officer · HR",
-    senderInitials: "PC",
-    recipientName: "Maria Santos",
-    recipientRole: "Guest Relations Officer · Front Office",
-    recipientInitials: "MS",
-    coreValue: "Guest Delight",
-    message: "Received a glowing 5-star TripAdvisor review from our corporate VIP praising your warmth, attentiveness, and swift check-in!",
-    timestamp: "Yesterday",
-    isoDate: "2026-08-20T14:15:00Z",
-    reactions: { clap: 19, heart: 12, star: 10, fire: 4 },
-    userReactions: ["heart"],
-    shares: 11,
-  },
-  {
-    id: "rec-3",
-    senderName: "Kevin Dela Cruz",
-    senderRole: "Kitchen Line Staff · F&B",
-    senderInitials: "KD",
-    recipientName: "Chef Marco Rossi",
-    recipientRole: "Executive Chef · F&B",
-    recipientInitials: "MR",
-    coreValue: "Going the Extra Mile",
-    message: "Thank you for mentoring the team through the new seasonal tasting menu prep and always looking out for kitchen crew welfare!",
-    timestamp: "Aug 19, 2026",
-    isoDate: "2026-08-19T17:00:00Z",
-    reactions: { clap: 11, heart: 7, star: 5, fire: 2 },
-    userReactions: [],
-    shares: 4,
-  },
-  {
-    id: "rec-4",
-    senderName: "Elena Torres",
-    senderRole: "Housekeeping Supervisor · Housekeeping",
-    senderInitials: "ET",
-    recipientName: "Ricardo Gomez",
-    recipientRole: "Senior Room Attendant · Housekeeping",
-    recipientInitials: "RG",
-    coreValue: "Operational Excellence",
-    message: "Maintained a 100% spotless inspection pass rate across all 30 deluxe executive suites on Floor 8 with zero guest callbacks.",
-    timestamp: "Aug 18, 2026",
-    isoDate: "2026-08-18T11:20:00Z",
-    reactions: { clap: 9, heart: 5, star: 8, fire: 3 },
-    userReactions: ["fire"],
-    shares: 3,
-  },
-];
-
-const STORAGE_KEY = "oxford_social_recognitions";
-
-/** Backend numeric ids (e.g. "12") persist server-side; anything else
- *  (seed "rec-1", local "share-…") is local-only until posted. */
 const isPersistedPost = (id: string) => /^\d+$/.test(id);
 
 /** Canonical backend → UI mapping, shared by the initial fetch and refetches. */
@@ -236,36 +154,44 @@ export function EssRecognitionTab() {
   // identity after mount so server and client HTML match on first paint.
   const [authName, setAuthName] = useState<string | null>(null);
   const [authPosition, setAuthPosition] = useState<string | null>(null);
+  const { employee: profile } = useEssProfile();
   useEffect(() => {
     const u = getUser();
     setAuthName(u?.full_name ?? null);
     setAuthPosition(((u as any)?.position as string | undefined) ?? null);
   }, []);
-  const currentUserName = authName || myProfile.name;
-  const currentUserRole = authPosition || myProfile.position || "Oxford Staff";
+  const currentUserName = authName || profile?.name || "";
+  const currentUserRole = authPosition || profile?.position || "Employee";
 
   const currentUserInitials = useMemo(() => {
     const parts = currentUserName.trim().split(" ").filter(Boolean);
     const first = parts[0]?.charAt(0) ?? "";
     const last = parts.length >= 2 ? (parts[parts.length - 1]?.charAt(0) ?? "") : "";
-    return `${first}${last}`.toUpperCase() || currentUserName.slice(0, 2).toUpperCase() || "KD";
+    return `${first}${last}`.toUpperCase() || currentUserName.slice(0, 2).toUpperCase() || "ME";
   }, [currentUserName]);
 
-  // Server and client must render identically on first paint: start from the
-  // static seeds, hydrate browser-saved posts after mount, and only persist
-  // back to storage once hydrated (otherwise mount would clobber saved data).
-  const [posts, setPosts] = useState<RecognitionPost[]>(INITIAL_POSTS);
-  const [hydrated, setHydrated] = useState(false);
+  const [posts, setPosts] = useState<RecognitionPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [colleagues, setColleagues] = useState<{ name: string; role: string; initials: string }[]>([]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setPosts(JSON.parse(saved));
-    } catch {
-      // ignore
-    }
-    setHydrated(true);
+    essApi
+      .colleagues()
+      .then((res) => {
+        setColleagues(
+          (res?.colleagues ?? []).map((c) => ({
+            name: c.name,
+            role: [c.position, c.department].filter(Boolean).join(" · "),
+            initials: c.name
+              .split(" ")
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((n) => n.charAt(0).toUpperCase())
+              .join(""),
+          })),
+        );
+      })
+      .catch(() => setColleagues([]));
   }, []);
 
   const [activeFilter, setActiveFilter] = useState<"all" | "received">("all");
@@ -278,9 +204,7 @@ export function EssRecognitionTab() {
 
   // Facebook-Style Create Post Modal State
   const [createPostOpen, setCreatePostOpen] = useState(false);
-  const [selectedRecipient, setSelectedRecipient] = useState(
-    COLLEAGUES[0]?.name ?? ""
-  );
+  const [selectedRecipient, setSelectedRecipient] = useState("");
   const [selectedCoreValue, setSelectedCoreValue] = useState<RecognitionPost["coreValue"]>("Guest Delight");
   const [praiseMessage, setPraiseMessage] = useState("");
   const [isSubmittingPost, setIsSubmittingPost] = useState(false);
@@ -298,30 +222,16 @@ export function EssRecognitionTab() {
     setCurrentPage(1);
   }, [activeFilter, selectedValueFilter, searchTerm]);
 
-  // Fetch from backend (canonical source — replaces local state when present)
+  // Fetch from backend (canonical source).
   useEffect(() => {
     essApi
       .recognitions()
       .then((res) => {
-        if (res.recognitions && res.recognitions.length > 0) {
-          setPosts(res.recognitions.map(mapApiPost));
-        }
+        setPosts((res.recognitions ?? []).map(mapApiPost));
       })
-      .catch(() => {})
+      .catch(() => setPosts([]))
       .finally(() => setLoading(false));
   }, []);
-
-  // Save to localStorage and notify other components (only after hydration,
-  // so the initial mount never overwrites browser-saved posts with seeds)
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
-      window.dispatchEvent(new Event("recognition_updated"));
-    } catch {
-      // ignore
-    }
-  }, [posts, hydrated]);
 
   const filteredPosts = useMemo(() => {
     return posts.filter((p) => {
@@ -362,17 +272,18 @@ export function EssRecognitionTab() {
   // Keep the recipient picker valid: never offer yourself (dropdown is a
   // static list that may contain the logged-in user).
   const availableColleagues = useMemo(
-    () => COLLEAGUES.filter((c) => c.name.toLowerCase() !== currentUserName.toLowerCase()),
-    [currentUserName]
+    () => colleagues.filter((c) => c.name.toLowerCase() !== currentUserName.toLowerCase()),
+    [colleagues, currentUserName],
   );
 
-  // If the default recipient turns out to be yourself (static list), switch to
-  // the first available colleague.
+  // Keep the recipient picker valid: default to the first live colleague and
+  // never offer yourself.
   useEffect(() => {
     const firstAvailable = availableColleagues[0];
     if (
-      selectedRecipient.toLowerCase() === currentUserName.toLowerCase() &&
-      firstAvailable
+      firstAvailable &&
+      (!selectedRecipient ||
+        selectedRecipient.toLowerCase() === currentUserName.toLowerCase())
     ) {
       setSelectedRecipient(firstAvailable.name);
     }
@@ -458,9 +369,9 @@ export function EssRecognitionTab() {
       toast.error("You can't recognize yourself — pick a colleague!");
       return;
     }
-    const recipient = COLLEAGUES.find((c) => c.name === selectedRecipient) || {
+    const recipient = colleagues.find((c) => c.name === selectedRecipient) || {
       name: selectedRecipient,
-      role: "Oxford Suites Staff",
+      role: "Employee",
       initials: selectedRecipient.slice(0, 2).toUpperCase(),
     };
 
@@ -472,9 +383,7 @@ export function EssRecognitionTab() {
         message,
       });
       const list = await essApi.recognitions();
-      if (list?.recognitions?.length) {
-        setPosts(list.recognitions.map(mapApiPost));
-      }
+      setPosts((list?.recognitions ?? []).map(mapApiPost));
       setPraiseMessage("");
       setCreatePostOpen(false);
       toast.success(res?.message || `Recognition posted for ${recipient.name}! 🎉`);
