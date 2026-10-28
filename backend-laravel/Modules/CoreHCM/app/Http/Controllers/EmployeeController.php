@@ -11,6 +11,7 @@ use App\Models\Hr3Recommendation;
 use App\Models\Position;
 use App\Observers\ActivityObserver;
 use App\Services\AuditLogger;
+use App\Services\Hr3MockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +27,10 @@ class EmployeeController extends Controller
 {
     use AppliesTableQuery;
 
-    public function __construct(private readonly EmployeeLifecycleService $lifecycle) {}
+    public function __construct(
+        private readonly EmployeeLifecycleService $lifecycle,
+        private readonly Hr3MockService $hr3Mock,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -191,9 +195,13 @@ class EmployeeController extends Controller
             return response()->json(['message' => 'Employee is already regularized.'], 422);
         }
 
-        $recommendation = $this->requiredPerformanceEvaluation($request, $employee, ['Regularization', 'Performance Review']);
-        if ($recommendation instanceof JsonResponse) {
-            return $recommendation;
+        if (! $request->filled('recommendation_id') && $this->hr3Mock->enabled()) {
+            $recommendation = $this->hr3Mock->createForEmployee($employee, 'Regularization');
+        } else {
+            $recommendation = $this->requiredPerformanceEvaluation($request, $employee, ['Regularization', 'Performance Review']);
+            if ($recommendation instanceof JsonResponse) {
+                return $recommendation;
+            }
         }
 
         $previousEmploymentType = $employee->employment_type;
@@ -235,9 +243,18 @@ class EmployeeController extends Controller
 
     public function promote(EmployeeLifecycleRequest $request, Employee $employee): JsonResponse
     {
-        $recommendation = $this->requiredPerformanceEvaluation($request, $employee, ['Promotion', 'Performance Review']);
-        if ($recommendation instanceof JsonResponse) {
-            return $recommendation;
+        if (! $request->filled('recommendation_id') && $this->hr3Mock->enabled()) {
+            $recommendation = $this->hr3Mock->createForEmployee($employee, 'Promotion', [
+                'suggested_position_id' => $request->integer('new_position_id'),
+                'suggested_salary_grade_id' => $request->filled('new_salary_grade_id')
+                    ? $request->integer('new_salary_grade_id')
+                    : null,
+            ]);
+        } else {
+            $recommendation = $this->requiredPerformanceEvaluation($request, $employee, ['Promotion', 'Performance Review']);
+            if ($recommendation instanceof JsonResponse) {
+                return $recommendation;
+            }
         }
 
         $newPositionId = $request->integer('new_position_id');
@@ -482,7 +499,7 @@ class EmployeeController extends Controller
             );
         }
 
-        if ($recommendation->status !== 'Pending HR Action') {
+        if (! in_array($recommendation->status, ['Pending HR Action', 'Acknowledged'], true)) {
             return response()->json(
                 ['message' => 'The selected performance evaluation has already been processed or deferred.'],
                 422

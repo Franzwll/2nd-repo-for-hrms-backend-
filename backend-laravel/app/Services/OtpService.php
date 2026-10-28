@@ -49,7 +49,6 @@ class OtpService
         return [
             'login_token' => $token,
             'expires_in' => self::TTL_SECONDS,
-            'debug_otp' => $code,
         ];
     }
 
@@ -83,7 +82,7 @@ class OtpService
             $this->deliver($user, $code);
         }
 
-        return ['ok' => true, 'debug_otp' => $code];
+        return ['ok' => true];
     }
 
     public function verify(string $token, string $code): ?SystemUser

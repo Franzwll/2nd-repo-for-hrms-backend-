@@ -41,30 +41,7 @@ const CATEGORY_SUBTYPES = REQUEST_CATEGORY_SUBTYPES;
 
 export function EssAllRequestsTab() {
   const [loading, setLoading] = useState(true);
-  const [requests, setRequests] = useState<any[]>([
-    {
-      id: "REQ-4410",
-      type: "Sick Leave",
-      category: "Leave",
-      date: "2026-07-25",
-      isoDate: "2026-07-25",
-      assignedOfficer: "Juan Dela Cruz",
-      status: "Pending",
-      statusRank: 0,
-      details: "Medical rest due to seasonal flu",
-    },
-    {
-      id: "REQ-4406",
-      type: "Transportation",
-      category: "Reimbursement",
-      date: "2026-07-21",
-      isoDate: "2026-07-21",
-      assignedOfficer: "Paolo Cruz",
-      status: "Rejected",
-      statusRank: 4,
-      details: "Late night catering transportation receipt",
-    },
-  ]);
+  const [requests, setRequests] = useState<any[]>([]);
 
   // Tracker Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,14 +63,14 @@ export function EssAllRequestsTab() {
     try {
       setLoading(true);
       const res = await essApi.myRequests();
-      if (res?.requests?.length) {
-        const liveItems = res.requests.map((r: ApiEssRequestItem) => ({
+      if (res) {
+        const liveItems = (res.requests ?? []).map((r: ApiEssRequestItem) => ({
           id: r.id,
           type: r.type,
           category: r.category || "General",
-          date: r.filed ? r.filed.slice(0, 10) : r.date_from || "2026-08-23",
-          isoDate: r.filed || r.date_from || "2026-08-23",
-          assignedOfficer: r.assignedTo || r.assigned_to || "Juan Dela Cruz",
+          date: r.filed ? r.filed.slice(0, 10) : r.date_from || "",
+          isoDate: r.filed || r.date_from || "",
+          assignedOfficer: r.assignedTo || r.assigned_to || "",
           status: r.status,
           statusRank:
             r.status === "Pending"
@@ -199,7 +176,10 @@ export function EssAllRequestsTab() {
         category: category,
         date: todayStr,
         isoDate: todayStr,
-        assignedOfficer: "Juan Dela Cruz",
+        assignedOfficer:
+          res?.request?.assigned_to?.full_name ||
+          res?.request?.assignedTo ||
+          "Unassigned",
         status: "Pending",
         statusRank: 0,
         details: details,

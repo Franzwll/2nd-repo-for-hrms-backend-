@@ -33,16 +33,10 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
-import {
-  myAttendance,
-  myPayroll,
-  myPerformance,
-  myEmployeeDocuments,
-  wireframeActivity,
-} from "@/data/ess";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi, newHiresApi, onboardingItemsApi, type ApiEssOverview, type ApiEssRequestItem } from "@/lib/api";
 import { getUser } from "@/lib/auth";
+import { essPortalPath, useEssPortal } from "@/components/modules/ess/EssPortalContext";
 import { toast } from "sonner";
 
 interface EssOverviewTabProps {
@@ -54,8 +48,10 @@ interface EssOverviewTabProps {
 }
 
 export function EssOverviewTab({}: EssOverviewTabProps) {
+  const { basePath, viewerRole } = useEssPortal();
+  const essTo = essPortalPath(basePath);
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
-  const [activities, setActivities] = useState<any[]>(wireframeActivity);
+  const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [raSearch, setRaSearch] = useState("");
   const [raCategory, setRaCategory] = useState("all");
@@ -71,38 +67,16 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
     pending: string[];
   } | null>(null);
 
-  // Dynamic Social Recognition Stats
-  const [recStats, setRecStats] = useState({ received: 4, given: 2, topPillar: "Guest Delight" });
+  // Dynamic Social Recognition Stats (from the live overview summary)
+  const [recStats, setRecStats] = useState({ received: 0, given: 0, topPillar: "" });
 
   useEffect(() => {
-    const updateStats = () => {
-      try {
-        const raw = localStorage.getItem("oxford_social_recognitions");
-        if (raw) {
-          const list = JSON.parse(raw);
-          if (Array.isArray(list)) {
-            const userName = overview?.employee?.name || "Kevin Dela Cruz";
-            const received = list.filter((p: any) =>
-              p.recipientName?.toLowerCase().includes(userName.toLowerCase())
-            ).length;
-            const given = list.filter((p: any) =>
-              p.senderName?.toLowerCase().includes(userName.toLowerCase())
-            ).length;
-            setRecStats({
-              received: Math.max(0, received),
-              given: Math.max(0, given),
-              topPillar: "Guest Delight",
-            });
-          }
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    updateStats();
-    window.addEventListener("recognition_updated", updateStats);
-    return () => window.removeEventListener("recognition_updated", updateStats);
+    if (!overview?.recognition_summary) return;
+    setRecStats({
+      received: overview.recognition_summary.received,
+      given: overview.recognition_summary.given,
+      topPillar: overview.recognition_summary.top_pillar,
+    });
   }, [overview]);
 
   useEffect(() => {
@@ -116,7 +90,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
 
         if (overviewRes) setOverview(overviewRes);
 
-        if (requestsRes?.requests?.length) {
+        if (requestsRes?.requests) {
           const liveActs = requestsRes.requests.map((r: ApiEssRequestItem) => ({
             id: r.id,
             category: r.category || "General",
@@ -125,13 +99,13 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
             isoDate: r.filed,
             status: r.status,
             statusRank: r.status === "Pending" ? 1 : r.status === "Under Review" ? 2 : 3,
-            assignedTo: r.assignedTo || r.assigned_to || "HR Administration",
+            assignedTo: r.assignedTo || r.assigned_to || "",
             details: r.details,
           }));
           setActivities(liveActs);
         }
-      } catch (err: any) {
-        // Fallback gracefully
+      } catch {
+        // Keep the empty/live state on error.
       } finally {
         setLoading(false);
       }
@@ -143,6 +117,11 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
   useEffect(() => {
     // Load the logged-in employee's onboarding progress from the same
     // new-hires / onboarding-items endpoints Admin HR verifies against.
+    // Admin / Super Admin personal ESS has no onboarding card, so don't load it.
+    if (viewerRole !== "employee") {
+      setOnboarding(null);
+      return;
+    }
     const user = getUser();
     newHiresApi
       .list({ per_page: 100 })
@@ -170,7 +149,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
       .catch(() => {
         setOnboarding(null);
       });
-  }, []);
+  }, [viewerRole]);
 
   const filteredActivities = useMemo(() => {
     return activities
@@ -198,25 +177,25 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
 
   const handleRowClick = (item: any) => {
     setSelectedRequest({
-      id: item.id || `REQ-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: item.id,
       type: item.type,
       category: item.category,
       date: item.date,
       isoDate: item.isoDate,
       status: item.status,
-      assignedTo: item.assignedTo || "Juan Dela Cruz (HR Admin)",
-      details: item.details || "Self-service employee request logged into system.",
+      assignedTo: item.assignedTo || "",
+      details: item.details || "",
     });
     setTimelineOpen(true);
   };
 
-  const todayTimeIn = overview?.today_attendance?.time_in || myAttendance.today.timeIn;
-  const attendanceStatus = overview?.today_attendance?.status || "Present";
+  const todayTimeIn = overview?.today_attendance?.time_in || "—";
+  const attendanceStatus = overview?.today_attendance?.status || "Not Clocked In";
 
   return (
     <div className="space-y-6">
       {/* My Onboarding progress — same checklist Admin HR verifies (deep-links to /employee/onboarding) */}
-      {onboarding && onboarding.total > 0 && (
+      {viewerRole === "employee" && onboarding && onboarding.total > 0 && (
         <Card
           className={
             onboarding.pending.length === 0
@@ -313,7 +292,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
             </div>
             <div className="mt-3">
               <p className="text-xl font-bold font-display text-foreground">
-                {overview?.monthly_attendance?.present ?? myAttendance.monthly.present} Present <span className="text-xs font-normal text-muted-foreground">· {overview?.monthly_attendance?.late ?? myAttendance.monthly.late} Late</span>
+                {overview?.monthly_attendance?.present ?? 0} Present <span className="text-xs font-normal text-muted-foreground">· {overview?.monthly_attendance?.late ?? 0} Late</span>
               </p>
               <p className="text-xs text-muted-foreground mt-1 truncate">
                 In: <strong className="text-foreground">{todayTimeIn}</strong> ({attendanceStatus})
@@ -325,7 +304,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
               size="sm"
               className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
-              <Link to="/employee/ess" search={{ category: "Attendance" }}>
+              <Link to={essTo} search={{ category: "Attendance" }}>
                 <span>Attendance Log →</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -344,9 +323,9 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
             </div>
             <div className="mt-3">
               <p className="text-xl font-bold font-display text-emerald-600 dark:text-emerald-400">
-                ₱{(overview?.payroll_summary?.estimated_net ?? myPayroll.net).toLocaleString()}
+                ₱{(overview?.payroll_summary?.estimated_net ?? 0).toLocaleString()}
               </p>
-              <p className="text-xs text-muted-foreground mt-1 truncate">Payout: <strong className="text-foreground">{overview?.payroll_summary?.next_payout ?? myPayroll.nextPayout}</strong></p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">Payout: <strong className="text-foreground">{overview?.payroll_summary?.next_payout ?? "—"}</strong></p>
             </div>
             <Button
               asChild
@@ -354,7 +333,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
               size="sm"
               className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
-              <Link to="/employee/ess" search={{ category: "Payroll" }}>
+              <Link to={essTo} search={{ category: "Payroll" }}>
                 <span>Pay Breakdown →</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -373,10 +352,10 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
             </div>
             <div className="mt-3">
               <p className="text-xl font-bold font-display text-foreground">
-                {overview?.performance_summary?.lms_completed ?? myPerformance.lmsCoursesCompleted}/{overview?.performance_summary?.lms_total ?? myPerformance.lmsCoursesAssigned} Courses
+                {overview?.performance_summary?.lms_completed ?? 0}/{overview?.performance_summary?.lms_total ?? 0} Courses
               </p>
               <p className="text-xs text-muted-foreground mt-1 truncate">
-                Level: <strong className="text-foreground">{overview?.performance_summary?.competency_level ?? myPerformance.competencyLevel}</strong>
+                Level: <strong className="text-foreground">{overview?.performance_summary?.competency_level ?? "—"}</strong>
               </p>
             </div>
             <Button
@@ -385,7 +364,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
               size="sm"
               className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
-              <Link to="/employee/ess" search={{ category: "Performance" }}>
+              <Link to={essTo} search={{ category: "Performance" }}>
                 <span>LMS &amp; Scores →</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -404,7 +383,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
             </div>
             <div className="mt-3">
               <p className="text-xl font-bold font-display text-foreground">
-                {myEmployeeDocuments.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length} Verified
+                {overview?.documents_summary?.verified ?? 0} Verified
               </p>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium truncate">
                 {overview?.pending_requests_count ?? 0} Active Request(s)
@@ -416,7 +395,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
               size="sm"
               className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
-              <Link to="/employee/ess" search={{ category: "Documents" }}>
+              <Link to={essTo} search={{ category: "Documents" }}>
                 <span>Documents →</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -438,7 +417,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
                 {recStats.received} Received <span className="text-xs font-normal text-muted-foreground">· {recStats.given} Given</span>
               </p>
               <p className="text-xs text-muted-foreground mt-1 truncate">
-                Top Pillar: <strong className="text-foreground">⭐ {recStats.topPillar}</strong>
+                Top Pillar: <strong className="text-foreground">{recStats.topPillar ? `⭐ ${recStats.topPillar}` : "—"}</strong>
               </p>
             </div>
             <Button
@@ -447,7 +426,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
               size="sm"
               className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
-              <Link to="/employee/ess" search={{ category: "Recognition" }}>
+              <Link to={essTo} search={{ category: "Recognition" }}>
                 <span>Wall of Fame →</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>

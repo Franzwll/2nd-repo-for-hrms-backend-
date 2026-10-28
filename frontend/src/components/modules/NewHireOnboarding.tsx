@@ -83,7 +83,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { usePagination } from "@/hooks/usePagination";
 import { type NewHire } from "@/data/hr";
-import { myProfile } from "@/data/ess";
 import {
   DEFAULT_ACCOUNT_PASSWORD,
   hireStore,
@@ -817,7 +816,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         // setting not created yet — keep the 6-month default
       });
     coreHcmApi
-      .departments({ per_page: 100 })
+      .departments({ per_page: 500 })
       .then((res) => {
         if (res?.data) {
           setKnownDepartments(
@@ -831,7 +830,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       })
       .catch((err) => console.warn("Could not fetch departments from API:", err));
     coreHcmApi
-      .positions({ per_page: 100 })
+      .positions({ per_page: 500 })
       .then((res) => {
         if (res?.data) {
           setKnownPositions(
@@ -839,7 +838,10 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               dbId: p.position_id,
               id: p.position_code || String(p.position_id),
               title: p.title,
-              department: p.department || "General",
+              // PositionResource exposes the relation as department_name; the
+              // old `department` key was usually null, so hires defaulted to
+              // "General" and never matched a real department.
+              department: p.department_name || p.department || "General",
             })),
           );
         }
@@ -1809,15 +1811,17 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           ? `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail} (default password: ${defaultPassword})`
           : `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail}`,
       );
-      hireStore.updateHire(id, {
+      await hireStore.updateHire(id, {
         name: form.name,
         email: form.email,
         phone: form.phone,
         position: form.position,
         department: form.department,
+        positionId,
+        departmentId,
         startDate: form.startDate,
       });
-      hireStore.promoteHire(id);
+      await hireStore.promoteHire(id);
       return;
     }
 

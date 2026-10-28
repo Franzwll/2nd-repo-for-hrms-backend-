@@ -409,6 +409,138 @@
   animation: hero-progress 1.4s ease-in-out infinite;
 }
 
+/* 404 page ambient motion */
+@keyframes error-orb-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -40px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+}
+
+@keyframes error-content-entry {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes error-float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes error-float-med {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(2.5deg);
+  }
+}
+
+@keyframes error-float-fast {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes error-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes error-dash-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes error-code-shimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.error-orb {
+  animation: error-orb-float 20s ease-in-out infinite;
+}
+
+.error-content-entry {
+  animation: error-content-entry 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.error-float-slow {
+  animation: error-float-slow 6s ease-in-out infinite;
+}
+
+.error-float-med {
+  animation: error-float-med 4s ease-in-out infinite;
+}
+
+.error-float-fast {
+  animation: error-float-fast 3s ease-in-out infinite;
+}
+
+.error-spin-slow {
+  animation: error-spin 8s linear infinite;
+}
+
+.error-dash {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: error-dash-draw 3s ease-in-out infinite alternate;
+}
+
+.error-code-shimmer {
+  background-size: 200% 200%;
+  animation: error-code-shimmer 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error-orb,
+  .error-content-entry,
+  .error-float-slow,
+  .error-float-med,
+  .error-float-fast,
+  .error-spin-slow,
+  .error-code-shimmer {
+    animation: none !important;
+  }
+
+  .error-dash {
+    stroke-dashoffset: 0;
+    animation: none !important;
+  }
+}
+
 /* Staggered hero entrance: hold each block at its "from" state while the
  * delay runs (tw-animate-css defaults to fill-mode none, which would flash
  * the copy on screen before it animates in). */

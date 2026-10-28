@@ -48,6 +48,7 @@ Route::middleware(['auth:sanctum', 'permission:Core HCM:Edit'])->prefix('v1')->g
     Route::post('salary-grades', [SalaryGradeController::class, 'store']);
     Route::put('salary-grades/{salary_grade}', [SalaryGradeController::class, 'update']);
     Route::delete('salary-grades/{salary_grade}', [SalaryGradeController::class, 'destroy']);
+    Route::post('hr3-recommendations/mock', [HR3RecommendationController::class, 'storeMock']);
     Route::post('hr3-recommendations/{recommendation}/acknowledge', [HR3RecommendationController::class, 'acknowledge']);
     Route::post('employees', [EmployeeController::class, 'store']);
     Route::put('employees/{employee}', [EmployeeController::class, 'update']);

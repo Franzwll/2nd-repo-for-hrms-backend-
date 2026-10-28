@@ -8,4 +8,4 @@ cmds = ["composer install --no-dev --optimize-autoloader --no-interaction"]
 cmds = ["php artisan config:cache", "php artisan route:cache"]
 
 [start]
-cmd = "php artisan serve --host=0.0.0.0 --port=8000"
+cmd = "php artisan storage:link || true; php artisan serve --host=0.0.0.0 --port=8000"

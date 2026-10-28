@@ -24,6 +24,7 @@ class EmployeeRecordsServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         \Modules\EmployeeRecords\Console\NotifyExpiringDocuments::class,
+        \Modules\EmployeeRecords\Console\BackfillEmployeeDocuments::class,
     ];
 
     /**

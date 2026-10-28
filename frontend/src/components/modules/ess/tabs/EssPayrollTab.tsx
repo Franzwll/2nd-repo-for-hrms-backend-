@@ -10,12 +10,10 @@ import {
   HeartHandshake,
   Landmark,
   ShieldCheck,
-  Stethoscope,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -31,10 +29,14 @@ import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { ReportMenu } from "@/components/ui/report-menu";
-import { myPayroll } from "@/data/ess";
 import { essApi, type ApiPayrollData } from "@/lib/api";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { maskSensitiveId } from "@/components/modules/ess/shared/OfficialPayslipDocument";
+import {
+  myRequestModulePath,
+  myRequestsPath,
+  useEssPortal,
+} from "@/components/modules/ess/EssPortalContext";
 
 const money = (value: number) => `₱${value.toLocaleString()}`;
 
@@ -58,12 +60,14 @@ interface StatutoryRow {
 
 export function EssPayrollTab() {
   const navigate = useNavigate();
+  const { basePath } = useEssPortal();
+  const myRequestsTo = myRequestsPath(basePath);
+  const payrollRequestTo = myRequestModulePath(basePath);
 
   const [payrollData, setPayrollData] = useState<ApiPayrollData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedPayslipPeriod, setSelectedPayslipPeriod] =
-    useState<string>("Aug 01 - Aug 15, 2026");
-  const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(28080);
+  const [selectedPayslipPeriod, setSelectedPayslipPeriod] = useState<string>("");
+  const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(0);
   const [selectedPayslip, setSelectedPayslip] = useState<ApiPayrollData["payslips"][number] | null>(
     null,
   );
@@ -84,21 +88,18 @@ export function EssPayrollTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  const baseSalary = payrollData?.baseSalary ?? 28000;
-  const allowances = payrollData?.allowances ?? 3000;
-  const sss = payrollData?.deductions?.sss ?? Math.round(baseSalary * 0.045 * 100) / 100;
-  const philhealth =
-    payrollData?.deductions?.philhealth ?? Math.round(baseSalary * 0.025 * 100) / 100;
-  const pagibig = payrollData?.deductions?.pagibig ?? 200;
-  const tax =
-    payrollData?.deductions?.tax ??
-    Math.round((baseSalary - (sss + philhealth + pagibig)) * 0.1 * 100) / 100;
+  const baseSalary = payrollData?.baseSalary ?? 0;
+  const allowances = payrollData?.allowances ?? 0;
+  const sss = payrollData?.deductions?.sss ?? 0;
+  const philhealth = payrollData?.deductions?.philhealth ?? 0;
+  const pagibig = payrollData?.deductions?.pagibig ?? 0;
+  const tax = payrollData?.deductions?.tax ?? 0;
   const currentGross = baseSalary + allowances;
-  const nextPayout = payrollData?.nextPayout ?? "August 31, 2026";
-  const payPeriod = payrollData?.hero_period ?? "Current cut-off";
+  const nextPayout = payrollData?.nextPayout ?? "—";
+  const payPeriod = payrollData?.hero_period ?? "—";
 
   const payslipsList = useMemo(() => {
-    return payrollData?.payslips?.length ? payrollData.payslips : myPayroll.payslips;
+    return payrollData?.payslips ?? [];
   }, [payrollData]);
 
   // Prefer the actual released payslip line items; fall back to the payroll
@@ -196,7 +197,8 @@ export function EssPayrollTab() {
     {
       icon: ShieldCheck,
       label: "SSS",
-      sensitiveValue: "34-1234567-8",
+      detail: "Contribution",
+      sensitiveValue: payrollData?.statutory?.sss || "",
       amount: sss,
       unit: "/ month",
       tone: "bg-primary/10 text-primary",
@@ -204,34 +206,29 @@ export function EssPayrollTab() {
     {
       icon: HeartHandshake,
       label: "PhilHealth",
-      sensitiveValue: "12-345678901-2",
+      detail: "Premium",
+      sensitiveValue: payrollData?.statutory?.philhealth || "",
       amount: philhealth,
       unit: "/ month",
-      tone: "bg-emerald-500/10 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400",
+      tone: "bg-emerald-500/10 text-emerald-600",
     },
     {
       icon: Building,
       label: "Pag-IBIG (HDMF)",
-      sensitiveValue: "1234-5678-9012",
+      detail: "Contribution",
+      sensitiveValue: payrollData?.statutory?.pagibig || "",
       amount: pagibig,
       unit: "/ month",
-      tone: "bg-blue-500/10 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400",
+      tone: "bg-blue-500/10 text-blue-600",
     },
     {
       icon: Landmark,
       label: "BIR Withholding Tax",
       detail: "Monthly tax deduction",
+      sensitiveValue: payrollData?.statutory?.tin || "",
       amount: tax,
       unit: "/ month",
-      tone: "bg-rose-500/10 dark:bg-rose-400/10 text-rose-600 dark:text-rose-400",
-    },
-    {
-      icon: Stethoscope,
-      label: "HMO Healthcare",
-      detail: "Maxicare · MX-****014",
-      amount: 150000,
-      unit: "MBL / yr",
-      tone: "bg-purple-500/10 dark:bg-purple-400/10 text-purple-600 dark:text-purple-400",
+      tone: "bg-rose-500/10 text-rose-600",
     },
   ];
 
@@ -277,9 +274,9 @@ export function EssPayrollTab() {
               </div>
               <Badge
                 variant="outline"
-                className="shrink-0 border-emerald-500/30 dark:border-emerald-400/20 bg-emerald-500/10 dark:bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
+                className="shrink-0 border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-600"
               >
-                5 Active
+                {statutoryRows.length} Items
               </Badge>
             </div>
           </CardHeader>
@@ -301,6 +298,7 @@ export function EssPayrollTab() {
                       {row.sensitiveValue ? (
                         <>
                           <span className="font-mono">
+                            {row.detail ? `${row.detail} · ` : ""}
                             {isRevealed ? row.sensitiveValue : maskSensitiveId(row.sensitiveValue)}
                           </span>
                           <button
@@ -396,7 +394,7 @@ export function EssPayrollTab() {
                   ))}
                   <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-1.5 text-[11px] font-semibold">
                     <span className="text-foreground">Total Deductions</span>
-                    <span className="font-mono text-rose-600 dark:text-rose-400">
+                    <span className="font-mono text-rose-600">
                       -{money(calculation.totalDeductions)}
                     </span>
                   </div>
@@ -404,7 +402,7 @@ export function EssPayrollTab() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-emerald-500/30 dark:border-emerald-400/20 bg-emerald-500/5 dark:bg-emerald-400/10 p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
                   3. Net Take-Home Pay
@@ -453,7 +451,9 @@ export function EssPayrollTab() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 Per Cut-off Deduction
               </p>
-              <p className="mt-1 text-xl font-extrabold font-display text-rose-600 dark:text-rose-400">-₱450.00</p>
+              <p className="mt-1 text-xl font-extrabold font-display text-rose-600 dark:text-rose-400">
+                -₱450.00
+              </p>
             </div>
             <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -477,6 +477,193 @@ export function EssPayrollTab() {
                 Projected payoff: <strong className="text-foreground">December 15, 2026</strong>
               </span>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* New section: HMO / Health Benefits */}
+      <Card className="border-border/70 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 font-display text-lg font-semibold">
+                <HeartPulse className="h-4 w-4 text-primary" /> HMO / Health Benefits
+              </CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Your health coverage and benefit limits.
+              </p>
+            </div>
+            <div className="flex w-fit shrink-0 items-center gap-1.5">
+              <Badge
+                variant="outline"
+                className="w-fit shrink-0 border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"
+              >
+                Active
+              </Badge>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="HMO benefit information"
+                    title="HMO benefit information"
+                    className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="w-80 max-w-[calc(100vw-2rem)] space-y-2.5 p-3 text-xs leading-relaxed"
+                >
+                  <p>
+                    <span className="font-semibold text-foreground">MBL:</span>{" "}
+                    <span className="text-muted-foreground">
+                      The maximum benefit iCare covers for the benefit year. Amounts above the limit
+                      may be charged to you.
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">LOA:</span>{" "}
+                    <span className="text-muted-foreground">
+                      Request your Letter of Authorization before admission or procedures. Check
+                      that your hospital or clinic is accredited.
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Benefit Used:</span>{" "}
+                    <span className="text-muted-foreground">
+                      Shows your usage against your limit. Figures may be updated periodically.
+                    </span>
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-semibold text-foreground">Need help?</span> File an LOA or
+                    claim under{" "}
+                    <button
+                      type="button"
+                      onClick={() => navigate({ to: myRequestsTo })}
+                      className="font-semibold text-primary underline underline-offset-2 transition-colors hover:text-primary/80"
+                    >
+                      My Request
+                    </button>
+                    , or contact HR.
+                  </p>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Top 3 Stats: Provider, Plan, MBL/Year */}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Provider
+              </p>
+              <p className="mt-1 text-xl font-extrabold font-display text-foreground">iCare</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Insular Health Care</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Plan
+              </p>
+              <p className="mt-1 text-xl font-extrabold font-display text-foreground">Regular</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Comprehensive coverage</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                MBL / Year
+              </p>
+              <p className="mt-1 text-xl font-extrabold font-display text-primary">₱150,000</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Per illness per year</p>
+            </div>
+          </div>
+
+          {/* Middle Card No, Premium Paid By, Validity, Dependents */}
+          <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/10 p-3.5 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4">
+              <span className="text-xs text-muted-foreground">Card no.</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-xs font-semibold text-foreground">
+                  {hmoCardRevealed ? "IC-8849-1234" : "IC-****1234"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHmoCardRevealed((prev) => !prev)}
+                  aria-label={hmoCardRevealed ? "Hide HMO card number" : "Show HMO card number"}
+                  aria-pressed={hmoCardRevealed}
+                  title={hmoCardRevealed ? "Hide card number" : "Show card number"}
+                  className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {hmoCardRevealed ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 sm:border-b-0 sm:pb-0">
+              <span className="text-xs text-muted-foreground">Premium paid by:</span>
+              <span className="text-xs font-semibold text-foreground">Employer</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4">
+              <span className="text-xs text-muted-foreground">Validity</span>
+              <span className="font-mono text-xs font-semibold text-foreground">
+                Jan 01 – Dec 31, 2026
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">Dependents:</span>
+              <span className="text-xs font-semibold text-foreground">1</span>
+            </div>
+          </div>
+
+          {/* Utilization Progress Bar */}
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-muted-foreground">
+                Benefit used <strong className="text-foreground">₱32,500</strong> of{" "}
+                <span className="text-muted-foreground">₱150,000</span>
+              </span>
+              <span className="font-mono text-primary">22%</span>
+            </div>
+            <Progress value={22} className="mt-1.5 h-2.5" />
+            <div className="mt-2 flex flex-wrap justify-between gap-2 text-[11px] text-muted-foreground">
+              <span>
+                Remaining balance:{" "}
+                <strong className="text-emerald-600 dark:text-emerald-400">₱117,500</strong>
+              </span>
+              <span>
+                Annual reset: <strong className="text-foreground">Jan 01, 2027</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Footer note: Need an LOA or have a claim? File it under My Request. */}
+          <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-muted-foreground">
+              Need an LOA or have a claim? File it under{" "}
+              <button
+                type="button"
+                onClick={() => navigate({ to: myRequestsTo })}
+                className="font-semibold text-primary underline underline-offset-2 transition-colors hover:text-primary/80"
+              >
+                My Request
+              </button>
+              .
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => navigate({ to: myRequestsTo })}
+              className="h-7 border-primary/30 text-xs font-medium text-primary hover:bg-primary/10"
+            >
+              File Request
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -601,7 +788,7 @@ export function EssPayrollTab() {
         netPay={selectedPayslipNet}
         payslip={selectedPayslip}
         onInquiryClick={() =>
-          navigate({ to: "/employee/my-requests/$module", params: { module: "payroll" } })
+          navigate({ to: payrollRequestTo, params: { module: "payroll" } })
         }
       />
     </div>

@@ -85,13 +85,8 @@ import {
   useRecordDetail,
   useRoster,
 } from "@/lib/employeerecords";
-import {
-  build201FileReport,
-  exportReport,
-  printReport,
-  type ReportFormat,
-} from "@/lib/report-export";
-import { usePasswordGate } from "@/components/ui/report-menu";
+import { build201FileReport, exportReport, type ReportFormat } from "@/lib/report-export";
+import { usePasswordGate, useSecuredPrint } from "@/components/ui/report-menu";
 import { usePagination } from "@/hooks/usePagination";
 import { useHighlightId, highlightRowClass } from "@/hooks/useHighlight";
 
@@ -196,6 +191,7 @@ type ProfileDoc = {
   name: string;
   status: "Verified" | "Submitted" | "Pending" | "Missing";
   file?: string | undefined;
+  hasFile: boolean;
 };
 
 /** Map an ERM document row to the compact 201-file row the UI renders. */
@@ -212,7 +208,8 @@ function toProfileDoc(d: ApiDocument): ProfileDoc {
     id: d.document_id,
     name: d.title,
     status,
-    file: d.original_name ?? d.file_path ?? undefined,
+    file: d.original_name ?? d.file_path?.split("/").pop() ?? undefined,
+    hasFile: d.has_file === true || Boolean(d.file_url),
   };
 }
 
@@ -582,10 +579,10 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     }
     const p = buildProfile(emp);
     return [
-      ...p.certificates.map((d) => ({ name: d, status: "Submitted" as const })),
-      ...p.licenses.map((d) => ({ name: d, status: "Submitted" as const })),
-      ...p.medical.map((d) => ({ name: d, status: "Submitted" as const })),
-      ...p.missing.map((d) => ({ name: d, status: "Missing" as const })),
+      ...p.certificates.map((d) => ({ name: d, status: "Submitted" as const, hasFile: false })),
+      ...p.licenses.map((d) => ({ name: d, status: "Submitted" as const, hasFile: false })),
+      ...p.medical.map((d) => ({ name: d, status: "Submitted" as const, hasFile: false })),
+      ...p.missing.map((d) => ({ name: d, status: "Missing" as const, hasFile: false })),
     ];
   };
 
@@ -712,6 +709,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   // Security gate: 201 files are confidential — password is required before
   // opening, printing, or exporting any employee's full record.
   const { gateSensitive, gateDialog } = usePasswordGate();
+  const { requestPrint, printDialog } = useSecuredPrint();
 
   /** Single source of truth for this employee's 201-file report payload. */
   const build201Report = (emp: Employee) =>
@@ -734,13 +732,10 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
       history: historyFor(emp).map((h) => ({ type: h.type, date: h.date, detail: h.detail })),
     });
 
-  /** PRINT path only — opens the isolated 201-file print view, never downloads. */
+  /** PRINT path only — generates an encrypted PDF for the 201 file. */
   const printRecord = () => {
     if (!profile) return;
-    gateSensitive({ sensitive: true }, () => {
-      printReport(build201Report(profile));
-      toast.success(`${profile.name}'s 201 file sent to printer.`);
-    });
+    gateSensitive({ sensitive: true }, () => requestPrint(build201Report(profile)));
   };
 
   /** EXPORT path only — downloads the 201 file, never opens the print dialog. */
@@ -887,6 +882,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   return (
     <div>
       {gateDialog}
+      {printDialog}
       <PageHeader
         title="Employee Records"
         description="201 files, employment details, records analytics and document generation."
@@ -1559,7 +1555,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                                       ? "Pending verification"
                                       : "Missing"}
                               </Badge>
-                              {doc.id && doc.file && (
+                              {doc.id && doc.hasFile && (
                                 <Button
                                   size="sm"
                                   variant="ghost"

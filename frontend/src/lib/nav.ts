@@ -52,6 +52,15 @@ const essChildren = (base: string) => [
   { label: "HR AI Concierge", to: `${base}/ai` },
 ];
 
+const myEssChildren = (base: string) => [
+  { label: "My Attendance", to: `${base}/my-ess?category=Attendance` },
+  { label: "My Payroll", to: `${base}/my-ess?category=Payroll` },
+  { label: "My Performance", to: `${base}/my-ess?category=Promotion` },
+  { label: "My Documents", to: `${base}/my-ess?category=Documents` },
+  { label: "My Request", to: `${base}/my-requests` },
+  { label: "My Feed", to: `${base}/my-ess?category=Recognition` },
+];
+
 const hcmChildren = (base: string) => [
   { label: "Organizational Chart", to: `${base}/org-chart` },
   { label: "Department & Position", to: `${base}/dept-pos` },
@@ -90,6 +99,12 @@ export function navForRole(role: Role): NavItem[] {
     },
     { label: "Employee Records", to: `${base}/employees`, icon: FolderOpen },
     { label: "ESS Management", to: `${base}/ess`, icon: Headset },
+    {
+      label: "My ESS",
+      to: `${base}/my-ess`,
+      icon: UserCheck,
+      children: myEssChildren(base),
+    },
   ];
 
   if (role === "superadmin") {

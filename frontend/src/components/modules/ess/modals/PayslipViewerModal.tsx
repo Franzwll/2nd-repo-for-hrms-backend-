@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Download, FileText, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
-import { myProfile, myPayroll } from "@/data/ess";
 import { OfficialPayslipDocument } from "@/components/modules/ess/shared/OfficialPayslipDocument";
 import { downloadPayslipPdf } from "@/lib/downloadPayslipPdf";
+import { useEssProfile } from "@/hooks/useEssProfile";
 
 interface PayslipViewerModalProps {
   open: boolean;
@@ -32,55 +32,45 @@ interface PayslipViewerModalProps {
 export function PayslipViewerModal({
   open,
   onOpenChange,
-  period = "2026-07-01 – 07-15",
-  netPay = 9120,
+  period = "",
+  netPay = 0,
   payslip,
   onInquiryClick,
 }: PayslipViewerModalProps) {
+  const { employee } = useEssProfile();
   const handleDownload = async () => {
     try {
       const safeFilename = `Oxford-Suites-Makati-Payslip-${period.replace(/[\s–—/]+/g, "-")}.pdf`;
       await downloadPayslipPdf("official-payslip-receipt", safeFilename, {
         payPeriod: period,
-        payDate: "05/08/2026",
-        paidDays: 15,
+        payDate: payslip?.payoutDate ?? "",
+        paidDays: 0,
         lopDays: 0,
+        employeeName: employee?.name ?? "",
+        employeeId: employee?.code ?? "",
+        designation: employee?.position ?? "",
+        department: employee?.department ?? "",
+        dateOfJoining: employee?.date_hired ?? "",
+        tin: employee?.tin_number ?? "",
+        sss: employee?.sss_number ?? "",
+        philHealth: employee?.philhealth_number ?? "",
+        pagIbig: employee?.pagibig_number ?? "",
         earnings: earningsWithYtd,
         deductions: deductionsWithYtd,
         netPay: netPay,
       });
       toast.success(`Payslip (${period}) downloaded successfully!`);
-    } catch (err) {
+    } catch {
       toast.error("Failed to generate PDF.");
     }
   };
 
-  // Itemized lines from the payroll record when the backend provides them;
-  // otherwise the long-standing placeholder breakdown (clearly an estimate).
-  const earningsWithYtd =
-    payslip?.earnings?.length
-      ? payslip.earnings
-      : [
-          { label: "Basic Pay", amount: 16000, ytd: 112000 },
-          { label: "Overtime Pay", amount: 2100, ytd: 14700 },
-          { label: "Night Differential", amount: 900, ytd: 6300 },
-          { label: "Meal Allowance", amount: 1500, ytd: 10500 },
-          { label: "Service Charge Share", amount: 1000, ytd: 7000 },
-        ];
+  // Itemized lines from the payroll record when the backend provides them.
+  const earningsWithYtd = payslip?.earnings ?? [];
+  const deductionsWithYtd = payslip?.deductions_breakdown ?? [];
 
-  const deductionsWithYtd =
-    payslip?.deductions_breakdown?.length
-      ? payslip.deductions_breakdown
-      : [
-          { label: "SSS Contribution", amount: 900, ytd: 6300 },
-          { label: "PhilHealth Premium", amount: 550, ytd: 3850 },
-          { label: "Pag-IBIG HDMF", amount: 200, ytd: 1400 },
-          { label: "Withholding Tax (BIR)", amount: 1160, ytd: 8120 },
-          { label: "Company Salary Loan", amount: 450, ytd: 3150 },
-        ];
-
-  const payDate = payslip?.payoutDate ?? "05/08/2026";
-  const stubStatus = payslip?.status ?? "Released";
+  const payDate = payslip?.payoutDate ?? "—";
+  const stubStatus = payslip?.status ?? "—";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,20 +99,20 @@ export function PayslipViewerModal({
         <OfficialPayslipDocument
           companyName="Oxford Suites Makati"
           companyAddress="7840 Makati Avenue, Poblacion, Makati City, Philippines 1210"
-          employeeName={myProfile.name || "Kevin Santos"}
-          employeeId={myProfile.employeeId || "OSM-2026-0142"}
-          designation={myProfile.position || "Line Cook"}
-          department={myProfile.department || "Kitchen / Culinary"}
-          dateOfJoining={myProfile.dateHired ? new Date(myProfile.dateHired).toLocaleDateString("en-GB") : "15/04/2026"}
+          employeeName={employee?.name ?? ""}
+          employeeId={employee?.code ?? ""}
+          designation={employee?.position ?? ""}
+          department={employee?.department ?? ""}
+          dateOfJoining={employee?.date_hired ?? ""}
           payPeriod={period}
           payDate={payDate}
-          paidDays={15}
+          paidDays={0}
           lopDays={0}
-          bankAccount="BDO *****412"
-          tin="***-***-***-000"
-          sss="**-*****67-8"
-          philHealth="**-*******01-2"
-          pagIbig="****-****-*012"
+          bankAccount=""
+          tin={employee?.tin_number ?? ""}
+          sss={employee?.sss_number ?? ""}
+          philHealth={employee?.philhealth_number ?? ""}
+          pagIbig={employee?.pagibig_number ?? ""}
           earnings={earningsWithYtd}
           deductions={deductionsWithYtd}
           netPay={netPay}

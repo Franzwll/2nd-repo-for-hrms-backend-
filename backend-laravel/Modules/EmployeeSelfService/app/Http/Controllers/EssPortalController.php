@@ -35,33 +35,77 @@ class EssPortalController extends Controller
 {
     /**
      * Entry base pay per HR policy: the linked salary grade's band MINIMUM.
-     * 28500 only when no grade is linked at all (never a silent grade value).
+     * Returns 0 when no grade is linked — never invent a salary.
      */
     private function resolveBaseSalary(?Employee $employee): float
     {
-        $min = $employee?->position?->salaryGrade?->min_salary;
-        return $min !== null ? (float) $min : 28500.00;
+        $grade = $employee?->salaryGrade ?? $employee?->position?->salaryGrade;
+        $min = $grade?->min_salary;
+        return $min !== null ? (float) $min : 0.0;
+    }
+
+    /**
+     * Standard annual leave entitlements are policy setup, not demo activity:
+     * create them once (with zero usage) for an employee who has none yet.
+     */
+    private function ensureLeaveBalances(Employee $employee)
+    {
+        $year = Carbon::today()->year;
+        $balances = LeaveBalance::where('employee_id', $employee->employee_id)
+            ->where('period_year', $year)
+            ->get();
+
+        if ($balances->isEmpty()) {
+            foreach ([
+                ['leave_type' => 'Vacation Leave', 'total_days' => 15],
+                ['leave_type' => 'Sick Leave', 'total_days' => 15],
+                ['leave_type' => 'Emergency Leave', 'total_days' => 5],
+            ] as $entitlement) {
+                LeaveBalance::create([
+                    'employee_id' => $employee->employee_id,
+                    'leave_type' => $entitlement['leave_type'],
+                    'period_year' => $year,
+                    'total_days' => $entitlement['total_days'],
+                    'used_days' => 0,
+                ]);
+            }
+
+            $balances = LeaveBalance::where('employee_id', $employee->employee_id)
+                ->where('period_year', $year)
+                ->get();
+        }
+
+        return $balances;
     }
 
     /**
      * Resolve the current authenticated employee.
-     * Returns null when the authenticated user has no linked employee record
-     * so callers respond 403/404 instead of falling back to an arbitrary record.
+     *
+     * Staff accounts (Admin / Super Admin) without a linked employee record
+     * never fall back to another employee's record. By default this throws a
+     * 409 ESS_NOT_LINKED response; pass $requireLink = false (as my-context
+     * does) to receive null instead. Employee (role 3) behavior is unchanged:
+     * null is returned when nothing could be resolved or provisioned.
      */
-    private function resolveEmployee(Request $request): ?Employee
+    private function resolveEmployee(Request $request, bool $requireLink = true): ?Employee
     {
         $user = $request->user();
+        $isStaff = $user && in_array((int) $user->role_id, [1, 2], true);
+
         if ($user?->employee_id) {
-            $emp = Employee::with(['department', 'position', 'supervisor'])->find($user->employee_id);
-            if ($emp) {
+            $emp = Employee::with($relations)->find($user->employee_id);
+            if ($emp && $emp->status === 'Active') {
                 return $emp;
             }
         }
 
         if ($user?->email) {
-            $emp = Employee::with(['department', 'position', 'supervisor'])
-                ->where('email', $user->email)
-                ->orWhere('personal_email', $user->email)
+            $emp = Employee::with($relations)
+                ->where(function ($q) use ($user) {
+                    $q->where('email', $user->email)
+                      ->orWhere('personal_email', $user->email);
+                })
+                ->where('status', 'Active')
                 ->first();
             if ($emp) {
                 if ($user && ! $user->employee_id) {
@@ -70,6 +114,21 @@ class EssPortalController extends Controller
                 }
                 return $emp;
             }
+        }
+
+        // Staff accounts must be explicitly linked to an employee record.
+        // Never guess by name or fall back to an arbitrary employee record.
+        if ($isStaff) {
+            if ($requireLink) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                    response()->json([
+                        'code' => 'ESS_NOT_LINKED',
+                        'message' => 'This account is not linked to an employee record.',
+                    ], 409)
+                );
+            }
+
+            return null;
         }
 
         if ($user?->full_name) {
@@ -97,17 +156,24 @@ class EssPortalController extends Controller
 
         if ($newHire) {
             if ($newHire->employee_id) {
-                $emp = Employee::with(['department', 'position', 'supervisor'])->find($newHire->employee_id);
-                if ($emp) {
+                $emp = Employee::with($relations)->find($newHire->employee_id);
+                if ($emp && $emp->status === 'Active') {
                     if ($user && ! $user->employee_id) {
                         $user->employee_id = $emp->employee_id;
                         $user->save();
                     }
                     return $emp;
                 }
+
+                // The linked employee exists but is inactive/deleted; do not
+                // provision a duplicate record from the same new hire.
+                return null;
             }
 
-            // Auto-provision Employee record from NewHire
+            if (! $newHire->position_id || ! $newHire->department_id) {
+                return null;
+            }
+
             $names = explode(' ', trim($newHire->name));
             $firstName = $names[0] ?? 'Employee';
             $middleName = count($names) > 2 ? $names[1] : null;
@@ -122,8 +188,8 @@ class EssPortalController extends Controller
                 'middle_name'     => $middleName,
                 'last_name'       => $lastName,
                 'email'           => $newHire->email ?? $user?->email,
-                'department_id'   => $newHire->department_id ?? 1,
-                'position_id'     => $newHire->position_id ?? 1,
+                'department_id'   => $newHire->department_id,
+                'position_id'     => $newHire->position_id,
                 'employment_type' => 'Probationary',
                 'date_hired'      => $newHire->start_date ?? now(),
                 'status'          => 'Active',
@@ -168,12 +234,38 @@ class EssPortalController extends Controller
             return $emp->load(['department', 'position', 'supervisor']);
         }
 
-        // For demo superadmin/admin accounts (roles 1, 2) fallback to first employee
-        if ($user && in_array((int) $user->role_id, [1, 2])) {
-            return Employee::with(['department', 'position', 'supervisor'])->first();
+        return null;
+    }
+
+    /**
+     * GET /api/v1/ess/my-context
+     *
+     * Tells the portal whether the signed-in account is linked to an employee
+     * record. Admin and Super Admin accounts must never fall back to another
+     * employee's record.
+     */
+    public function getMyContext(Request $request): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request, false);
+
+        if (! $employee) {
+            return response()->json([
+                'linked' => false,
+                'employee' => null,
+            ]);
         }
 
-        return null;
+        return response()->json([
+            'linked' => true,
+            'employee' => [
+                'id' => $employee->employee_id,
+                'code' => $employee->employee_code,
+                'name' => trim($employee->first_name . ' ' . $employee->last_name),
+                'email' => $employee->email,
+                'department' => $employee->department?->name,
+                'position' => $employee->position?->title,
+            ],
+        ]);
     }
 
     /**
@@ -185,29 +277,30 @@ class EssPortalController extends Controller
         $employee = $this->resolveEmployee($request);
 
         if (! $employee) {
-            $newHire = \Modules\NewHireOnboarding\Models\NewHire::with(['department', 'position'])
-                ->where('email', $user?->email)
-                ->orWhere('name', $user?->full_name)
-                ->first();
+            $newHire = $user?->email
+                ? \Modules\NewHireOnboarding\Models\NewHire::with(['department', 'position'])
+                    ->where('email', $user->email)
+                    ->first()
+                : null;
 
             return response()->json([
                 'employee' => [
                     'id' => null,
-                    'code' => $newHire?->new_hire_code ?? 'EMP-NEW',
-                    'name' => $user?->full_name ?? ($newHire?->name ?? 'Employee'),
+                    'code' => $newHire?->new_hire_code ?? '',
+                    'name' => $user?->full_name ?? ($newHire?->name ?? ''),
                     'email' => $user?->email ?? ($newHire?->email ?? ''),
-                    'department' => $newHire?->department?->name ?? ($user?->department_name ?? 'General'),
-                    'position' => $newHire?->position?->title ?? ($user?->department_name ? $user->department_name . ' Staff' : 'Staff'),
-                    'supervisor' => 'HR Administration',
-                    'employment_type' => $newHire?->stage ?? 'Pre-onboarding',
-                    'date_hired' => $newHire?->start_date ?? date('Y-m-d'),
-                    'status' => 'Active',
+                    'department' => $newHire?->department?->name ?? ($user?->department_name ?? ''),
+                    'position' => $newHire?->position?->title ?? '',
+                    'supervisor' => '',
+                    'employment_type' => $newHire?->stage ?? '',
+                    'date_hired' => $newHire?->start_date ?? null,
+                    'status' => $user?->status ?? '',
                 ],
                 'today_schedule' => [
-                    'shift_name' => 'Morning Shift',
-                    'time' => '07:00 AM - 04:00 PM',
+                    'shift_name' => 'No schedule assigned',
+                    'time' => '—',
                     'is_rest_day' => false,
-                    'location' => 'Oxford Suites Makati',
+                    'location' => '—',
                 ],
                 'today_attendance' => [
                     'time_in' => null,
@@ -235,10 +328,8 @@ class EssPortalController extends Controller
             ->whereDate('work_date', $today->toDateString())
             ->first();
 
-        // Leave balances
-        $leaveBalances = LeaveBalance::where('employee_id', $employee->employee_id)
-            ->where('period_year', $today->year)
-            ->get()
+        // Leave balances (standard entitlements are created with zero usage)
+        $leaveBalances = $this->ensureLeaveBalances($employee)
             ->map(function ($lb) {
                 return [
                     'id' => $lb->leave_balance_id,
@@ -248,34 +339,6 @@ class EssPortalController extends Controller
                     'available' => (float) max(0, $lb->total_days - $lb->used_days),
                 ];
             });
-
-        // If no balances found for this employee, create default statutory balances
-        if ($leaveBalances->isEmpty()) {
-            $defaultBalances = [
-                ['leave_type' => 'Vacation Leave', 'total_days' => 15, 'used_days' => 2],
-                ['leave_type' => 'Sick Leave', 'total_days' => 15, 'used_days' => 3],
-                ['leave_type' => 'Emergency Leave', 'total_days' => 5, 'used_days' => 1],
-            ];
-            foreach ($defaultBalances as $item) {
-                LeaveBalance::create([
-                    'employee_id' => $employee->employee_id,
-                    'leave_type' => $item['leave_type'],
-                    'period_year' => $today->year,
-                    'total_days' => $item['total_days'],
-                    'used_days' => $item['used_days'],
-                ]);
-            }
-            $leaveBalances = LeaveBalance::where('employee_id', $employee->employee_id)
-                ->where('period_year', $today->year)
-                ->get()
-                ->map(fn ($lb) => [
-                    'id' => $lb->leave_balance_id,
-                    'type' => $lb->leave_type,
-                    'total' => (float) $lb->total_days,
-                    'used' => (float) $lb->used_days,
-                    'available' => (float) max(0, $lb->total_days - $lb->used_days),
-                ]);
-        }
 
         // Recent requests count
         $pendingCount = EssRequest::where('employee_id', $employee->employee_id)
@@ -300,15 +363,37 @@ class EssPortalController extends Controller
             ->whereBetween('work_date', [$startOfMonth->toDateString(), $today->toDateString()])
             ->get();
 
-        $presentCount = $monthRecords->count() > 0 ? $monthRecords->count() : 18;
+        $presentCount = $monthRecords->whereNotIn('status', ['Absent', 'Rest Day', 'Leave'])->count();
         $lateCount = $monthRecords->where('status', 'Late')->count();
         $absentCount = $monthRecords->where('status', 'Absent')->count();
         $overtimeHours = (float) $monthRecords->sum(fn ($r) => max(0, ((float) $r->hours_worked) - 8));
         $totalAvailableLeave = (float) $leaveBalances->sum('available');
 
+        $documentCounts = EmployeeDocument::where('employee_id', $employee->employee_id)
+            ->get()
+            ->groupBy(fn ($doc) => $doc->document_status === 'Verified' ? 'verified' : 'other');
+
+        $recognitionRows = SocialRecognition::query()
+            ->where(function ($q) use ($employee) {
+                $q->where('recipient_employee_id', $employee->employee_id)
+                  ->orWhere('sender_employee_id', $employee->employee_id)
+                  ->orWhere('recipient_name', $employee->full_name)
+                  ->orWhere('sender_name', $employee->full_name);
+            })
+            ->get();
+        $receivedRecognitions = $recognitionRows->filter(
+            fn ($r) => (int) $r->recipient_employee_id === (int) $employee->employee_id
+                || $r->recipient_name === $employee->full_name
+        );
+        $givenRecognitions = $recognitionRows->filter(
+            fn ($r) => (int) $r->sender_employee_id === (int) $employee->employee_id
+                || $r->sender_name === $employee->full_name
+        );
+        $topPillar = $receivedRecognitions->countBy('core_value')->sortDesc()->keys()->first();
+
         // Payroll Overview
         $baseSalary = $this->resolveBaseSalary($employee);
-        $netPayEstimate = round($baseSalary * 0.88 + 3000, 2);
+        $netPayEstimate = round($baseSalary * 0.88, 2);
         $nextPayout = $today->day <= 15 ? $today->format('F 15, Y') : $today->endOfMonth()->format('F d, Y');
 
         // Performance / LMS Overview (real counts; nulls when nothing recorded —
@@ -335,19 +420,46 @@ class EssPortalController extends Controller
                 'code' => $employee->employee_code,
                 'name' => $employee->full_name,
                 'email' => $employee->email,
-                'department' => $employee->department?->name ?? 'Front Office',
-                'position' => $employee->position?->title ?? 'Staff',
-                'supervisor' => $employee->supervisor ? $employee->supervisor->full_name : 'Maria Lim',
+                'department' => $employee->department?->name ?? '',
+                'position' => $employee->position?->title ?? '',
+                'supervisor' => $employee->supervisor?->full_name ?? '',
                 'employment_type' => $employee->employment_type,
                 'date_hired' => $employee->date_hired?->toDateString(),
+                'salary_grade' => $employee->salaryGrade?->code ?? $employee->position?->salaryGrade?->code,
+                'salary_step' => $employee->salary_step,
+                'phone' => $employee->phone ?? '',
+                'personal_email' => $employee->personal_email ?? '',
+                'address' => $employee->address ?? '',
+                'birth_date' => $employee->birth_date?->toDateString(),
+                'gender' => $employee->gender ?? '',
+                'civil_status' => $employee->civil_status ?? '',
+                'nationality' => $employee->nationality ?? '',
+                'status' => $employee->status ?? '',
+                'sss_number' => $employee->sss_number ?? '',
+                'philhealth_number' => $employee->philhealth_number ?? '',
+                'pagibig_number' => $employee->pagibig_number ?? '',
+                'tin_number' => $employee->tin_number ?? '',
+                'emergency_contacts' => $employee->emergencyContacts
+                    ->sortByDesc('is_primary')
+                    ->map(fn ($contact) => [
+                        'name' => $contact->name,
+                        'relationship' => $contact->relationship ?? '',
+                        'phone' => $contact->phone ?? '',
+                        'address' => $contact->address ?? '',
+                    ])
+                    ->values(),
             ],
             'today_schedule' => [
-                'shift_name' => $todaySchedule ? ($todaySchedule->is_rest_day ? 'Rest Day' : ($todaySchedule->shift_name ?? 'Morning Shift')) : 'Morning Shift',
-                'time' => $todaySchedule && ! $todaySchedule->is_rest_day
-                    ? Carbon::parse($todaySchedule->start_time)->format('h:i A') . ' - ' . Carbon::parse($todaySchedule->end_time)->format('h:i A')
-                    : ($todaySchedule && $todaySchedule->is_rest_day ? 'Off Duty' : '07:00 AM - 04:00 PM'),
+                'shift_name' => $todaySchedule ? ($todaySchedule->is_rest_day ? 'Rest Day' : ($todaySchedule->shift_name ?? 'Regular Shift')) : 'No schedule assigned',
+                'time' => $todaySchedule
+                    ? ($todaySchedule->is_rest_day
+                        ? 'Off Duty'
+                        : ($todaySchedule->start_time && $todaySchedule->end_time
+                            ? Carbon::parse($todaySchedule->start_time)->format('h:i A') . ' - ' . Carbon::parse($todaySchedule->end_time)->format('h:i A')
+                            : '—'))
+                    : '—',
                 'is_rest_day' => $todaySchedule ? (bool) $todaySchedule->is_rest_day : false,
-                'location' => $todaySchedule?->location ?? 'Main Building / Front Desk',
+                'location' => $todaySchedule?->location ?? '—',
             ],
             'today_attendance' => [
                 'time_in' => $todayAttendance?->time_in ? Carbon::parse($todayAttendance->time_in)->format('h:i A') : null,
@@ -371,6 +483,15 @@ class EssPortalController extends Controller
                 'lms_total' => $lmsTotal,
                 'competency_level' => $latestReview?->competency_level,
                 'average_score' => $lmsAverage,
+            ],
+            'documents_summary' => [
+                'total' => $documentCounts->collapse()->count(),
+                'verified' => $documentCounts->get('verified', collect())->count(),
+            ],
+            'recognition_summary' => [
+                'received' => $receivedRecognitions->count(),
+                'given' => $givenRecognitions->count(),
+                'top_pillar' => $topPillar ?? '',
             ],
             'leave_balances' => $leaveBalances,
             'pending_requests_count' => $pendingCount,
@@ -411,25 +532,30 @@ class EssPortalController extends Controller
 
             if ($found) {
                 $isRest = (bool) $found->is_rest_day;
+                $hoursLabel = '0h';
+                if (! $isRest && $found->start_time && $found->end_time) {
+                    $minutes = Carbon::parse($found->start_time)
+                        ->diffInMinutes(Carbon::parse($found->end_time));
+                    $hoursLabel = rtrim(rtrim(number_format($minutes / 60, 1, '.', ''), '0'), '.') . 'h';
+                }
                 $scheduleList[] = [
                     'day' => $dayName,
                     'shift' => $isRest ? 'Rest Day' : ($found->shift_name ?: 'Regular Shift'),
                     'time' => $isRest ? 'Off Duty' : (
                         $found->start_time && $found->end_time
                             ? Carbon::parse($found->start_time)->format('h:i A') . ' – ' . Carbon::parse($found->end_time)->format('h:i A')
-                            : '07:00 AM – 04:00 PM'
+                            : '—'
                     ),
-                    'hours' => $isRest ? '0h' : '8.0h (1h break)',
-                    'location' => $found->location ?: 'Main Floor / Standard Station',
+                    'hours' => $hoursLabel,
+                    'location' => $found->location ?: '—',
                 ];
             } else {
-                $isRest = in_array($dayName, ['Saturday', 'Sunday']);
                 $scheduleList[] = [
                     'day' => $dayName,
-                    'shift' => $isRest ? 'Rest Day' : 'Morning Shift',
-                    'time' => $isRest ? 'Off Duty' : '07:00 AM – 04:00 PM',
-                    'hours' => $isRest ? '0h' : '8.0h (1h break)',
-                    'location' => 'Main Hotel Front Desk',
+                    'shift' => 'No schedule assigned',
+                    'time' => '—',
+                    'hours' => '0h',
+                    'location' => '—',
                 ];
             }
         }
@@ -437,8 +563,8 @@ class EssPortalController extends Controller
         return response()->json([
             'employee' => [
                 'name' => $employee->full_name,
-                'department' => $employee->department?->name ?? 'Front Office',
-                'supervisor' => $employee->supervisor ? $employee->supervisor->full_name : 'Maria Lim',
+                'department' => $employee->department?->name ?? '',
+                'supervisor' => $employee->supervisor?->full_name ?? '',
             ],
             'weekly_roster' => $scheduleList,
         ]);
@@ -455,10 +581,7 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'Employee not found.'], 404);
         }
 
-        $year = Carbon::today()->year;
-        $balances = LeaveBalance::where('employee_id', $employee->employee_id)
-            ->where('period_year', $year)
-            ->get();
+        $balances = $this->ensureLeaveBalances($employee);
 
         $leaveRequests = EssRequest::with('category')
             ->where('employee_id', $employee->employee_id)
@@ -494,30 +617,6 @@ class EssPortalController extends Controller
         }
 
         $benefits = EmployeeBenefit::where('employee_id', $employee->employee_id)->get();
-
-        // If no records in database yet, provide standard statutory and company benefit defaults
-        if ($benefits->isEmpty()) {
-            $defaultBenefits = [
-                ['benefit_name' => 'Social Security System (SSS)', 'reference_value' => $employee->sss_number ?: '34-8921034-7', 'note' => 'Active monthly employer/employee contribution'],
-                ['benefit_name' => 'PhilHealth Insurance', 'reference_value' => $employee->philhealth_number ?: '12-050493821-4', 'note' => 'Category: Employed / Formal Sector'],
-                ['benefit_name' => 'Pag-IBIG / HDMF Fund', 'reference_value' => $employee->pagibig_number ?: '1210-9834-2918', 'note' => 'Regular HDMF Savings + MP2 Eligible'],
-                ['benefit_name' => 'Company HMO Plan (Maxicare)', 'reference_value' => 'MAX-8849-2026', 'note' => 'PHP 150,000 MBL per illness / 2 dependents covered'],
-                ['benefit_name' => 'Duty Meals & Transportation Subsidy', 'reference_value' => 'PHP 3,000 / mo', 'note' => 'Non-taxable de minimis allowance'],
-            ];
-
-            foreach ($defaultBenefits as $b) {
-                EmployeeBenefit::create([
-                    'employee_id' => $employee->employee_id,
-                    'benefit_name' => $b['benefit_name'],
-                    'reference_value' => $b['reference_value'],
-                    'note' => $b['note'],
-                    'status' => 'Active',
-                    'effective_date' => $employee->date_hired ?: Carbon::today()->subMonths(6),
-                ]);
-            }
-
-            $benefits = EmployeeBenefit::where('employee_id', $employee->employee_id)->get();
-        }
 
         return response()->json([
             'benefits' => $benefits,
@@ -604,6 +703,25 @@ class EssPortalController extends Controller
     }
 
     /**
+     * Generate a unique employee-facing request code. Derive the next number
+     * from the highest existing numeric suffix (not the auto-increment id,
+     * which can drift from the seeded REQ-44xx codes) and guard collisions.
+     */
+    private function nextRequestCode(): string
+    {
+        $highest = (int) EssRequest::query()
+            ->selectRaw('MAX(CAST(SUBSTRING(request_code, 5) AS UNSIGNED)) as n')
+            ->value('n');
+        $nextNumber = ($highest ?: 4400) + 1;
+        do {
+            $requestCode = 'REQ-' . $nextNumber;
+            $nextNumber++;
+        } while (EssRequest::where('request_code', $requestCode)->exists());
+
+        return $requestCode;
+    }
+
+    /**
      * POST /api/v1/ess/requests
      */
     public function createRequest(Request $request): JsonResponse
@@ -637,17 +755,21 @@ class EssPortalController extends Controller
             $category = EssCategory::where('name', $validated['category_name'])->first();
         }
 
-        // Generate a unique request code: REQ-XXXX. Derive the next number from
-        // the highest existing numeric suffix (not the auto-increment id, which
-        // can drift from the seeded REQ-44xx codes) and guard for collisions.
-        $highest = (int) EssRequest::query()
-            ->selectRaw('MAX(CAST(SUBSTRING(request_code, 5) AS UNSIGNED)) as n')
-            ->value('n');
-        $nextNumber = ($highest ?: 4400) + 1;
-        do {
-            $requestCode = 'REQ-' . $nextNumber;
-            $nextNumber++;
-        } while (EssRequest::where('request_code', $requestCode)->exists());
+        // Promotions must be filed through the dedicated endpoint so the ESS
+        // request and the PromotionRequest pipeline stay linked (no orphans).
+        $isPromotion = ($category
+                && ($category->code === 'career_promotion'
+                    || stripos((string) $category->name, 'promotion') !== false))
+            || stripos($validated['request_type'], 'promotion') !== false;
+        if ($isPromotion) {
+            return response()->json([
+                'message' => 'Promotion requests must be filed through the promotion form.',
+                'code' => 'USE_PROMOTION_ENDPOINT',
+            ], 422);
+        }
+
+        // Generate a unique request code: REQ-XXXX.
+        $requestCode = $this->nextRequestCode();
 
         $essRequest = EssRequest::create([
             'request_code' => $requestCode,
@@ -806,14 +928,22 @@ class EssPortalController extends Controller
     public function getPayroll(Request $request): JsonResponse
     {
         $employee = $this->resolveEmployee($request);
-        $user = $request->user();
+
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
 
         $baseSalary = $this->resolveBaseSalary($employee);
-        $sss = round($baseSalary * 0.045, 2);
-        $philhealth = round($baseSalary * 0.025, 2);
-        $pagibig = 200.00;
-        $tax = round(($baseSalary - ($sss + $philhealth + $pagibig)) * 0.10, 2);
-        $allowances = 3000.00;
+        // Contributions are only estimated when there is a real salary basis;
+        // an employee without a salary grade must not see fabricated negative net pay.
+        $sss = $baseSalary > 0 ? round($baseSalary * 0.045, 2) : 0.0;
+        $philhealth = $baseSalary > 0 ? round($baseSalary * 0.025, 2) : 0.0;
+        $pagibig = $baseSalary > 0 ? min(200.0, round($baseSalary * 0.02, 2)) : 0.0;
+        $taxable = max(0, $baseSalary - ($sss + $philhealth + $pagibig));
+        $tax = $baseSalary > 0 ? round($taxable * 0.10, 2) : 0.0;
+        // No allowance is invented: real payroll records provide itemized
+        // earnings; this block is the pre-payroll estimate only.
+        $allowances = 0.0;
         $gross = $baseSalary + $allowances;
         $totalDeductions = $sss + $philhealth + $pagibig + $tax;
         $net = $gross - $totalDeductions;
@@ -891,42 +1021,16 @@ class EssPortalController extends Controller
             }
         }
 
-        if (empty($payslips)) {
-            $payslips = [
-                [
-                    'id' => 'PS-2026-08A',
-                    'period' => 'Aug 01 - Aug 15, 2026',
-                    'gross' => $gross,
-                    'deductions' => $totalDeductions,
-                    'net' => $net,
-                    'payoutDate' => 'August 15, 2026',
-                    'status' => 'Released',
-                ],
-                [
-                    'id' => 'PS-2026-07B',
-                    'period' => 'Jul 16 - Jul 31, 2026',
-                    'gross' => $gross,
-                    'deductions' => $totalDeductions,
-                    'net' => $net,
-                    'payoutDate' => 'July 31, 2026',
-                    'status' => 'Released',
-                ],
-                [
-                    'id' => 'PS-2026-07A',
-                    'period' => 'Jul 01 - Jul 15, 2026',
-                    'gross' => $gross,
-                    'deductions' => $totalDeductions,
-                    'net' => $net,
-                    'payoutDate' => 'July 15, 2026',
-                    'status' => 'Released',
-                ],
-            ];
-        }
-
         return response()->json([
-            'employee_name' => $employee?->full_name ?? ($user?->full_name ?? 'Employee'),
-            'position' => $employee?->position?->title ?? 'Staff',
-            'department' => $employee?->department?->name ?? ($user?->department_name ?? 'General'),
+            'employee_name' => $employee->full_name,
+            'position' => $employee->position?->title ?? '',
+            'department' => $employee->department?->name ?? '',
+            'statutory' => [
+                'sss' => $employee->sss_number ?? '',
+                'philhealth' => $employee->philhealth_number ?? '',
+                'pagibig' => $employee->pagibig_number ?? '',
+                'tin' => $employee->tin_number ?? '',
+            ],
             'baseSalary' => $baseSalary,
             'allowances' => $allowances,
             'gross' => $gross,
@@ -960,42 +1064,21 @@ class EssPortalController extends Controller
             ->orderByDesc('work_date')
             ->get();
 
-        // If no records in database yet, auto-seed standard monthly attendance logs
-        if ($records->isEmpty()) {
-            $today = Carbon::today();
-            for ($i = 0; $i < 20; $i++) {
-                $date = $today->copy()->subDays($i);
-                $isWeekend = $date->isWeekend();
-
-                AttendanceRecord::create([
-                    'employee_id' => $employee->employee_id,
-                    'work_date' => $date->toDateString(),
-                    'time_in' => $isWeekend ? null : $date->copy()->setTime(7, rand(50, 59))->toDateTimeString(),
-                    'time_out' => $isWeekend ? null : $date->copy()->setTime(16, rand(0, 15))->toDateTimeString(),
-                    'hours_worked' => $isWeekend ? 0 : 8.0,
-                    'overtime_hours' => ($i % 5 === 0 && ! $isWeekend) ? 1.5 : 0.0,
-                    'status' => $isWeekend ? 'Rest Day' : ($i === 3 ? 'Late' : 'Present'),
-                    'biometric_device_id' => $isWeekend ? null : 'BIO-MAIN-01',
-                    'remark' => $isWeekend ? 'Scheduled Weekly Rest Day' : 'Biometric Terminal Clock',
-                ]);
-            }
-
-            $records = AttendanceRecord::where('employee_id', $employee->employee_id)
-                ->orderByDesc('work_date')
-                ->get();
-        }
-
-        $presentCount = $records->where('status', 'Present')->count();
+        $presentCount = $records->whereNotIn('status', ['Absent', 'Rest Day', 'Leave'])->count();
         $leaveCount = EssRequest::where('employee_id', $employee->employee_id)
             ->whereIn('status', ['For Release', 'Completed'])
             ->where('request_type', 'like', '%Leave%')
             ->count();
+        $workedRecords = $records->filter(fn ($r) => (float) $r->hours_worked > 0);
+        $averageHours = $workedRecords->count()
+            ? round($workedRecords->avg(fn ($r) => (float) $r->hours_worked), 1)
+            : 0;
 
         return response()->json([
             'summary' => [
                 'present_days' => $presentCount,
                 'leave_days' => $leaveCount,
-                'average_hours' => 8.0,
+                'average_hours' => $averageHours,
             ],
             'records' => $records->map(fn ($r) => [
                 'id' => $r->attendance_id,
@@ -1011,11 +1094,11 @@ class EssPortalController extends Controller
                 // "Late 7 mins", "Overtime 2h", ...). Expose both so the ESS
                 // calendar can colour days correctly.
                 'remark' => $r->remark,
-                'remarks' => $r->remark ?: 'Verified via HR Biometric Sync',
+                'remarks' => $r->remark ?: '',
                 'lateMinutes' => (int) $r->late_minutes,
                 'undertimeMinutes' => (int) $r->undertime_minutes,
                 'overtimeHours' => (float) $r->overtime_hours,
-                'device' => $r->biometric_device_id ?: 'Web Portal / Mobile Clock',
+                'device' => $r->biometric_device_id ?: '—',
             ]),
         ]);
     }
@@ -1046,10 +1129,10 @@ class EssPortalController extends Controller
                     'category' => $doc->category,
                     'status' => $doc->document_status === 'Verified' ? 'Verified & Active' : ($doc->document_status ?: 'Active'),
                     'verified' => $doc->document_status === 'Verified',
-                    'issuedDate' => $doc->document_date ? Carbon::parse($doc->document_date)->format('M d, Y') : 'Active',
+                    'issuedDate' => $doc->document_date ? Carbon::parse($doc->document_date)->format('M d, Y') : '—',
                     'expiryDate' => $doc->expiry_date ? Carbon::parse($doc->expiry_date)->format('M d, Y') : 'No Expiry',
-                    'fileSize' => $doc->file_size_bytes ? round($doc->file_size_bytes / 1048576, 1) . ' MB' : '1.2 MB',
-                    'fileType' => 'PDF Document',
+                    'fileSize' => $doc->file_size_bytes ? round($doc->file_size_bytes / 1048576, 1) . ' MB' : '—',
+                    'fileType' => $doc->file_path ? 'PDF Document' : '—',
                     'downloadUrl' => $doc->file_path,
                     // True only when real bytes exist on disk (new uploads).
                     'has_file' => $relative !== '' && Storage::disk('public')->exists($relative),
@@ -1422,12 +1505,24 @@ class EssPortalController extends Controller
             ->where('employee_id', $employee->employee_id)
             ->get();
 
+        // A failed attempt is final, so the card needs to know about it even
+        // though employee_learning.status stays 'In Progress'.
+        $failedCourseIds = DB::table('employee_learning_attempts')
+            ->where('employee_id', $employee->employee_id)
+            ->where('passed', false)
+            ->pluck('course_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->all();
+
         // Real curriculum: every catalog course with this employee's progress
-        // joined in (Assigned when no row exists yet).
+        // joined in ("Not Assigned" when no employee_learning row exists yet).
         $byCourse = $userLearning->keyBy('course_id');
-        $courseList = $courses->map(function ($c) use ($byCourse) {
+        $courseList = $courses->map(function ($c) use ($byCourse, $failedCourseIds) {
             $row = $byCourse->get($c->course_id);
-            $status = $row?->status ?? 'Assigned';
+            $status = $row?->status ?? 'Not Assigned';
+            $quizFailed = $status !== 'Completed'
+                && in_array((int) $c->course_id, $failedCourseIds, true);
             // Text courses may not have been opened yet; derive the badge from
             // their content rather than showing a hand-typed (or missing) value.
             $meta = filled($c->content_text)
@@ -1453,6 +1548,7 @@ class EssPortalController extends Controller
                 'estimated_pages' => $c->estimated_pages !== null
                     ? (int) $c->estimated_pages : $meta['pages'],
                 'mandatory' => (bool) ($c->mandatory ?? false),
+                'quiz_failed' => $quizFailed,
             ];
         })->values()->all();
 
@@ -1474,12 +1570,14 @@ class EssPortalController extends Controller
         return response()->json([
             'employee' => [
                 'name' => $employee->full_name,
-                'role' => $employee->position?->title ?? 'Staff',
-                'department' => $employee->department?->name ?? 'Front Office',
+                'role' => $employee->position?->title ?? '',
+                'department' => $employee->department?->name ?? '',
                 'overall_rating' => $latestReview?->overall_rating !== null
                     ? (float) $latestReview->overall_rating
                     : null,
                 'competency_level' => $latestReview?->competency_level,
+                'salary_grade' => $employee->salaryGrade?->code ?? $employee->position?->salaryGrade?->code,
+                'salary_step' => $employee->salary_step,
             ],
             'stats' => [
                 'completed_courses' => $completedRows->count(),
@@ -1488,6 +1586,40 @@ class EssPortalController extends Controller
                 'total_training_hours' => null,
             ],
             'courses' => $courseList,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/ess/colleagues
+     *
+     * ESS-safe directory of active colleagues (no salary / personal fields).
+     * Used by shift swaps, attendance requests, recognitions and referrals.
+     */
+    public function getColleagues(Request $request): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $colleagues = Employee::with(['department', 'position'])
+            ->where('employee_id', '!=', $employee->employee_id)
+            ->where('status', 'Active')
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get()
+            ->map(fn ($e) => [
+                'id' => $e->employee_id,
+                'code' => $e->employee_code,
+                'name' => $e->full_name,
+                'position' => $e->position?->title ?? '',
+                'department' => $e->department?->name ?? '',
+            ])
+            ->values();
+
+        return response()->json([
+            'colleagues' => $colleagues,
         ]);
     }
 
@@ -1925,6 +2057,20 @@ class EssPortalController extends Controller
     }
 
     /**
+     * The most recent failed quiz attempt, if any. Tier-1 policy: one attempt
+     * only, so a failure permanently locks the assessment for that employee.
+     */
+    private function failedQuizAttempt(int $employeeId, int $courseId): ?object
+    {
+        return DB::table('employee_learning_attempts')
+            ->where('employee_id', $employeeId)
+            ->where('course_id', $courseId)
+            ->where('passed', false)
+            ->orderByDesc('attempt_id')
+            ->first();
+    }
+
+    /**
      * GET /api/v1/ess/my-learning/{courseCode}/material
      * Handbook payload for the player's reading stage (§2a).
      */
@@ -2046,6 +2192,7 @@ class EssPortalController extends Controller
      * GET /api/v1/ess/my-learning/{courseCode}/quiz
      * Hard gate (§1e / §10): the quiz is refused until the handbook is read.
      * Generates + caches the quiz on first request; NEVER returns the answer key.
+     * A failed attempt is final - the assessment is not served again.
      */
     public function learningQuiz(Request $request, string $courseCode): JsonResponse
     {
@@ -2067,6 +2214,25 @@ class EssPortalController extends Controller
                 'code' => 'reading_required',
                 'message' => 'Finish the handbook first.',
             ], 409);
+        }
+
+        // A failed attempt is final. Completed modules keep the existing
+        // already-passed panel, but an incomplete row with a failed attempt
+        // can no longer receive questions.
+        if (($row->status ?? null) !== 'Completed') {
+            $failedAttempt = $this->failedQuizAttempt(
+                (int) $employee->employee_id,
+                (int) $course->course_id,
+            );
+
+            if ($failedAttempt) {
+                return response()->json([
+                    'code' => 'retake_not_allowed',
+                    'message' => 'You did not pass this assessment. Retakes are not allowed.',
+                    'score' => (int) $failedAttempt->score,
+                    'submitted_at' => $failedAttempt->submitted_at,
+                ], 409);
+            }
         }
 
         $quiz = $course->quiz_json ? json_decode((string) $course->quiz_json, true) : null;
@@ -2155,7 +2321,8 @@ class EssPortalController extends Controller
      * POST /api/v1/ess/my-learning/{courseCode}/quiz
      * Grades server-side from the cached key and applies the §2c completion
      * rule: a pass sets Completed immediately (completion_source = 'quiz').
-     * Completed is terminal - resubmits are no-ops.
+     * Completed is terminal - resubmits are no-ops. A failed attempt is also
+     * terminal for the employee: no retakes, and the review omits the key.
      */
     public function submitLearningQuiz(Request $request, string $courseCode): JsonResponse
     {
@@ -2193,6 +2360,23 @@ class EssPortalController extends Controller
             ], 409);
         }
 
+        // Completed rows remain terminal (handled below). An incomplete row
+        // with a failed attempt cannot submit again - no retakes.
+        if ($row->status !== 'Completed') {
+            $failedAttempt = $this->failedQuizAttempt(
+                (int) $employee->employee_id,
+                (int) $course->course_id,
+            );
+
+            if ($failedAttempt) {
+                return response()->json([
+                    'code' => 'retake_not_allowed',
+                    'message' => 'You did not pass this assessment. Retakes are not allowed.',
+                    'score' => (int) $failedAttempt->score,
+                ], 409);
+            }
+        }
+
         $answers = $validated['answers'];
         $passMark = (int) ($quiz['pass_mark'] ?? 80);
 
@@ -2219,14 +2403,15 @@ class EssPortalController extends Controller
                 $correct++;
             }
             $answered[$qid] = $yourIndex;
+            // Answer key (correct_index / explanation) is deliberately omitted:
+            // the review only tells the employee which option they picked and
+            // whether that question was right.
             $review[] = [
                 'id' => $qid,
                 'question' => $q['question'],
                 'options' => array_values($q['options']),
-                'correct_index' => $correctIndex,
                 'your_index' => $yourIndex,
                 'is_correct' => $isCorrect,
-                'explanation' => $q['explanation'] ?? '',
             ];
         }
 
@@ -2245,6 +2430,7 @@ class EssPortalController extends Controller
                 'status' => 'Completed',
                 'certificate_eligible' => true,
                 'already_completed' => true,
+                'retake_allowed' => false,
                 'review' => $review,
             ]);
         }
@@ -2262,7 +2448,8 @@ class EssPortalController extends Controller
                     'completion_source' => 'quiz',
                 ]);
         } else {
-            // Not completed - retakes stay available while not Completed.
+            // Not completed - the failure is final; the status stays
+            // In Progress for reporting but the quiz can no longer be taken.
             DB::table('employee_learning')
                 ->where('employee_learning_id', $row->employee_learning_id)
                 ->update([
@@ -2300,6 +2487,7 @@ class EssPortalController extends Controller
             'pass_mark' => $passMark,
             'status' => $passed ? 'Completed' : 'In Progress',
             'certificate_eligible' => $passed,
+            'retake_allowed' => false,
             'review' => $review,
         ]);
     }
@@ -2439,10 +2627,19 @@ class EssPortalController extends Controller
         }
 
         $data = $request->validate([
-            'requested_position_id' => ['nullable', 'integer', 'exists:positions,position_id'],
+            'requested_position_id' => ['required', 'integer', 'exists:positions,position_id'],
             'requested_salary_grade_id' => ['nullable', 'integer', 'exists:salary_grades,salary_grade_id'],
             'justification' => ['required', 'string', 'min:10', 'max:2000'],
+            'details' => ['nullable', 'string', 'max:5000'],
+            'attachments' => ['nullable', 'array', 'max:5'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,png,jpg,jpeg,doc,docx'],
         ]);
+
+        if ((int) $data['requested_position_id'] === (int) $employee->position_id) {
+            return response()->json([
+                'message' => 'Choose a target position different from your current position.',
+            ], 422);
+        }
 
         $pending = \App\Models\PromotionRequest::where('employee_id', $employee->employee_id)
             ->active()
@@ -2454,14 +2651,67 @@ class EssPortalController extends Controller
             ], 409);
         }
 
-        $row = \App\Models\PromotionRequest::create([
-            'employee_id' => $employee->employee_id,
-            'current_position_id' => $employee->position_id,
-            'requested_position_id' => $data['requested_position_id'] ?? null,
-            'requested_salary_grade_id' => $data['requested_salary_grade_id'] ?? null,
-            'justification' => $data['justification'],
-            'status' => 'Pending',
-        ]);
+        $position = \App\Models\Position::find($data['requested_position_id']);
+        $category = EssCategory::where('code', 'career_promotion')
+            ->orWhere('name', 'like', '%Career%')
+            ->first();
+
+        $requestCode = $this->nextRequestCode();
+        $detailLines = [
+            "Target Position: {$position?->title}",
+            "Current Role: {$employee->position?->title}",
+            $data['details'] ?? null,
+            "Justification: {$data['justification']}",
+        ];
+
+        $result = DB::transaction(function () use ($request, $employee, $data, $position, $category, $requestCode, $detailLines) {
+            $essRequest = EssRequest::create([
+                'request_code' => $requestCode,
+                'employee_id' => $employee->employee_id,
+                'category_id' => $category?->ess_category_id,
+                'request_type' => 'Promotion Request - ' . ($position?->title ?? 'Position'),
+                'filed_at' => now(),
+                'status' => 'Pending',
+                'details' => implode("\n\n", array_filter($detailLines)),
+            ]);
+
+            EssRequestStatusHistory::create([
+                'ess_request_id' => $essRequest->ess_request_id,
+                'status' => 'Pending',
+                'actor_user_id' => $request->user()?->system_user_id,
+                'note' => 'Promotion request filed by employee.',
+            ]);
+
+            $workflow = app(EssRequestWorkflow::class);
+            if ($request->hasFile('attachments')) {
+                foreach ($request->file('attachments') as $file) {
+                    $payload = $workflow->storeUpload($file, 'ess-request-attachments');
+                    EssRequestAttachment::create([
+                        'ess_request_id' => $essRequest->ess_request_id,
+                        'direction' => 'employee',
+                        'file_path' => $payload['file_path'],
+                        'original_name' => $payload['original_name'],
+                        'mime_type' => $payload['mime_type'],
+                        'file_size_bytes' => $payload['file_size_bytes'],
+                        'uploaded_by_user_id' => $request->user()?->system_user_id,
+                    ]);
+                }
+            }
+
+            $promotion = \App\Models\PromotionRequest::create([
+                'employee_id' => $employee->employee_id,
+                'ess_request_id' => $essRequest->ess_request_id,
+                'current_position_id' => $employee->position_id,
+                'requested_position_id' => $data['requested_position_id'],
+                'requested_salary_grade_id' => $data['requested_salary_grade_id'] ?? null,
+                'justification' => $data['justification'],
+                'status' => 'Pending',
+            ]);
+
+            return [$promotion, $essRequest];
+        });
+
+        [$row, $essRequest] = $result;
 
         AuditLogger::log(
             'Promotion request filed',
@@ -2469,9 +2719,13 @@ class EssPortalController extends Controller
             'Info',
             'employee',
             (string) $employee->employee_code,
-            "Employee {$employee->full_name} filed promotion request #{$row->promotion_request_id}.",
+            "Employee {$employee->full_name} filed promotion request #{$row->promotion_request_id} ({$requestCode}).",
         );
 
-        return response()->json(['message' => 'Promotion request submitted for HR review.', 'data' => $row], 201);
+        return response()->json([
+            'message' => 'Promotion request submitted for HR review.',
+            'data' => $row->fresh(['employee', 'currentPosition', 'requestedPosition']),
+            'request' => $essRequest->load(['category', 'employee', 'attachments', 'statusHistory']),
+        ], 201);
     }
 }

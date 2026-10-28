@@ -3,8 +3,10 @@
 namespace Modules\CoreHCM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
 use App\Models\Hr3Recommendation;
 use App\Services\AuditLogger;
+use App\Services\Hr3MockService;
 use App\Observers\ActivityObserver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +15,8 @@ use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 class HR3RecommendationController extends Controller
 {
     use AppliesTableQuery;
+
+    public function __construct(private readonly Hr3MockService $hr3Mock) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -85,6 +89,37 @@ class HR3RecommendationController extends Controller
         }
 
         return response()->json(['data' => $recommendations->values()]);
+    }
+
+    public function storeMock(Request $request): JsonResponse
+    {
+        if (! $this->hr3Mock->enabled()) {
+            return response()->json([
+                'message' => 'HR3 demo mode is disabled. Set HR3_MOCK_MODE=true to create mock evaluations.',
+            ], 422);
+        }
+
+        $data = $request->validate([
+            'employee_id' => ['required', 'integer', 'exists:employees,employee_id'],
+            'recommendation_type' => ['required', 'string', 'in:Regularization,Promotion,Performance Review'],
+            'evaluation_score' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'comments' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $employee = Employee::findOrFail($data['employee_id']);
+        $recommendation = $this->hr3Mock->createForEmployee(
+            $employee,
+            $data['recommendation_type'],
+            array_filter([
+                'evaluation_score' => $data['evaluation_score'] ?? null,
+                'comments' => $data['comments'] ?? null,
+            ], fn ($value) => $value !== null),
+        );
+
+        return response()->json([
+            'message' => 'Mock HR3 evaluation is ready for HR action.',
+            'data' => $recommendation,
+        ]);
     }
 
     public function acknowledge(Hr3Recommendation $recommendation): JsonResponse

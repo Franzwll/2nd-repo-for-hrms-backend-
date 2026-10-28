@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Clock, MapPin } from "lucide-react";
-import { myAttendance } from "@/data/ess";
+import { essApi, type ApiEssOverview } from "@/lib/api";
 
 interface QuickClockModalProps {
   open: boolean;
@@ -18,17 +18,25 @@ interface QuickClockModalProps {
 export function QuickClockModal({ open, onOpenChange }: QuickClockModalProps) {
   // Client-only clock (null until mounted so SSR HTML matches, no hydration flicker).
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [currentStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
+  const [overview, setOverview] = useState<ApiEssOverview | null>(null);
+  const currentStatus: "clocked_in" | "clocked_out" =
+    overview?.today_attendance?.status === "Clocked In"
+      ? "clocked_in"
+      : "clocked_out";
   const punchLog = {
-    timeIn: myAttendance.today.timeIn || "07:52 AM",
-    breakIn: myAttendance.today.breakIn || "12:00 PM",
-    breakOut: myAttendance.today.breakOut || "12:58 PM",
-    timeOut: myAttendance.today.timeOut !== "—" ? myAttendance.today.timeOut : "—",
+    timeIn: overview?.today_attendance?.time_in || "—",
+    breakIn: "—",
+    breakOut: "—",
+    timeOut: overview?.today_attendance?.time_out || "—",
   };
 
   useEffect(() => {
     if (!open) return;
     setCurrentTime(new Date());
+    essApi
+      .overview()
+      .then(setOverview)
+      .catch(() => setOverview(null));
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, [open]);
@@ -72,19 +80,13 @@ export function QuickClockModal({ open, onOpenChange }: QuickClockModalProps) {
           <p className="mt-2 text-4xl font-bold font-mono tracking-tight text-foreground">{formattedTime}</p>
           <div className="mt-3 flex items-center justify-center gap-2">
             {currentStatus === "clocked_in" && (
-              <Badge className="bg-emerald-500/15 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-400/20 gap-1.5 px-3 py-1">
+              <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 gap-1.5 px-3 py-1">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                 Currently On Duty
               </Badge>
             )}
-            {currentStatus === "on_break" && (
-              <Badge className="bg-amber-500/15 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 border-amber-500/30 dark:border-amber-400/20 gap-1.5 px-3 py-1">
-                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                On Lunch / Break
-              </Badge>
-            )}
             {currentStatus === "clocked_out" && (
-              <Badge className="bg-slate-500/15 dark:bg-slate-400/10 text-slate-600 dark:text-muted-foreground border-slate-500/30 dark:border-slate-400/20 gap-1.5 px-3 py-1">
+              <Badge className="bg-slate-500/15 text-slate-600 border-slate-500/30 gap-1.5 px-3 py-1">
                 Shift Ended / Clocked Out
               </Badge>
             )}
@@ -95,14 +97,17 @@ export function QuickClockModal({ open, onOpenChange }: QuickClockModalProps) {
         <div className="space-y-2 text-xs">
           <div className="flex items-center justify-between rounded-md border border-border/80 p-2.5 bg-card">
             <span className="text-muted-foreground font-medium">Assigned Shift:</span>
-            <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
+            <span className="font-semibold text-foreground">
+              {overview?.today_schedule?.shift_name || "No schedule assigned"}
+              {overview?.today_schedule?.time ? ` (${overview.today_schedule.time})` : ""}
+            </span>
           </div>
           <div className="flex items-center justify-between rounded-md border border-border/80 p-2.5 bg-card">
             <span className="text-muted-foreground font-medium flex items-center gap-1">
-              <MapPin className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Location:
+              <MapPin className="h-3.5 w-3.5 text-emerald-600" /> Location:
             </span>
             <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-              Oxford Suites Makati (Main Kitchen) ✓
+              {overview?.today_schedule?.location || "—"}
             </span>
           </div>
         </div>

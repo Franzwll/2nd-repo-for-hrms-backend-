@@ -25,6 +25,25 @@ class UserManagementTest extends TestCase
             ->assertJsonPath('meta.total', 3);
     }
 
+    public function test_list_users_supports_sorting(): void
+    {
+        $token = $this->loginViaOtp();
+
+        $this->getJson('/api/v1/users?sort=system_user_id&direction=desc&per_page=100', $this->authHeaders($token))
+            ->assertOk()
+            ->assertJsonPath('data.0.system_user_id', SystemUser::max('system_user_id'));
+
+        $this->getJson('/api/v1/users?sort=full_name&direction=asc&per_page=100', $this->authHeaders($token))
+            ->assertOk()
+            ->assertJsonPath('data.0.full_name', SystemUser::orderBy('full_name')->value('full_name'));
+
+        $this->getJson('/api/v1/users?sort=role&direction=desc&per_page=100', $this->authHeaders($token))
+            ->assertOk();
+
+        $this->getJson('/api/v1/users?sort=role&direction=asc&role_id=2&per_page=100', $this->authHeaders($token))
+            ->assertOk();
+    }
+
     public function test_create_update_delete_user(): void
     {
         $token = $this->loginViaOtp();

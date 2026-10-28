@@ -1,4 +1,3 @@
-import { myProfile, myPayroll } from "@/data/ess";
 import { numberToWords } from "@/lib/numberToWords";
 import { maskSensitiveId } from "@/components/modules/ess/shared/OfficialPayslipDocument";
 
@@ -32,36 +31,23 @@ export interface PayslipPdfData {
 function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array<ArrayBuffer> {
   const companyName = (data.companyName || "OXFORD SUITES MAKATI").toUpperCase();
   const address = data.companyAddress || "7840 Makati Avenue, Poblacion, Makati City, Philippines 1210";
-  const empName = data.employeeName || myProfile.name || "Kevin Santos";
-  const empId = data.employeeId || myProfile.employeeId || "OSM-2026-0142";
-  const designation = data.designation || myProfile.position || "Line Cook";
-  const dept = data.department || myProfile.department || "Kitchen / Culinary";
-  const dateHired = data.dateOfJoining || "15/04/2026";
-  const payPeriod = data.payPeriod || "2026-07-01 – 07-15";
-  const payDate = data.payDate || "05/08/2026";
-  const paidDays = data.paidDays ?? 15;
+  const empName = data.employeeName || "Employee";
+  const empId = data.employeeId || "";
+  const designation = data.designation || "";
+  const dept = data.department || "";
+  const dateHired = data.dateOfJoining || "";
+  const payPeriod = data.payPeriod || "";
+  const payDate = data.payDate || "";
+  const paidDays = data.paidDays ?? 0;
   const lopDays = data.lopDays ?? 0;
-  const bankAcct = data.bankAccount || "BDO *****412";
-  const tin = data.tin || "***-***-***-000";
-  const sss = data.sss || "**-*****67-8";
-  const philHealth = data.philHealth || "**-*******01-2";
-  const pagIbig = data.pagIbig || "****-****-*012";
+  const bankAcct = data.bankAccount || "";
+  const tin = data.tin || "";
+  const sss = data.sss || "";
+  const philHealth = data.philHealth || "";
+  const pagIbig = data.pagIbig || "";
 
-  const earnings = data.earnings || [
-    { label: "Basic Pay", amount: 16000, ytd: 112000 },
-    { label: "Overtime Pay", amount: 2100, ytd: 14700 },
-    { label: "Night Differential", amount: 900, ytd: 6300 },
-    { label: "Meal Allowance", amount: 1500, ytd: 10500 },
-    { label: "Service Charge Share", amount: 1000, ytd: 7000 },
-  ];
-
-  const deductions = data.deductions || [
-    { label: "SSS Contribution", amount: 900, ytd: 6300 },
-    { label: "PhilHealth Premium", amount: 550, ytd: 3850 },
-    { label: "Pag-IBIG HDMF", amount: 200, ytd: 1400 },
-    { label: "Withholding Tax (BIR)", amount: 1160, ytd: 8120 },
-    { label: "Company Salary Loan", amount: 450, ytd: 3150 },
-  ];
+  const earnings = data.earnings || [];
+  const deductions = data.deductions || [];
 
   const grossEarnings = earnings.reduce((s, i) => s + (i.amount || 0), 0);
   const totalDeductions = deductions.reduce((s, i) => s + (i.amount || 0), 0);

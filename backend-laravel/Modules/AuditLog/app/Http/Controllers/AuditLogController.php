@@ -15,6 +15,7 @@ class AuditLogController extends Controller
         $data = $request->validate([
             'q' => ['nullable', 'string', 'max:255'],
             'module' => ['nullable', 'string', 'max:255'],
+            'actions' => ['nullable', 'string', 'max:1000'],
             'severity' => ['nullable', 'in:Info,Warning,Critical'],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
@@ -59,6 +60,13 @@ class AuditLogController extends Controller
                 $query->where('module_name', reset($modules));
             } elseif ($modules !== []) {
                 $query->whereIn('module_name', $modules);
+            }
+        }
+
+        if (! empty($data['actions'])) {
+            $actions = array_values(array_filter(array_map('trim', explode(',', $data['actions']))));
+            if ($actions !== []) {
+                $query->whereIn('action', $actions);
             }
         }
 
