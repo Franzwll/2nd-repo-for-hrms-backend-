@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
+import { cn } from "@/lib/utils";
 
 export function Preloader({ onComplete }: { onComplete?: () => void }) {
   const [progress, setProgress] = useState(0);
   const [leaving, setLeaving] = useState(false);
+  const [unmounted, setUnmounted] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -20,22 +22,30 @@ export function Preloader({ onComplete }: { onComplete?: () => void }) {
     }, 120);
 
     return () => clearInterval(timer);
-  }, [onComplete]);
+  }, []);
 
   useEffect(() => {
     if (progress !== 100) return;
     const fade = window.setTimeout(() => setLeaving(true), 150);
-    const complete = window.setTimeout(() => onComplete?.(), 420);
+    const complete = window.setTimeout(() => {
+      setUnmounted(true);
+      onComplete?.();
+    }, 450);
     return () => {
       window.clearTimeout(fade);
       window.clearTimeout(complete);
     };
   }, [progress, onComplete]);
 
-  if (leaving) return null;
+  if (unmounted) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white transition-all duration-500 ease-out animate-in fade-in">
+    <div
+      className={cn(
+        "fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white transition-opacity duration-300 ease-out animate-in fade-in",
+        leaving && "opacity-0 pointer-events-none"
+      )}
+    >
       <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8 px-6">
         {/* Logo Mark on Left */}
         <img
@@ -69,3 +79,4 @@ export function Preloader({ onComplete }: { onComplete?: () => void }) {
     </div>
   );
 }
+

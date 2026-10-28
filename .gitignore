@@ -4,6 +4,8 @@ npm-debug.log
 yarn-error.log
 .playwright-mcp/
 nlp-service/uvicorn_*.log
+.kilo
+.opencode
 
 
 # Laravel 4 specific

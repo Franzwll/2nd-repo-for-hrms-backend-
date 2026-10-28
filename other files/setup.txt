@@ -18,4 +18,21 @@ python -m spacy download en_core_web_sm   # README OMITS this — required by co
 uvicorn app.main:app --reload --port 8001
 
 
+for deleting database in powershell xampp:
+This will help distinguish a phpMyAdmin restriction from a server issue.
+1. Open the XAMPP Control Panel.
+2. Click Shell.
+3. Enter:
+mysql -u root
 
+
+If that command isn't recognized, try:
+C:\xampp\mysql\bin\mysql.exe -u root
+
+
+Once you see the MariaDB prompt, run:
+SHOW DATABASES;
+
+
+Then, to delete your target database, use this command only after replacing your_database_name with the exact database name you intend to permanently delete:
+DROP DATABASE `your_database_name`;

@@ -169,6 +169,98 @@ class ZoomMeetingService
     }
 
     /**
+     * Read a meeting from Zoom.
+     *
+     * @return array<string,mixed>|false|null array = meeting found,
+     *         false = Zoom says it does not exist (404), null = lookup
+     *         unavailable (no creds / API error) — callers must not recreate
+     *         a meeting when the answer is unknown.
+     */
+    public static function lookupMeeting(string $meetingId): array|false|null
+    {
+        if ($meetingId === '' || config('services.zoom.provider') !== 'api') {
+            return null;
+        }
+
+        $accessToken = static::accessToken();
+        if ($accessToken === null) {
+            return null;
+        }
+
+        try {
+            $res = Http::withToken($accessToken)
+                ->get('https://api.zoom.us/v2/meetings/'.rawurlencode($meetingId));
+
+            if ($res->successful()) {
+                $json = $res->json();
+
+                return is_array($json) ? $json : null;
+            }
+
+            if ($res->status() === 404) {
+                return false;
+            }
+
+            Log::warning('Zoom get meeting failed: '.$res->body());
+        } catch (\Throwable $e) {
+            Log::warning('Zoom get meeting error: '.$e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Make sure a Virtual interview points at a meeting the Meeting SDK can
+     * actually join.
+     *
+     * When a stored meeting was deleted/retired on Zoom (404) or still has a
+     * waiting room / no join-before-host (the embedded host view has no admit
+     * control), a fresh joinable meeting is created and stored. This is what
+     * stops "meeting does not exist" and waiting-room dead ends without HR
+     * having to reschedule the interview. Returns true when the model changed
+     * (caller must save it).
+     */
+    public static function ensureJoinable(object $interview, ?string $position = null): bool
+    {
+        if (($interview->mode ?? null) !== 'Virtual') {
+            return false;
+        }
+        if (config('services.zoom.provider') !== 'api') {
+            return false;
+        }
+
+        $meetingId = trim((string) ($interview->zoom_meeting_id ?? ''));
+        $lookup = $meetingId === '' ? false : static::lookupMeeting($meetingId);
+
+        // Lookup unavailable (creds/API hiccup): keep the stored meeting
+        // rather than churning through new ones on every request.
+        if ($lookup === null) {
+            return false;
+        }
+
+        $joinable = false;
+        if (is_array($lookup)) {
+            $settings = (array) ($lookup['settings'] ?? []);
+            $joinable = ($settings['waiting_room'] ?? true) === false
+                && ($settings['join_before_host'] ?? false) === true;
+        }
+
+        if ($joinable) {
+            return false;
+        }
+
+        Log::warning(
+            $meetingId === ''
+                ? 'Zoom interview has no meeting yet; creating one.'
+                : 'Zoom meeting is not directly joinable (missing or still has a waiting room); creating a replacement for: '.$meetingId
+        );
+
+        // reuseRetired = false: the old meeting is known-dead/misconfigured,
+        // so keep the existing (unjoinable) link would dead-end the room.
+        return static::ensureForModel($interview, $position, force: true, reuseRetired: false);
+    }
+
+    /**
      * Best-effort delete of a previously issued Zoom meeting (real provider
      * only) so an old link cannot be reused after a reschedule. Failures are
      * logged and never block the caller.
@@ -296,8 +388,12 @@ class ZoomMeetingService
      * meeting retired) — used on reschedule so the applicant always receives a
      * fresh link. Returns true when links were generated.
      */
-    public static function ensureForModel(object $interview, ?string $position = null, bool $force = false): bool
-    {
+    public static function ensureForModel(
+        object $interview,
+        ?string $position = null,
+        bool $force = false,
+        bool $reuseRetired = true,
+    ): bool {
         if (($interview->mode ?? null) !== 'Virtual') {
             return false;
         }
@@ -307,7 +403,27 @@ class ZoomMeetingService
 
         // Reschedule: retire the previous meeting so its link stops working.
         if ($force && ! empty($interview->zoom_meeting_id)) {
-            static::deleteMeeting((string) $interview->zoom_meeting_id);
+            $retired = static::deleteMeeting((string) $interview->zoom_meeting_id);
+
+            // Real provider: if the old meeting could NOT be deleted (the
+            // Zoom app is missing the meeting:delete scope, or the meeting is
+            // still live) keep using it. Minting a second meeting leaves the
+            // account with two meetings, and opening the new one as host is
+            // then refused with "Already has other meetings in progress" —
+            // the exact failure HR hits after rescheduling.
+            if (
+                $reuseRetired
+                && ! $retired
+                && config('services.zoom.provider') === 'api'
+                && ! empty($interview->zoom_join_url)
+            ) {
+                Log::warning(
+                    'Zoom meeting could not be retired; reusing it for the reschedule instead of creating a duplicate: '
+                    .$interview->zoom_meeting_id
+                );
+
+                return false;
+            }
         }
 
         $applicantName = $interview->applicant?->name ?? 'Applicant';

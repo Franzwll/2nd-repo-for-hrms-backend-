@@ -46,20 +46,24 @@ class DuplicateApplicationService
     /**
      * @return array|null existing applicant row (applicant_id, applicant_code, applied_at) or null
      */
-    public static function findDuplicate(string $email, int $jobPostId): ?object
+    public static function findDuplicate(string $email, int $jobPostId, ?int $excludeApplicantId = null): ?object
     {
         $email = mb_strtolower(trim($email));
 
         $cutoff = now()->subDays(static::REAPPLY_DAYS);
 
-        return DB::table('applicants')
+        $query = DB::table('applicants')
             ->select('applicant_id', 'applicant_code', 'applied_at', 'stage')
             ->where('job_post_id', $jobPostId)
             ->whereRaw('LOWER(email) = ?', [$email])
             ->whereNotIn('stage', static::TERMINAL_STAGES)
-            ->where('applied_at', '>=', $cutoff)
-            ->orderByDesc('applied_at')
-            ->first();
+            ->where('applied_at', '>=', $cutoff);
+
+        if ($excludeApplicantId) {
+            $query->where('applicant_id', '!=', $excludeApplicantId);
+        }
+
+        return $query->orderByDesc('applied_at')->first();
     }
 
     public static function duplicateResponse(object $existing, string $jobTitle = ''): array
@@ -150,6 +154,8 @@ class DuplicateApplicationService
             'eligible_after_label' => $eligibleAfter->format('M j, Y'),
             'applied_label' => $rejectedAt->format('M j, Y'),
             'days_left' => $daysLeft,
+            'cooldown_days' => $days,
+            'is_eligible' => false,
             'job_post_id' => (int) $row->job_post_id,
         ];
     }
@@ -169,6 +175,19 @@ class DuplicateApplicationService
             'rejected_at' => $cooldown['rejected_at'] ?? null,
             'eligible_after' => $cooldown['eligible_after'] ?? null,
             'days_left' => $cooldown['days_left'] ?? null,
+        ];
+    }
+
+    /**
+     * 403 payload for an applicant restricted by HR from applying.
+     */
+    public static function blockResponse(array $blockInfo): array
+    {
+        return [
+            'code' => 'APPLICANT_BLOCKED',
+            'message' => "Application restricted: " . ($blockInfo['reason'] ?? 'Applicant is restricted from recruitment activities.'),
+            'existing_applicant_code' => $blockInfo['applicant_code'] ?? null,
+            'scope' => $blockInfo['scope'] ?? 'all_jobs',
         ];
     }
 }

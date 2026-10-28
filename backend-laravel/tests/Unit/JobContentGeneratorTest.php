@@ -363,6 +363,141 @@ class JobContentGeneratorTest extends TestCase
         $this->assertSame('overloaded', $keep->invoke($generator, $overloaded, $network)['code']);
     }
 
+    public function test_groq_retries_without_strict_json_mode_on_validation_failure(): void
+    {
+        config([
+            'services.job_groq.key' => 'job-groq-key',
+            'services.job_groq.model' => 'openai/gpt-oss-20b',
+            'services.job_openrouter.key' => null,
+            'services.gemini.key' => null,
+        ]);
+
+        $callCount = 0;
+        Http::fake(function (Request $request) use (&$callCount) {
+            $callCount++;
+            if ($callCount === 1) {
+                // First call with json_object format fails with json_validate_failed
+                return Http::response([
+                    'error' => [
+                        'message' => 'Failed to validate JSON. Please adjust your prompt.',
+                        'code' => 'json_validate_failed',
+                    ],
+                ], 400);
+            }
+
+            // Retry without strict json mode succeeds
+            return Http::response([
+                'choices' => [[
+                    'message' => ['content' => json_encode([
+                        'description' => 'Role at Oxford Suites Makati.',
+                        'responsibilities' => ['Handle guest check-in'],
+                        'qualifications' => ['High school diploma'],
+                        'skills' => ['Customer Service'],
+                        'additional' => ['Day shift'],
+                        'instructions' => 'Send resume.',
+                        'about' => 'Oxford Suites Makati.',
+                    ])],
+                ]],
+            ], 200);
+        });
+
+        $generator = new JobContentGenerator();
+        $result = $generator->generate(
+            ['position_title' => 'Front Desk Associate'],
+            ['skills' => [], 'certifications' => []],
+        );
+
+        $this->assertTrue($result['ok'], (string) ($result['error'] ?? 'Expected success'));
+        $this->assertSame('Groq', $result['via']['service']);
+        $this->assertSame(2, $callCount);
+    }
+
+    public function test_openrouter_falls_back_when_configured_model_is_404(): void
+    {
+        config([
+            'services.job_groq.key' => null,
+            'services.job_openrouter.key' => 'job-openrouter-key',
+            'services.job_openrouter.model' => 'nvidia/nemotron-3-super-120b-a12b:free',
+            'services.gemini.key' => null,
+        ]);
+
+        $openrouterCalls = [];
+        Http::fake(function (Request $request) use (&$openrouterCalls) {
+            $data = $request->data();
+            $openrouterCalls[] = $data['model'] ?? '';
+
+            if (($data['model'] ?? '') === 'nvidia/nemotron-3-super-120b-a12b:free') {
+                return Http::response(['error' => ['message' => 'Not found', 'code' => 404]], 404);
+            }
+
+            return Http::response([
+                'choices' => [[
+                    'message' => ['content' => json_encode([
+                        'description' => 'OpenRouter generated role.',
+                        'responsibilities' => ['Guest relations'],
+                        'qualifications' => ['TESDA NC II'],
+                        'skills' => ['Front Desk Operations'],
+                        'additional' => ['Uniform provided'],
+                        'instructions' => 'Walk-in at HR.',
+                        'about' => 'Premier hotel in Makati.',
+                    ])],
+                ]],
+            ], 200);
+        });
+
+        $generator = new JobContentGenerator();
+        $result = $generator->generate(
+            ['position_title' => 'Front Desk Associate'],
+            ['skills' => [], 'certifications' => []],
+        );
+
+        $this->assertTrue($result['ok'], (string) ($result['error'] ?? 'Expected success'));
+        $this->assertSame('OpenRouter', $result['via']['service']);
+        $this->assertContains('nvidia/nemotron-3-super-120b-a12b:free', $openrouterCalls);
+        $this->assertContains('nvidia/nemotron-3.5-lightning:free', $openrouterCalls);
+    }
+
+    public function test_clear_cooldowns_removes_provider_blocks(): void
+    {
+        $generator = new JobContentGenerator();
+        $providers = (new \ReflectionMethod($generator, 'providers'))->invoke($generator);
+
+        (new \ReflectionMethod($generator, 'blockProvider'))->invoke($generator, $providers[0], [
+            'message' => 'Temporary test failure.',
+            'code' => 'model',
+            'retry_after_seconds' => 60,
+            'resets_at' => null,
+        ]);
+
+        $providerBlock = new \ReflectionMethod($generator, 'providerBlock');
+        $this->assertNotNull($providerBlock->invoke($generator, $providers[0]));
+
+        $generator->clearCooldowns();
+        $this->assertNull($providerBlock->invoke($generator, $providers[0]));
+    }
+
+    public function test_non_quota_errors_do_not_report_hard_block_in_snapshot(): void
+    {
+        $generator = new JobContentGenerator();
+        $providers = (new \ReflectionMethod($generator, 'providers'))->invoke($generator);
+
+        // Block every provider with non-quota error codes (model 404, network error)
+        foreach ($providers as $provider) {
+            (new \ReflectionMethod($generator, 'blockProvider'))->invoke($generator, $provider, [
+                'message' => 'Model not found.',
+                'code' => 'model',
+                'retry_after_seconds' => 60,
+                'resets_at' => null,
+            ]);
+        }
+
+        $snapshot = $generator->usageSnapshot();
+        // Individual providers are marked cooling down, but UI should NOT show "Limit reached"
+        $this->assertTrue($snapshot['providers'][0]['blocked']);
+        $this->assertNull($snapshot['blocked_until']);
+        $this->assertNull($snapshot['blocked_code']);
+    }
+
     /* ------------------------------------------------------------------ */
     /* Reflection helpers — the classification/cool-down internals are      */
     /* protected on purpose; these tests pin their contract.                */

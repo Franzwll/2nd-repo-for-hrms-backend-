@@ -32,6 +32,7 @@ class UpdateApplicantRequest extends FormRequest
             'name'         => ['sometimes', 'string', 'max:160'],
             'email'        => ['sometimes', 'email', 'max:190'],
             'phone'        => ['nullable', 'string', 'max:40'],
+            'address'      => ['nullable', 'string', 'max:500'],
             'source'       => ['nullable', 'string', 'max:60'],
             'summary'      => ['nullable', 'string'],
             'fit_score'    => ['nullable', 'numeric', 'min:0', 'max:100'],

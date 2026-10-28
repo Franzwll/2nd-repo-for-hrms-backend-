@@ -2,19 +2,15 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   Activity,
+  ArrowUpRight,
   Briefcase,
   Building2,
-  FileCheck2,
-  Gauge,
   KeyRound,
-  ShieldAlert,
+  Server,
   ShieldCheck,
-  TrendingUp,
-  UserPlus,
   Users,
 } from "lucide-react";
 import { AnnouncementsCard } from "@/components/portal/AnnouncementsCard";
-import { DashboardList } from "@/components/portal/DashboardList";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -38,7 +34,7 @@ export const Route = createFileRoute("/superadmin/")({
       {
         name: "description",
         content:
-          "Super Admin oversight: headcount analytics, hiring funnel, module health and audit activity.",
+          "Super Admin oversight: module health, access governance, staffing and audit activity.",
       },
       { property: "og:title", content: "System Dashboard — Oxford Suites Makati HRMS" },
       {
@@ -81,6 +77,14 @@ const accountStatusClass = (status: string) => {
   }
 };
 
+const moduleToneClass: Record<string, string> = {
+  success: "border-success/40 bg-success/10 text-success",
+  primary: "border-primary/40 bg-primary/10 text-primary",
+  warning: "border-warning/40 bg-warning/20 text-warning-foreground",
+  destructive: "border-destructive/40 bg-destructive/10 text-destructive",
+  muted: "border-border text-muted-foreground",
+};
+
 const formatDateTime = (iso: string | null) => {
   if (!iso) return "Never";
   const d = new Date(iso);
@@ -95,7 +99,6 @@ const formatDateTime = (iso: string | null) => {
 
 function SuperAdminDashboard() {
   const [stats, setStats] = useState<ApiDashboardStats | null>(null);
-  const [period, setPeriod] = useState<"6M" | "YTD">("6M");
 
   useEffect(() => {
     let cancelled = false;
@@ -110,16 +113,9 @@ function SuperAdminDashboard() {
     };
   }, []);
 
-  const activeTrend = period === "6M" ? stats?.employees.trend_6m : stats?.employees.trend_ytd;
   const openJobs = stats?.job_posts.open ?? 0;
   const totalApplicants = stats?.job_posts.total_applicants ?? 0;
-  const currentHeadcount = activeTrend?.[activeTrend.length - 1]?.headcount ?? 0;
-  const totalHires = activeTrend?.reduce((t, m) => t + m.hires, 0) ?? 0;
-  const totalExits = activeTrend?.reduce((t, m) => t + m.exits, 0) ?? 0;
-  const retentionRate =
-    stats?.employees.total && stats?.employees.total > 0
-      ? Math.round((stats.employees.active / stats.employees.total) * 1000) / 10
-      : 0;
+  const scheduledInterviews = stats?.interviews.scheduled ?? 0;
 
   const deptData = [...(stats?.departments ?? [])]
     .map((d) => ({ ...d, total: d.staff + d.open }))
@@ -135,6 +131,55 @@ function SuperAdminDashboard() {
   }));
   const recentUsers = stats?.system_users.recent ?? [];
   const recentAudit = stats?.audit.recent ?? [];
+  const suspendedAccounts = stats?.system_users.by_status["Suspended"] ?? 0;
+  const disabledAccounts = stats?.system_users.by_status["Disabled"] ?? 0;
+  const accessFlags = suspendedAccounts + disabledAccounts;
+  const criticalAudit = recentAudit.filter((a) => a.severity === "Critical").length;
+  const modulesFlagged = (accessFlags > 0 ? 1 : 0) + (criticalAudit > 0 ? 1 : 0);
+
+  const modules = [
+    {
+      name: "Core HR",
+      icon: Building2,
+      to: "/superadmin/employees" as const,
+      value: stats?.employees.total ?? 0,
+      unit: "employees",
+      note: `${stats?.employees.active ?? 0} active · ${deptData.length} departments`,
+      status: "Healthy",
+      tone: "success",
+    },
+    {
+      name: "Recruitment",
+      icon: Briefcase,
+      to: "/superadmin/recruitment" as const,
+      value: openJobs,
+      unit: "open vacancies",
+      note: `${totalApplicants} applicants · ${scheduledInterviews} interviews`,
+      status: openJobs > 0 ? "Active hiring" : "No open posts",
+      tone: openJobs > 0 ? "primary" : "muted",
+    },
+    {
+      name: "Portal Accounts",
+      icon: KeyRound,
+      to: "/superadmin/users" as const,
+      value: stats?.system_users.total ?? 0,
+      unit: "portal accounts",
+      note: `${suspendedAccounts} suspended · ${disabledAccounts} disabled`,
+      status: accessFlags > 0 ? `${accessFlags} to review` : "Healthy",
+      tone: accessFlags > 0 ? "warning" : "success",
+    },
+    {
+      name: "Audit Trail",
+      icon: Activity,
+      to: "/superadmin/audit" as const,
+      value: stats?.audit.total ?? 0,
+      unit: "events logged",
+      note: `${criticalAudit} critical in latest entries`,
+      status: criticalAudit > 0 ? `${criticalAudit} critical` : "Healthy",
+      tone: criticalAudit > 0 ? "destructive" : "success",
+    },
+  ];
+
   /** True while the dashboard stats request is in flight. */
   const loading = stats === null;
 
@@ -185,111 +230,76 @@ function SuperAdminDashboard() {
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card className="border-border/70 shadow-sm">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between border-b border-border/60 pb-4">
+            <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-4">
               <div>
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                  <TrendingUp className="h-5 w-5 text-primary" /> Headcount &amp; Movement
+                  <Server className="h-5 w-5 text-primary" /> Module Health
                 </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Record counts and flags across every HRMS module.
+                </p>
               </div>
-              <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
-                {(["6M", "YTD"] as const).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setPeriod(p)}
-                    className={`rounded-md px-3 py-1 text-xs font-medium ${
-                      period === p
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "shrink-0 font-semibold",
+                  modulesFlagged > 0
+                    ? "border-warning/40 bg-warning/20 text-warning-foreground"
+                    : "border-success/40 bg-success/10 text-success",
+                )}
+              >
+                {modulesFlagged > 0 ? `${modulesFlagged} flagged` : "All clear"}
+              </Badge>
             </div>
 
-            {/* KPI Overview Row */}
             {loading ? (
-              <div className="mt-4 grid grid-cols-4 gap-2 rounded-xl border border-border p-2" aria-busy="true">
+              <div
+                className="mt-4 grid gap-3 sm:grid-cols-2"
+                aria-busy="true"
+                aria-label="Loading module health"
+              >
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="space-y-2 p-2 text-center">
-                    <Skeleton className="mx-auto h-3 w-16" />
-                    <Skeleton className="mx-auto h-6 w-12" />
+                  <div key={i} className="rounded-xl border border-border/70 p-4">
+                    <Skeleton className="h-9 w-9 rounded-lg" />
+                    <Skeleton className="mt-3 h-3 w-20" />
+                    <Skeleton className="mt-2 h-7 w-16" />
+                    <Skeleton className="mt-3 h-5 w-24 rounded-full" />
                   </div>
                 ))}
               </div>
             ) : (
-            <div className="mt-4 grid grid-cols-4 divide-x divide-border rounded-xl border border-border bg-card p-2 text-center shadow-xs">
-              <div className="p-2">
-                <p className="eyebrow">Current</p>
-                <p className="font-display text-xl font-bold text-primary">{currentHeadcount}</p>
-              </div>
-              <div className="p-2">
-                <p className="eyebrow">New Hires</p>
-                <p className="font-display text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                  {totalHires}
-                </p>
-              </div>
-              <div className="p-2">
-                <p className="eyebrow">Turnover / Exits</p>
-                <p className="font-display text-xl font-bold text-amber-600 dark:text-amber-400">
-                  {totalExits}
-                </p>
-              </div>
-              <div className="p-2">
-                <p className="eyebrow">Retention Rate</p>
-                <p className="font-display text-xl font-bold text-gold">{retentionRate}%</p>
-              </div>
-            </div>
-            )}
-
-            {/* Monthly movement ledger — ledger rows instead of line/bar chart */}
-            {loading ? (
-              <Skeleton className="mt-5 h-68 w-full rounded-xl" aria-busy="true" aria-label="Loading headcount chart" />
-            ) : (
-            <DashboardList
-              rowHeight={60}
-              visibleRows={5}
-              className="mt-5 divide-y divide-border/70 rounded-xl border border-border/70"
-            >
-              {(activeTrend ?? []).map((m) => {
-                const net = m.hires - m.exits;
-                return (
-                  <div key={m.month} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold">{m.month}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Headcount{" "}
-                        <span className="font-display text-sm font-bold text-primary">{m.headcount}</span>
-                      </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {modules.map((m) => (
+                  <Link
+                    key={m.name}
+                    to={m.to}
+                    className="group rounded-xl border border-border/70 bg-card p-4 shadow-xs transition hover:border-primary/40 hover:bg-muted/30"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
+                        <m.icon className="h-4 w-4" />
+                      </span>
+                      <ArrowUpRight className="h-4 w-4 text-muted-foreground/50 transition group-hover:text-primary" />
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs">
-                      <Badge variant="outline" className="border-success/40 bg-success/10 font-semibold text-success">
-                        +{m.hires} hires
-                      </Badge>
-                      <Badge variant="outline" className="border-warning/40 bg-warning/20 font-semibold text-warning-foreground">
-                        −{m.exits} exits
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className={
-                          net >= 0
-                            ? "border-primary/40 bg-primary/10 font-semibold text-primary"
-                            : "border-destructive/40 bg-destructive/10 font-semibold text-destructive"
-                        }
-                      >
-                        {net >= 0 ? `+${net}` : net} net
-                      </Badge>
-                    </div>
-                  </div>
-                );
-              })}
-              {(activeTrend ?? []).length === 0 && (
-                <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-                  No movement recorded for this period.
-                </div>
-              )}
-            </DashboardList>
+                    <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {m.name}
+                    </p>
+                    <p className="mt-1 flex items-baseline gap-1.5">
+                      <span className="font-display text-2xl font-bold text-foreground">
+                        {m.value}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">{m.unit}</span>
+                    </p>
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground">{m.note}</p>
+                    <Badge
+                      variant="outline"
+                      className={cn("mt-3 text-[10px] font-semibold", moduleToneClass[m.tone])}
+                    >
+                      {m.status}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -500,46 +510,6 @@ function SuperAdminDashboard() {
         </Card>
       </div>
 
-      {loading ? (
-        <div className="mt-6">
-          <StatCardsSkeleton count={4} />
-        </div>
-      ) : (
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Onboarding in progress"
-          value={stats?.new_hires.total ?? 0}
-          hint={`${stats?.new_hires.by_stage["Probationary"] ?? 0} probationary · ${stats?.new_hires.by_stage["Pre-onboarding"] ?? 0} pre-onboarding`}
-          tone="primary"
-          icon={UserPlus}
-          to="/superadmin/onboarding"
-        />
-        <StatCard
-          label="Applicants screened"
-          value={stats?.applicants.total ?? 0}
-          hint={`${stats?.applicants.fit ?? 0} rated fit for role`}
-          tone="success"
-          icon={FileCheck2}
-          to="/superadmin/applicants"
-        />
-        <StatCard
-          label="Average screening score"
-          value={`${Math.round(stats?.applicants.avg_fit_score ?? 0)}%`}
-          hint="NER model v2.3"
-          tone="gold"
-          icon={Gauge}
-          to="/superadmin/applicants"
-        />
-        <StatCard
-          label="Suspended accounts"
-          value={stats?.system_users.by_status["Suspended"] ?? 0}
-          hint="Requires password recovery"
-          tone="caution"
-          icon={ShieldAlert}
-          to="/superadmin/users"
-        />
-        </div>
-      )}
       <div className="mt-6">
         <AnnouncementsCard role="superadmin" />
       </div>
