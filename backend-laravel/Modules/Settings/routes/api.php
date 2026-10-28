@@ -20,12 +20,15 @@ Route::prefix('v1')->group(function () {
      /* Database backups (declared before the {key} wildcard)               */
      /* ------------------------------------------------------------------ */
 
-     Route::prefix('settings/backups')->name('settings.backups.')->group(function () {
-          Route::get('/', [BackupController::class, 'index'])->name('index');
-          Route::post('/', [BackupController::class, 'store'])->name('store');
-          Route::get('/{id}/download', [BackupController::class, 'download'])->name('download');
-          Route::post('/{id}/restore', [BackupController::class, 'restore'])->name('restore');
-     });
+     Route::prefix('settings/backups')
+          ->name('settings.backups.')
+          ->middleware(['auth:sanctum', 'permission:Settings:Full'])
+          ->group(function () {
+               Route::get('/', [BackupController::class, 'index'])->name('index');
+               Route::post('/', [BackupController::class, 'store'])->name('store');
+               Route::get('/{id}/download', [BackupController::class, 'download'])->name('download');
+               Route::post('/{id}/restore', [BackupController::class, 'restore'])->name('restore');
+          });
 
      // Bulk upsert — must be declared BEFORE the {key} wildcard
      Route::patch('settings/bulk', [SettingsController::class, 'bulkUpsert'])

@@ -12,17 +12,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { myAttendance } from "@/data/ess";
 import { essApi, type ApiEssEmployee } from "@/lib/api";
 
 export function EssScheduleTab() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
+  const [todayShift, setTodayShift] = useState<{
+    shift: string;
+    time: string;
+    location: string;
+  } | null>(null);
   const [punchLog, setPunchLog] = useState({
-    timeIn: myAttendance.today.timeIn || "07:52 AM",
-    breakIn: myAttendance.today.breakIn || "12:00 PM",
-    breakOut: myAttendance.today.breakOut || "12:58 PM",
-    timeOut: myAttendance.today.timeOut !== "—" ? myAttendance.today.timeOut : "—",
+    timeIn: "—",
+    breakIn: "—",
+    breakOut: "—",
+    timeOut: "—",
   });
 
   useEffect(() => {
@@ -38,6 +42,15 @@ export function EssScheduleTab() {
         if (res?.employee) {
           setEmployeeInfo(res.employee);
         }
+        const dayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][
+          new Date().getDay()
+        ];
+        const today = (res?.weekly_roster ?? []).find((r) => r.day === dayName);
+        setTodayShift(
+          today
+            ? { shift: today.shift, time: today.time, location: today.location }
+            : null,
+        );
       })
       .catch(() => {});
 
@@ -280,20 +293,24 @@ export function EssScheduleTab() {
               <div className="space-y-2.5 pt-3.5 text-xs">
                 <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-card/70 hover:border-primary/30 transition-colors">
                   <span className="text-muted-foreground font-medium">Assigned Shift:</span>
-                  <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
+                  <span className="font-semibold text-foreground text-right">
+                    {todayShift && todayShift.shift !== "No schedule assigned"
+                      ? `${todayShift.shift} (${todayShift.time})`
+                      : "No schedule assigned"}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-card/70 hover:border-primary/30 transition-colors">
-                  <span className="text-muted-foreground font-medium">Geolocation:</span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    Oxford Suites Makati (Main Kitchen) ✓
+                  <span className="text-muted-foreground font-medium">Location:</span>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">
+                    {todayShift?.location || "—"}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-card/70 hover:border-primary/30 transition-colors">
                   <span className="text-muted-foreground font-medium">Supervisor:</span>
                   <span className="font-semibold text-foreground">
-                    {employeeInfo?.supervisor || "Chef Marco D. Santos"}
+                    {employeeInfo?.supervisor || "—"}
                   </span>
                 </div>
 

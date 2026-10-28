@@ -273,6 +273,12 @@ export type OrgNode = {
   name: string;
   title: string;
   children?: OrgNode[];
+  /** Department this card belongs to (department, position or employee). */
+  departmentId?: number;
+  employeeId?: number;
+  kind?: "department" | "employee" | "position";
+  /** Open/filled slots shown on position cards. */
+  positions?: { positionId: number; title: string; headcount: number; filled: number }[];
 };
 
 export const orgChart: OrgNode = {
@@ -330,6 +336,7 @@ export type NewHire = {
    *  or null) — persisted on the new hire record so every admin session and
    *  the DOLE auto-regularization rule share the same waiting state. */
   evaluationRequestedAt?: string | null;
+  completedAt?: string | null;
   initials: string;
   checklist: {
     item: string;
@@ -635,6 +642,7 @@ export type Employee = {
     | "Retired"
     | "Terminated"
     | "Inactive";
+  onboardingComplete?: boolean;
   salaryGrade?: string;
   promotionHistory?: Array<{
     date: string;

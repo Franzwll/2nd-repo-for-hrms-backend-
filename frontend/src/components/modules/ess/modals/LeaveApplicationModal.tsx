@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,8 +16,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Upload, Send, ShieldAlert, CheckCircle2, FileText, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { myLeaveBalances, myProfile } from "@/data/ess";
-import { essApi } from "@/lib/api";
+import { essApi, type ApiLeaveBalance } from "@/lib/api";
+import { useEssProfile } from "@/hooks/useEssProfile";
 
 interface LeaveApplicationModalProps {
   open: boolean;
@@ -32,17 +32,27 @@ export function LeaveApplicationModal({ open, onOpenChange, onSubmitLeave }: Lea
   const [dateTo, setDateTo] = useState("");
   const [reason, setReason] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  const { employee: profile } = useEssProfile();
+  const [balances, setBalances] = useState<ApiLeaveBalance[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    essApi
+      .leaves()
+      .then((res) => setBalances(res?.balances ?? []))
+      .catch(() => setBalances([]));
+  }, [open]);
 
   // Find balance for selected leave
   const activeBalance = useMemo(() => {
-    const found = myLeaveBalances.find((b) => b.type === leaveType);
-    if (!found) return { total: 15, used: 0, available: 15 };
+    const found = balances.find((b) => b.type === leaveType);
+    if (!found) return { total: 0, used: 0, available: 0 };
     return {
       total: found.total,
       used: found.used,
-      available: found.total - found.used,
+      available: found.available,
     };
-  }, [leaveType]);
+  }, [leaveType, balances]);
 
   // Calculate requested days
   const requestedDays = useMemo(() => {
@@ -123,14 +133,14 @@ export function LeaveApplicationModal({ open, onOpenChange, onSubmitLeave }: Lea
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {myLeaveBalances.map((b) => (
+                {(balances.length
+                  ? balances
+                  : [{ type: "Vacation Leave", available: 0 } as ApiLeaveBalance]
+                ).map((b) => (
                   <SelectItem key={b.type} value={b.type}>
-                    {b.type} ({b.total - b.used} days remaining)
+                    {b.type} ({b.available} days remaining)
                   </SelectItem>
                 ))}
-                <SelectItem value="Bereavement Leave">Bereavement Leave (3 days)</SelectItem>
-                <SelectItem value="Maternity / Paternity Leave">Maternity / Paternity Leave</SelectItem>
-                <SelectItem value="Magna Carta Leave">Magna Carta Leave</SelectItem>
               </SelectContent>
             </Select>
 
@@ -246,7 +256,7 @@ export function LeaveApplicationModal({ open, onOpenChange, onSubmitLeave }: Lea
           <div className="rounded-md bg-muted/40 border border-border/70 p-2.5 text-[11px] text-muted-foreground flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
             <span>
-              <strong>Approval Chain:</strong> {myProfile.supervisor} (Supervisor) → Juan Dela Cruz (HR Admin)
+              <strong>Approval Chain:</strong> {profile?.supervisor || "Your supervisor"} (Supervisor) → HR Admin
             </span>
           </div>
 

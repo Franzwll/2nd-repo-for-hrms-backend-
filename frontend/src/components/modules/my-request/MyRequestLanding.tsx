@@ -10,6 +10,10 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { MY_REQUEST_MODULE_LIST, type MyRequestModuleId } from "./myRequestModules";
+import {
+  myRequestModulePath,
+  type EssBasePath,
+} from "@/components/modules/ess/EssPortalContext";
 
 const MODULE_ICONS: Record<MyRequestModuleId, LucideIcon> = {
   payroll: Wallet,
@@ -18,7 +22,13 @@ const MODULE_ICONS: Record<MyRequestModuleId, LucideIcon> = {
   documents: FileCheck,
 };
 
-export function MyRequestLanding() {
+export function MyRequestLanding({
+  basePath = "/employee",
+}: {
+  basePath?: EssBasePath;
+} = {}) {
+  const requestModuleTo = myRequestModulePath(basePath);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -32,7 +42,7 @@ export function MyRequestLanding() {
           return (
             <Link
               key={m.id}
-              to="/employee/my-requests/$module"
+              to={requestModuleTo}
               params={{ module: m.id }}
               className="group block focus-visible:outline-none"
             >

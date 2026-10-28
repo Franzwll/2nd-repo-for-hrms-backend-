@@ -9,6 +9,7 @@ import {
   type ApiChecklistTemplate,
 } from "@/lib/api";
 import { getUser, isStaffRole } from "@/lib/auth";
+import { notifyHcmChanged } from "@/lib/hcm-sync";
 
 /** Draft handed over from Applicant Management when an assessment is accepted. */
 export type PendingHire = {
@@ -81,6 +82,7 @@ function transformApiNewHire(h: ApiNewHire): NewHire {
     stage: h.stage as "Pre-onboarding" | "Probationary",
     startDate: h.start_date || new Date().toISOString().slice(0, 10),
     evaluationRequestedAt: h.evaluation_requested_at ?? null,
+    completedAt: h.completed_at ?? null,
     checklist: (h.onboarding_items || []).map((i) => ({
       item: i.item_text,
       done: i.done,
@@ -274,6 +276,7 @@ export const hireStore = {
       // the checklists auto-applied from matching Active templates.
       hires = hires.map((h) => (h.id === hire.id ? transformApiNewHire(created) : h));
       emit();
+      notifyHcmChanged();
       return true;
     } catch (e) {
       console.warn("API new hire create error:", e);
@@ -453,7 +456,10 @@ export const hireStore = {
   updateHire: async (
     id: string,
     patch: Partial<
-      Pick<NewHire, "name" | "email" | "phone" | "position" | "department" | "startDate">
+      Pick<
+        NewHire,
+        "name" | "email" | "phone" | "position" | "department" | "positionId" | "departmentId" | "startDate"
+      >
     >,
   ) => {
     const target = hires.find((h) => h.id === id);
@@ -465,11 +471,17 @@ export const hireStore = {
         phone: patch.phone ?? target.phone,
         start_date: patch.startDate ?? target.startDate,
       };
-      // Position/department ids are only sent when the caller actually
-      // selected a new position/department in the modal.
-      if (patch.position !== undefined) payload["position_id"] = target.positionId ?? null;
-      if (patch.department !== undefined) payload["department_id"] = target.departmentId ?? null;
+      // Prefer ids resolved by the caller (newly-picked department/position);
+      // falling back to the cached ids sent stale values that silently left
+      // the hire without a Core HCM assignment.
+      if (patch.position !== undefined || patch.positionId !== undefined) {
+        payload["position_id"] = patch.positionId ?? target.positionId ?? null;
+      }
+      if (patch.department !== undefined || patch.departmentId !== undefined) {
+        payload["department_id"] = patch.departmentId ?? target.departmentId ?? null;
+      }
       await newHiresApi.update(target.dbId, payload);
+      notifyHcmChanged();
     } catch (e) {
       console.warn("API new hire update error:", e);
       toast.error(`"${target.name}"'s record could not be updated in the database.`);
@@ -486,6 +498,7 @@ export const hireStore = {
       // matching Active templates for the new stage.
       hires = hires.map((h) => (h.id === id ? transformApiNewHire(updated) : h));
       emit();
+      notifyHcmChanged();
     } catch (e) {
       console.warn("API new hire promote error:", e);
       toast.error(
@@ -501,10 +514,14 @@ export const hireStore = {
     const target = hires.find((h) => h.id === id);
     if (!target?.dbId) return;
     const at = new Date().toISOString();
-    hires = hires.map((h) => (h.id === id ? { ...h, evaluationRequestedAt: at } : h));
+    hires = hires.map((h) =>
+      h.id === id ? { ...h, evaluationRequestedAt: at, completedAt: at } : h,
+    );
     emit();
     try {
-      await newHiresApi.update(target.dbId, { evaluation_requested_at: at });
+      await newHiresApi.complete(target.dbId, { force: true });
+      await syncFromApi();
+      notifyHcmChanged();
     } catch (e) {
       console.warn("API evaluation request error:", e);
       toast.error(`The evaluation request for "${target.name}" could not be saved.`);

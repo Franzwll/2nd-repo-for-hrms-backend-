@@ -4,6 +4,16 @@ import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PublicShell } from "@/components/public/PublicShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -61,6 +71,11 @@ export const Route = createFileRoute("/_landing/jobs/$jobId")({
 function JobDetail() {
   const { job } = Route.useLoaderData();
   const [submitted, setSubmitted] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [application, setApplication] = useState<{
+    code: string;
+    dropped: number;
+  } | null>(null);
   const [applying, setApplying] = useState(false);
 
   useLightOnly();
@@ -355,14 +370,12 @@ function JobDetail() {
                           fd.append(`verification_docs[${i}]`, d.file);
                         });
                         const res = await landingApi.apply(fd);
-                        setSubmitted(true);
-                        toast.success("Application submitted", {
-                          description:
-                            `Application ${res.data.applicant_code} for ${job.title} was received.` +
-                            (verifyDocsDropped > 0
-                              ? ` Note: only the first ${MAX_VERIFY_DOCS} supporting files were attached (${verifyDocsDropped} extra file${verifyDocsDropped === 1 ? "" : "s"} left behind — backend limit).`
-                              : ""),
+                        setApplication({
+                          code: res.data.applicant_code,
+                          dropped: verifyDocsDropped,
                         });
+                        setSubmitted(true);
+                        setSuccessOpen(true);
                       } catch (err: any) {
                         if (
                           err?.status === 409 &&
@@ -536,6 +549,30 @@ function JobDetail() {
           </aside>
         </div>
       </div>
+
+      <AlertDialog open={successOpen} onOpenChange={setSuccessOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Application received</AlertDialogTitle>
+            <AlertDialogDescription>
+              {application?.code
+                ? `Application ${application.code} for ${job.title} was submitted. `
+                : `Your application for ${job.title} was submitted. `}
+              Your resume is queued for NLP screening. Our recruiters contact shortlisted
+              applicants within 3–5 working days.
+              {application?.dropped
+                ? ` Only the first ${MAX_VERIFY_DOCS} supporting files were attached; ${application.dropped} extra file${application.dropped === 1 ? "" : "s"} were left behind.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Link to="/jobs">Browse more jobs</Link>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PublicShell>
   );
 }

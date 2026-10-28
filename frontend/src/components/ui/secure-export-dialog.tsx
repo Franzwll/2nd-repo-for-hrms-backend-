@@ -29,6 +29,7 @@ export function SecureExportDialog({
   formatLabel,
   fileHint,
   busy,
+  mode = "export",
   onConfirm,
 }: {
   open: boolean;
@@ -37,8 +38,10 @@ export function SecureExportDialog({
   formatLabel: string;
   fileHint?: string | undefined;
   busy?: boolean | undefined;
+  mode?: "export" | "print";
   onConfirm: (password: string) => void | Promise<void>;
 }) {
+  const isPrint = mode === "print";
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -73,12 +76,14 @@ export function SecureExportDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-display text-xl">
-            <Lock className="h-5 w-5 text-primary" /> Protect {formatLabel} export
+            <Lock className="h-5 w-5 text-primary" />
+            {isPrint ? "Protect PDF for printing" : `Protect ${formatLabel} export`}
           </DialogTitle>
           <DialogDescription>
-            <span className="font-medium text-foreground">{reportTitle}</span> will be exported as a
-            password-protected ZIP containing the {formatLabel} file. Enter a file password — it
-            will be required to open the ZIP.
+            <span className="font-medium text-foreground">{reportTitle}</span>{" "}
+            {isPrint
+              ? "will be generated as a password-protected PDF. Enter a file password; it will be required to open and print the PDF."
+              : `will be exported as a password-protected ZIP containing the ${formatLabel} file. Enter a file password �?" it will be required to open the ZIP.`}
             {fileHint ? (
               <span className="mt-1.5 block break-all rounded bg-muted px-1.5 py-1 font-mono text-[11px]">
                 {fileHint}
@@ -90,12 +95,15 @@ export function SecureExportDialog({
         <div className="space-y-3">
           <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             <p className="flex items-center gap-1.5 font-medium text-foreground">
-              <FileArchive className="h-3.5 w-3.5" /> AES-256 encrypted ZIP · {formatLabel} inside
+              <FileArchive className="h-3.5 w-3.5" />
+              {isPrint
+                ? "Encrypted PDF — password required to open"
+                : `AES-256 encrypted ZIP · ${formatLabel} inside`}
             </p>
             <p className="mt-1">
-              A plain {formatLabel} file cannot carry a password, so it is sealed in an encrypted
-              ZIP. Share the password with the recipient through a separate channel. The password is
-              asked on every export and is never stored.
+              {isPrint
+                ? "The browser print dialog cannot password-protect a Save as PDF file. This flow generates a PDF that is encrypted before it reaches the browser, so the file itself is protected. Share the password through a separate channel; it is never stored."
+                : `A plain ${formatLabel} file cannot carry a password, so it is sealed in an encrypted ZIP. Share the password with the recipient through a separate channel. The password is asked on every export and is never stored.`}
             </p>
           </div>
 
@@ -163,7 +171,11 @@ export function SecureExportDialog({
             Cancel
           </Button>
           <Button onClick={() => void submit()} disabled={busy}>
-            {busy ? "Encrypting…" : `Export protected ${formatLabel}`}
+            {busy
+              ? "Encrypting..."
+              : isPrint
+                ? "Create protected PDF"
+                : `Export protected ${formatLabel}`}
           </Button>
         </DialogFooter>
       </DialogContent>

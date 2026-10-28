@@ -225,7 +225,7 @@ class ChatbotEngine
 
     private function documentsReply(?JobPost $job): array
     {
-        $general = 'Prepare an updated resume, a valid government ID, NBI clearance, and role-specific certificates (such as TESDA NC II, food handler, or bartending licenses if required).';
+        $general = 'Prepare an updated resume and supporting documents that prove your experience or qualifications, such as a certificate of employment, training certificates, and role-specific credentials (TESDA NC II, food handler, or bartending licenses if required).';
         $extra = '';
         if ($job && is_array($job->qualifications_json) && count($job->qualifications_json)) {
             $extra = "\n\nFor {$job->title} specifically, we ask for: " . implode('; ', array_slice($job->qualifications_json, 0, 3)) . '.';

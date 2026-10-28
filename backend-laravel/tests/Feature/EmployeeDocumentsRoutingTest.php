@@ -95,6 +95,40 @@ class EmployeeDocumentsRoutingTest extends TestCase
         );
     }
 
+    public function test_backfill_command_restores_missing_erm_documents(): void
+    {
+        $applicant = $this->applicantWithDocuments();
+        $newHire = $this->newHireFor($applicant);
+        $employee = NewHireIntakeService::ensureEmployeeRecord($newHire, 'Probationary');
+        $this->assertNotNull($employee);
+
+        EmployeeDocument::where('employee_id', $employee->employee_id)->forceDelete();
+
+        $this->artisan('erm:backfill-documents', ['--employee' => $employee->employee_id])
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('employee_documents', [
+            'employee_id' => $employee->employee_id,
+            'source_type' => 'applicant_resume',
+            'source_id'   => $applicant->applicant_id,
+        ]);
+        $this->assertDatabaseHas('employee_documents', [
+            'employee_id' => $employee->employee_id,
+            'source_type' => 'applicant_document',
+            'category'    => 'Certificate',
+        ]);
+
+        $this->artisan('erm:backfill-documents', ['--employee' => $employee->employee_id])
+            ->assertExitCode(0);
+
+        $this->assertSame(
+            1,
+            EmployeeDocument::where('employee_id', $employee->employee_id)
+                ->where('source_type', 'applicant_resume')
+                ->count(),
+        );
+    }
+
     public function test_onboarding_uploads_are_filed_into_erm_for_employees(): void
     {
         $applicant = $this->applicantWithDocuments();

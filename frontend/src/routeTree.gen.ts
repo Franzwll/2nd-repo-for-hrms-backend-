@@ -38,6 +38,7 @@ import { Route as AdminCorehcmHcmRouteImport } from './routes/admin/_corehcm/hcm
 import { Route as AdminCorehcmOrgChartRouteImport } from './routes/admin/_corehcm/org-chart'
 import { Route as AdminEmployeerecordsEmployeesRouteImport } from './routes/admin/_employeerecords/employees'
 import { Route as AdminEssmanagementEssRouteImport } from './routes/admin/_essmanagement/ess'
+import { Route as AdminEssmanagementMyEssRouteImport } from './routes/admin/_essmanagement/my-ess'
 import { Route as AdminNewhireonboardingOnboardingRouteImport } from './routes/admin/_newhireonboarding/onboarding'
 import { Route as AdminProfilepageProfileRouteImport } from './routes/admin/_profilepage/profile'
 import { Route as AdminRecruitmentmanagementRecruitmentRouteImport } from './routes/admin/_recruitmentmanagement/recruitment'
@@ -53,13 +54,18 @@ import { Route as SuperadminCorehcmHcmRouteImport } from './routes/superadmin/_c
 import { Route as SuperadminCorehcmOrgChartRouteImport } from './routes/superadmin/_corehcm/org-chart'
 import { Route as SuperadminEmployeerecordsEmployeesRouteImport } from './routes/superadmin/_employeerecords/employees'
 import { Route as SuperadminEssmanagementEssRouteImport } from './routes/superadmin/_essmanagement/ess'
+import { Route as SuperadminEssmanagementMyEssRouteImport } from './routes/superadmin/_essmanagement/my-ess'
 import { Route as SuperadminNewhireonboardingOnboardingRouteImport } from './routes/superadmin/_newhireonboarding/onboarding'
 import { Route as SuperadminProfilepageProfileRouteImport } from './routes/superadmin/_profilepage/profile'
 import { Route as SuperadminRecruitmentmanagementRecruitmentRouteImport } from './routes/superadmin/_recruitmentmanagement/recruitment'
 import { Route as SuperadminSettingsSettingsRouteImport } from './routes/superadmin/_settings/settings'
 import { Route as SuperadminUsermanagementUsersRouteImport } from './routes/superadmin/_usermanagement/users'
+import { Route as AdminMyrequestMyRequestsIndexRouteImport } from './routes/admin/_myrequest/my-requests.index'
+import { Route as AdminMyrequestMyRequestsModuleRouteImport } from './routes/admin/_myrequest/my-requests.$module'
 import { Route as EmployeeMyrequestMyRequestsIndexRouteImport } from './routes/employee/_myrequest/my-requests.index'
 import { Route as EmployeeMyrequestMyRequestsModuleRouteImport } from './routes/employee/_myrequest/my-requests.$module'
+import { Route as SuperadminMyrequestMyRequestsIndexRouteImport } from './routes/superadmin/_myrequest/my-requests.index'
+import { Route as SuperadminMyrequestMyRequestsModuleRouteImport } from './routes/superadmin/_myrequest/my-requests.$module'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
@@ -209,6 +215,11 @@ const AdminEssmanagementEssRoute = AdminEssmanagementEssRouteImport.update({
   path: '/ess',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminEssmanagementMyEssRoute = AdminEssmanagementMyEssRouteImport.update({
+  id: '/_essmanagement/my-ess',
+  path: '/my-ess',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminNewhireonboardingOnboardingRoute =
   AdminNewhireonboardingOnboardingRouteImport.update({
     id: '/_newhireonboarding/onboarding',
@@ -296,6 +307,12 @@ const SuperadminEssmanagementEssRoute =
     path: '/ess',
     getParentRoute: () => SuperadminRoute,
   } as any)
+const SuperadminEssmanagementMyEssRoute =
+  SuperadminEssmanagementMyEssRouteImport.update({
+    id: '/_essmanagement/my-ess',
+    path: '/my-ess',
+    getParentRoute: () => SuperadminRoute,
+  } as any)
 const SuperadminNewhireonboardingOnboardingRoute =
   SuperadminNewhireonboardingOnboardingRouteImport.update({
     id: '/_newhireonboarding/onboarding',
@@ -326,6 +343,18 @@ const SuperadminUsermanagementUsersRoute =
     path: '/users',
     getParentRoute: () => SuperadminRoute,
   } as any)
+const AdminMyrequestMyRequestsIndexRoute =
+  AdminMyrequestMyRequestsIndexRouteImport.update({
+    id: '/_myrequest/my-requests/',
+    path: '/my-requests/',
+    getParentRoute: () => AdminRoute,
+  } as any)
+const AdminMyrequestMyRequestsModuleRoute =
+  AdminMyrequestMyRequestsModuleRouteImport.update({
+    id: '/_myrequest/my-requests/$module',
+    path: '/my-requests/$module',
+    getParentRoute: () => AdminRoute,
+  } as any)
 const EmployeeMyrequestMyRequestsIndexRoute =
   EmployeeMyrequestMyRequestsIndexRouteImport.update({
     id: '/_myrequest/my-requests/',
@@ -337,6 +366,18 @@ const EmployeeMyrequestMyRequestsModuleRoute =
     id: '/_myrequest/my-requests/$module',
     path: '/my-requests/$module',
     getParentRoute: () => EmployeeRoute,
+  } as any)
+const SuperadminMyrequestMyRequestsIndexRoute =
+  SuperadminMyrequestMyRequestsIndexRouteImport.update({
+    id: '/_myrequest/my-requests/',
+    path: '/my-requests/',
+    getParentRoute: () => SuperadminRoute,
+  } as any)
+const SuperadminMyrequestMyRequestsModuleRoute =
+  SuperadminMyrequestMyRequestsModuleRouteImport.update({
+    id: '/_myrequest/my-requests/$module',
+    path: '/my-requests/$module',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -368,6 +409,7 @@ export interface FileRoutesByFullPath {
   '/admin/org-chart': typeof AdminCorehcmOrgChartRoute
   '/admin/employees': typeof AdminEmployeerecordsEmployeesRoute
   '/admin/ess': typeof AdminEssmanagementEssRoute
+  '/admin/my-ess': typeof AdminEssmanagementMyEssRoute
   '/admin/onboarding': typeof AdminNewhireonboardingOnboardingRoute
   '/admin/profile': typeof AdminProfilepageProfileRoute
   '/admin/recruitment': typeof AdminRecruitmentmanagementRecruitmentRoute
@@ -383,14 +425,19 @@ export interface FileRoutesByFullPath {
   '/superadmin/org-chart': typeof SuperadminCorehcmOrgChartRoute
   '/superadmin/employees': typeof SuperadminEmployeerecordsEmployeesRoute
   '/superadmin/ess': typeof SuperadminEssmanagementEssRoute
+  '/superadmin/my-ess': typeof SuperadminEssmanagementMyEssRoute
   '/superadmin/onboarding': typeof SuperadminNewhireonboardingOnboardingRoute
   '/superadmin/profile': typeof SuperadminProfilepageProfileRoute
   '/superadmin/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
   '/superadmin/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/users': typeof SuperadminUsermanagementUsersRoute
   '/jobs/': typeof LandingJobsIndexRoute
+  '/admin/my-requests/$module': typeof AdminMyrequestMyRequestsModuleRoute
   '/employee/my-requests/$module': typeof EmployeeMyrequestMyRequestsModuleRoute
+  '/superadmin/my-requests/$module': typeof SuperadminMyrequestMyRequestsModuleRoute
+  '/admin/my-requests/': typeof AdminMyrequestMyRequestsIndexRoute
   '/employee/my-requests/': typeof EmployeeMyrequestMyRequestsIndexRoute
+  '/superadmin/my-requests/': typeof SuperadminMyrequestMyRequestsIndexRoute
 }
 export interface FileRoutesByTo {
   '/test-doc-recognition': typeof TestDocRecognitionRoute
@@ -418,6 +465,7 @@ export interface FileRoutesByTo {
   '/admin/org-chart': typeof AdminCorehcmOrgChartRoute
   '/admin/employees': typeof AdminEmployeerecordsEmployeesRoute
   '/admin/ess': typeof AdminEssmanagementEssRoute
+  '/admin/my-ess': typeof AdminEssmanagementMyEssRoute
   '/admin/onboarding': typeof AdminNewhireonboardingOnboardingRoute
   '/admin/profile': typeof AdminProfilepageProfileRoute
   '/admin/recruitment': typeof AdminRecruitmentmanagementRecruitmentRoute
@@ -433,14 +481,19 @@ export interface FileRoutesByTo {
   '/superadmin/org-chart': typeof SuperadminCorehcmOrgChartRoute
   '/superadmin/employees': typeof SuperadminEmployeerecordsEmployeesRoute
   '/superadmin/ess': typeof SuperadminEssmanagementEssRoute
+  '/superadmin/my-ess': typeof SuperadminEssmanagementMyEssRoute
   '/superadmin/onboarding': typeof SuperadminNewhireonboardingOnboardingRoute
   '/superadmin/profile': typeof SuperadminProfilepageProfileRoute
   '/superadmin/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
   '/superadmin/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/users': typeof SuperadminUsermanagementUsersRoute
   '/jobs': typeof LandingJobsIndexRoute
+  '/admin/my-requests/$module': typeof AdminMyrequestMyRequestsModuleRoute
   '/employee/my-requests/$module': typeof EmployeeMyrequestMyRequestsModuleRoute
+  '/superadmin/my-requests/$module': typeof SuperadminMyrequestMyRequestsModuleRoute
+  '/admin/my-requests': typeof AdminMyrequestMyRequestsIndexRoute
   '/employee/my-requests': typeof EmployeeMyrequestMyRequestsIndexRoute
+  '/superadmin/my-requests': typeof SuperadminMyrequestMyRequestsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -472,6 +525,7 @@ export interface FileRoutesById {
   '/admin/_corehcm/org-chart': typeof AdminCorehcmOrgChartRoute
   '/admin/_employeerecords/employees': typeof AdminEmployeerecordsEmployeesRoute
   '/admin/_essmanagement/ess': typeof AdminEssmanagementEssRoute
+  '/admin/_essmanagement/my-ess': typeof AdminEssmanagementMyEssRoute
   '/admin/_newhireonboarding/onboarding': typeof AdminNewhireonboardingOnboardingRoute
   '/admin/_profilepage/profile': typeof AdminProfilepageProfileRoute
   '/admin/_recruitmentmanagement/recruitment': typeof AdminRecruitmentmanagementRecruitmentRoute
@@ -487,14 +541,19 @@ export interface FileRoutesById {
   '/superadmin/_corehcm/org-chart': typeof SuperadminCorehcmOrgChartRoute
   '/superadmin/_employeerecords/employees': typeof SuperadminEmployeerecordsEmployeesRoute
   '/superadmin/_essmanagement/ess': typeof SuperadminEssmanagementEssRoute
+  '/superadmin/_essmanagement/my-ess': typeof SuperadminEssmanagementMyEssRoute
   '/superadmin/_newhireonboarding/onboarding': typeof SuperadminNewhireonboardingOnboardingRoute
   '/superadmin/_profilepage/profile': typeof SuperadminProfilepageProfileRoute
   '/superadmin/_recruitmentmanagement/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
   '/superadmin/_settings/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/_usermanagement/users': typeof SuperadminUsermanagementUsersRoute
   '/_landing/jobs/': typeof LandingJobsIndexRoute
+  '/admin/_myrequest/my-requests/$module': typeof AdminMyrequestMyRequestsModuleRoute
   '/employee/_myrequest/my-requests/$module': typeof EmployeeMyrequestMyRequestsModuleRoute
+  '/superadmin/_myrequest/my-requests/$module': typeof SuperadminMyrequestMyRequestsModuleRoute
+  '/admin/_myrequest/my-requests/': typeof AdminMyrequestMyRequestsIndexRoute
   '/employee/_myrequest/my-requests/': typeof EmployeeMyrequestMyRequestsIndexRoute
+  '/superadmin/_myrequest/my-requests/': typeof SuperadminMyrequestMyRequestsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -527,6 +586,7 @@ export interface FileRouteTypes {
     | '/admin/org-chart'
     | '/admin/employees'
     | '/admin/ess'
+    | '/admin/my-ess'
     | '/admin/onboarding'
     | '/admin/profile'
     | '/admin/recruitment'
@@ -542,14 +602,19 @@ export interface FileRouteTypes {
     | '/superadmin/org-chart'
     | '/superadmin/employees'
     | '/superadmin/ess'
+    | '/superadmin/my-ess'
     | '/superadmin/onboarding'
     | '/superadmin/profile'
     | '/superadmin/recruitment'
     | '/superadmin/settings'
     | '/superadmin/users'
     | '/jobs/'
+    | '/admin/my-requests/$module'
     | '/employee/my-requests/$module'
+    | '/superadmin/my-requests/$module'
+    | '/admin/my-requests/'
     | '/employee/my-requests/'
+    | '/superadmin/my-requests/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/test-doc-recognition'
@@ -577,6 +642,7 @@ export interface FileRouteTypes {
     | '/admin/org-chart'
     | '/admin/employees'
     | '/admin/ess'
+    | '/admin/my-ess'
     | '/admin/onboarding'
     | '/admin/profile'
     | '/admin/recruitment'
@@ -592,14 +658,19 @@ export interface FileRouteTypes {
     | '/superadmin/org-chart'
     | '/superadmin/employees'
     | '/superadmin/ess'
+    | '/superadmin/my-ess'
     | '/superadmin/onboarding'
     | '/superadmin/profile'
     | '/superadmin/recruitment'
     | '/superadmin/settings'
     | '/superadmin/users'
     | '/jobs'
+    | '/admin/my-requests/$module'
     | '/employee/my-requests/$module'
+    | '/superadmin/my-requests/$module'
+    | '/admin/my-requests'
     | '/employee/my-requests'
+    | '/superadmin/my-requests'
   id:
     | '__root__'
     | '/admin'
@@ -630,6 +701,7 @@ export interface FileRouteTypes {
     | '/admin/_corehcm/org-chart'
     | '/admin/_employeerecords/employees'
     | '/admin/_essmanagement/ess'
+    | '/admin/_essmanagement/my-ess'
     | '/admin/_newhireonboarding/onboarding'
     | '/admin/_profilepage/profile'
     | '/admin/_recruitmentmanagement/recruitment'
@@ -645,14 +717,19 @@ export interface FileRouteTypes {
     | '/superadmin/_corehcm/org-chart'
     | '/superadmin/_employeerecords/employees'
     | '/superadmin/_essmanagement/ess'
+    | '/superadmin/_essmanagement/my-ess'
     | '/superadmin/_newhireonboarding/onboarding'
     | '/superadmin/_profilepage/profile'
     | '/superadmin/_recruitmentmanagement/recruitment'
     | '/superadmin/_settings/settings'
     | '/superadmin/_usermanagement/users'
     | '/_landing/jobs/'
+    | '/admin/_myrequest/my-requests/$module'
     | '/employee/_myrequest/my-requests/$module'
+    | '/superadmin/_myrequest/my-requests/$module'
+    | '/admin/_myrequest/my-requests/'
     | '/employee/_myrequest/my-requests/'
+    | '/superadmin/_myrequest/my-requests/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -882,6 +959,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEssmanagementEssRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/_essmanagement/my-ess': {
+      id: '/admin/_essmanagement/my-ess'
+      path: '/my-ess'
+      fullPath: '/admin/my-ess'
+      preLoaderRoute: typeof AdminEssmanagementMyEssRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/_newhireonboarding/onboarding': {
       id: '/admin/_newhireonboarding/onboarding'
       path: '/onboarding'
@@ -987,6 +1071,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperadminEssmanagementEssRouteImport
       parentRoute: typeof SuperadminRoute
     }
+    '/superadmin/_essmanagement/my-ess': {
+      id: '/superadmin/_essmanagement/my-ess'
+      path: '/my-ess'
+      fullPath: '/superadmin/my-ess'
+      preLoaderRoute: typeof SuperadminEssmanagementMyEssRouteImport
+      parentRoute: typeof SuperadminRoute
+    }
     '/superadmin/_newhireonboarding/onboarding': {
       id: '/superadmin/_newhireonboarding/onboarding'
       path: '/onboarding'
@@ -1022,6 +1113,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperadminUsermanagementUsersRouteImport
       parentRoute: typeof SuperadminRoute
     }
+    '/admin/_myrequest/my-requests/': {
+      id: '/admin/_myrequest/my-requests/'
+      path: '/my-requests'
+      fullPath: '/admin/my-requests/'
+      preLoaderRoute: typeof AdminMyrequestMyRequestsIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/_myrequest/my-requests/$module': {
+      id: '/admin/_myrequest/my-requests/$module'
+      path: '/my-requests/$module'
+      fullPath: '/admin/my-requests/$module'
+      preLoaderRoute: typeof AdminMyrequestMyRequestsModuleRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/employee/_myrequest/my-requests/': {
       id: '/employee/_myrequest/my-requests/'
       path: '/my-requests'
@@ -1036,6 +1141,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmployeeMyrequestMyRequestsModuleRouteImport
       parentRoute: typeof EmployeeRoute
     }
+    '/superadmin/_myrequest/my-requests/': {
+      id: '/superadmin/_myrequest/my-requests/'
+      path: '/my-requests'
+      fullPath: '/superadmin/my-requests/'
+      preLoaderRoute: typeof SuperadminMyrequestMyRequestsIndexRouteImport
+      parentRoute: typeof SuperadminRoute
+    }
+    '/superadmin/_myrequest/my-requests/$module': {
+      id: '/superadmin/_myrequest/my-requests/$module'
+      path: '/my-requests/$module'
+      fullPath: '/superadmin/my-requests/$module'
+      preLoaderRoute: typeof SuperadminMyrequestMyRequestsModuleRouteImport
+      parentRoute: typeof SuperadminRoute
+    }
   }
 }
 
@@ -1047,10 +1166,13 @@ interface AdminRouteChildren {
   AdminCorehcmOrgChartRoute: typeof AdminCorehcmOrgChartRoute
   AdminEmployeerecordsEmployeesRoute: typeof AdminEmployeerecordsEmployeesRoute
   AdminEssmanagementEssRoute: typeof AdminEssmanagementEssRoute
+  AdminEssmanagementMyEssRoute: typeof AdminEssmanagementMyEssRoute
   AdminNewhireonboardingOnboardingRoute: typeof AdminNewhireonboardingOnboardingRoute
   AdminProfilepageProfileRoute: typeof AdminProfilepageProfileRoute
   AdminRecruitmentmanagementRecruitmentRoute: typeof AdminRecruitmentmanagementRecruitmentRoute
   AdminSettingsSettingsRoute: typeof AdminSettingsSettingsRoute
+  AdminMyrequestMyRequestsModuleRoute: typeof AdminMyrequestMyRequestsModuleRoute
+  AdminMyrequestMyRequestsIndexRoute: typeof AdminMyrequestMyRequestsIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
@@ -1062,11 +1184,14 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminCorehcmOrgChartRoute: AdminCorehcmOrgChartRoute,
   AdminEmployeerecordsEmployeesRoute: AdminEmployeerecordsEmployeesRoute,
   AdminEssmanagementEssRoute: AdminEssmanagementEssRoute,
+  AdminEssmanagementMyEssRoute: AdminEssmanagementMyEssRoute,
   AdminNewhireonboardingOnboardingRoute: AdminNewhireonboardingOnboardingRoute,
   AdminProfilepageProfileRoute: AdminProfilepageProfileRoute,
   AdminRecruitmentmanagementRecruitmentRoute:
     AdminRecruitmentmanagementRecruitmentRoute,
   AdminSettingsSettingsRoute: AdminSettingsSettingsRoute,
+  AdminMyrequestMyRequestsModuleRoute: AdminMyrequestMyRequestsModuleRoute,
+  AdminMyrequestMyRequestsIndexRoute: AdminMyrequestMyRequestsIndexRoute,
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
@@ -1108,11 +1233,14 @@ interface SuperadminRouteChildren {
   SuperadminCorehcmOrgChartRoute: typeof SuperadminCorehcmOrgChartRoute
   SuperadminEmployeerecordsEmployeesRoute: typeof SuperadminEmployeerecordsEmployeesRoute
   SuperadminEssmanagementEssRoute: typeof SuperadminEssmanagementEssRoute
+  SuperadminEssmanagementMyEssRoute: typeof SuperadminEssmanagementMyEssRoute
   SuperadminNewhireonboardingOnboardingRoute: typeof SuperadminNewhireonboardingOnboardingRoute
   SuperadminProfilepageProfileRoute: typeof SuperadminProfilepageProfileRoute
   SuperadminRecruitmentmanagementRecruitmentRoute: typeof SuperadminRecruitmentmanagementRecruitmentRoute
   SuperadminSettingsSettingsRoute: typeof SuperadminSettingsSettingsRoute
   SuperadminUsermanagementUsersRoute: typeof SuperadminUsermanagementUsersRoute
+  SuperadminMyrequestMyRequestsModuleRoute: typeof SuperadminMyrequestMyRequestsModuleRoute
+  SuperadminMyrequestMyRequestsIndexRoute: typeof SuperadminMyrequestMyRequestsIndexRoute
 }
 
 const SuperadminRouteChildren: SuperadminRouteChildren = {
@@ -1126,6 +1254,7 @@ const SuperadminRouteChildren: SuperadminRouteChildren = {
   SuperadminEmployeerecordsEmployeesRoute:
     SuperadminEmployeerecordsEmployeesRoute,
   SuperadminEssmanagementEssRoute: SuperadminEssmanagementEssRoute,
+  SuperadminEssmanagementMyEssRoute: SuperadminEssmanagementMyEssRoute,
   SuperadminNewhireonboardingOnboardingRoute:
     SuperadminNewhireonboardingOnboardingRoute,
   SuperadminProfilepageProfileRoute: SuperadminProfilepageProfileRoute,
@@ -1133,6 +1262,10 @@ const SuperadminRouteChildren: SuperadminRouteChildren = {
     SuperadminRecruitmentmanagementRecruitmentRoute,
   SuperadminSettingsSettingsRoute: SuperadminSettingsSettingsRoute,
   SuperadminUsermanagementUsersRoute: SuperadminUsermanagementUsersRoute,
+  SuperadminMyrequestMyRequestsModuleRoute:
+    SuperadminMyrequestMyRequestsModuleRoute,
+  SuperadminMyrequestMyRequestsIndexRoute:
+    SuperadminMyrequestMyRequestsIndexRoute,
 }
 
 const SuperadminRouteWithChildren = SuperadminRoute._addFileChildren(

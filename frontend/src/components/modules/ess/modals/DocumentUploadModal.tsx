@@ -25,7 +25,7 @@ interface DocumentUploadModalProps {
 export function DocumentUploadModal({
   open,
   onOpenChange,
-  documentTitle = "Updated NBI Clearance (2026)",
+  documentTitle = "",
   onUploadSuccess,
 }: DocumentUploadModalProps) {
   const [docName, setDocName] = useState(documentTitle);

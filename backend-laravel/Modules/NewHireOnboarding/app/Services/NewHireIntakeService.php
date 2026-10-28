@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Modules\ApplicantManagement\Models\Applicant;
+use Modules\CoreHCM\Http\Controllers\Concerns\HcmCache;
 use Modules\CoreHCM\Services\EmployeeLifecycleService;
 use Modules\NewHireOnboarding\Models\NewHire;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
@@ -154,6 +155,10 @@ class NewHireIntakeService
 
         $newHire->update(['employee_id' => $employee->employee_id]);
         SystemUser::where('email', $newHire->email)->update(['employee_id' => $employee->employee_id]);
+
+        // The org chart and employee roster are cached for 60s; without this
+        // a freshly provisioned hire stays missing from them until the TTL.
+        HcmCache::flush();
 
         AuditLogger::log(
             action: 'Employee Record Created',

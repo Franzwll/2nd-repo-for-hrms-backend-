@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   Award,
@@ -336,34 +336,55 @@ function setHcmFetching(v: boolean) {
   emitHcm();
 }
 
+/**
+ * Reads every page of a paginated HCM lookup. A single `per_page=500` request
+ * still truncates larger rosters/departments, which made org-chart entries
+ * disappear from the master lists.
+ */
+async function fetchAllPages<T>(
+  fetchPage: (page: number) => Promise<{ data: T[]; meta?: { last_page?: number } }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let page = 1;
+  let lastPage = 1;
+  do {
+    const res = await fetchPage(page);
+    rows.push(...(res.data ?? []));
+    lastPage = Math.max(1, Number(res.meta?.last_page ?? page));
+    page += 1;
+  } while (page <= lastPage && page <= 100);
+  return rows;
+}
+
 async function fetchHcmData(options: { includeEmployees?: boolean } = {}) {
   setHcmFetching(true);
   try {
     // Dept-pos only needs departments/positions/salaryGrades/orgChart.
-    // Employees (per_page=500) is the heaviest slice and is only used for
-    // the department-head dropdown — skip it on the initial mount so the
-    // page paints fast, then lazy-load it in the background / on demand.
+    // Employees is the heaviest slice and is only used for the department-head
+    // dropdown - skip it on the initial mount so the page paints fast, then
+    // lazy-load it in the background / on demand.
     const includeEmployees = options.includeEmployees ?? hcmData.employees.length > 0;
-    const [emp, dep, pos, sg, org] = await Promise.all([
-      includeEmployees ? hcmApi.employees.list({ per_page: 500 }) : Promise.resolve(null),
-      hcmApi.departments.list({ per_page: 500 }),
-      hcmApi.positions.list({ per_page: 500 }),
-      hcmApi.salaryGrades.list({ per_page: 500 }),
+    const [employeeRows, departmentRows, positionRows, salaryGradeRows, org] = await Promise.all([
+      includeEmployees
+        ? fetchAllPages((page) => hcmApi.employees.list({ per_page: 500, page }))
+        : Promise.resolve(null),
+      fetchAllPages((page) => hcmApi.departments.list({ per_page: 500, page })),
+      fetchAllPages((page) => hcmApi.positions.list({ per_page: 500, page })),
+      fetchAllPages((page) => hcmApi.salaryGrades.list({ per_page: 500, page })),
       hcmApi.orgChart.list(),
     ]);
     hcmData = {
-      employees: emp?.data ?? hcmData.employees,
-      departments: dep.data ?? [],
-      positions: pos.data ?? [],
-      salaryGrades: sg.data ?? [],
+      employees: employeeRows ?? hcmData.employees,
+      departments: departmentRows,
+      positions: positionRows,
+      salaryGrades: salaryGradeRows,
       orgChart: org.data ?? [],
     };
     // Backfill employees without blocking first paint.
     if (!includeEmployees) {
-      hcmApi.employees
-        .list({ per_page: 500 })
-        .then((res) => {
-          hcmData = { ...hcmData, employees: res.data ?? [] };
+      fetchAllPages((page) => hcmApi.employees.list({ per_page: 500, page }))
+        .then((rows) => {
+          hcmData = { ...hcmData, employees: rows };
           emitHcm();
         })
         .catch((err) => console.warn('Could not backfill Core HCM employees.', err));
@@ -444,6 +465,7 @@ function toUiEmployee(
     phone: e.phone || "",
     supervisor: supervisor?.full_name ?? "",
     status,
+    onboardingComplete: e.onboarding_complete,
     salaryGrade: sg?.code ?? "SG-08",
   };
 }
@@ -540,6 +562,8 @@ function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode
   const root: OrgNode = {
     name: gm?.full_name || "Ricardo Villanueva",
     title: gm?.position_title || "General Manager",
+    ...(gm?.employee_id ? { employeeId: gm.employee_id } : {}),
+    kind: "employee",
     children: [],
   };
   for (const node of orgNodes) {
@@ -549,12 +573,38 @@ function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode
     const headTitle = head?.position_title || (node.code === "DEP-HR" ? "HR & Administration Manager" : `${node.name} Head`);
     const headId = head?.employee_id;
 
+    // Positions are part of the org chart even when every slot is vacant -
+    // otherwise a newly-created but unfilled position never appears.
+    const positionNodes: OrgNode[] = (node.positions ?? []).map((p) => ({
+      name: p.title,
+      title: `${p.filled_count} of ${p.headcount} filled${p.filled_count >= p.headcount ? " · Filled" : " · Open"}`,
+      departmentId: node.department_id,
+      kind: "position",
+    }));
+
+    const memberNodes: OrgNode[] = staff
+      .filter((e) => (headId ? e.employee_id !== headId : true) && e.full_name !== headName)
+      .map((e) => ({
+        name: e.full_name,
+        title: e.position_title,
+        departmentId: e.department_id,
+        employeeId: e.employee_id,
+        kind: "employee",
+      }));
+
     root.children!.push({
       name: headName,
       title: headTitle,
-      children: staff
-        .filter((e) => (headId ? e.employee_id !== headId : true) && e.full_name !== headName)
-        .map((e) => ({ name: e.full_name, title: e.position_title })),
+      departmentId: node.department_id,
+      ...(head?.employee_id ? { employeeId: head.employee_id } : {}),
+      kind: node.head ? "employee" : "department",
+      positions: (node.positions ?? []).map((p) => ({
+        positionId: p.position_id,
+        title: p.title,
+        headcount: p.headcount,
+        filled: p.filled_count,
+      })),
+      children: [...positionNodes, ...memberNodes],
     });
   }
   return root;
@@ -683,14 +733,30 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
     selectedNode?.name === (employees.find((e) => e.position?.includes("General Manager"))?.name || "Ricardo A. Villanueva");
 
   const selectedEmployee = employees.find((employee) => employee.name === selectedNode?.name);
+  const selectedDepartmentApi = selectedNode?.departmentId
+    ? hcm.departments.find((d) => d.department_id === selectedNode.departmentId)
+    : undefined;
   const selectedDepartment = isGeneralManagerNode
     ? null
-    : departments.find(
-      (d) =>
-        d.head === selectedNode?.name ||
-        (d.name === selectedEmployee?.department && selectedEmployee?.position !== "General Manager") ||
-        (selectedNode?.title?.includes("HR") && d.name.includes("HR")),
-    ) || departments.find((d) => d.name === selectedEmployee?.department);
+    : (selectedDepartmentApi ? toUiDepartment(selectedDepartmentApi) : undefined) ||
+      departments.find(
+        (d) =>
+          d.head === selectedNode?.name ||
+          (d.name === selectedEmployee?.department && selectedEmployee?.position !== "General Manager") ||
+          (selectedNode?.title?.includes("HR") && d.name.includes("HR")),
+      ) ||
+      departments.find((d) => d.name === selectedEmployee?.department);
+
+  const selectedDepartmentPositions = selectedNode?.departmentId
+    ? hcm.positions
+      .filter((p) => p.department_id === selectedNode.departmentId)
+      .map((p) => ({
+        id: p.position_id,
+        title: p.title,
+        filled: p.filled_count,
+        headcount: p.headcount,
+      }))
+    : [];
 
   const headEmployee = selectedDepartment
     ? employees.find((employee) => employee.name === selectedDepartment.head)
@@ -707,12 +773,13 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
           return h ? { id: h.id, name: h.name, position: h.position } : null;
         })
         .filter(Boolean) as { id: string; name: string; position: string }[],
+      positions: [] as { id: number; title: string; filled: number; headcount: number }[],
     }
     : selectedDepartment
       ? {
         name: selectedDepartment.name,
-        head: selectedDepartment.head,
-        headPosition: headEmployee?.position ?? "Department Head",
+        head: selectedDepartment.head || "Unassigned",
+        headPosition: headEmployee?.position ?? "No head assigned",
         members: employees
           .filter(
             (employee) =>
@@ -721,6 +788,7 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
               !employee.position.includes("General Manager"),
           )
           .map((e) => ({ id: e.id, name: e.name, position: e.position })),
+        positions: selectedDepartmentPositions,
       }
       : null;
 
@@ -914,6 +982,7 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
                       size="sm"
                       variant="outline"
                       className="h-7 shrink-0 px-2 text-xs text-primary hover:bg-primary/10"
+                      disabled={displayOverview.head === "Unassigned"}
                       onClick={() => onViewEmployee(displayOverview.head)}
                     >
                       <Eye className="mr-1 h-3.5 w-3.5" /> View
@@ -954,6 +1023,32 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
                     </div>
                   )}
                 </div>
+
+                {displayOverview.positions.length > 0 && (
+                  <>
+                    <div className="mt-4 flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Positions
+                      </p>
+                      <Badge variant="secondary">{displayOverview.positions.length}</Badge>
+                    </div>
+                    <div className="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1">
+                      {displayOverview.positions.map((position) => (
+                        <div
+                          key={position.id}
+                          className="flex items-center justify-between rounded-md bg-card px-2.5 py-2 text-xs"
+                        >
+                          <span className="font-medium">{position.title}</span>
+                          <Badge
+                            variant={position.filled >= position.headcount ? "secondary" : "outline"}
+                          >
+                            {position.filled}/{position.headcount}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex h-full items-center rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
@@ -1031,8 +1126,8 @@ function OrgTree({
               <div className="absolute inset-x-0 top-0 h-[2px] bg-muted-foreground/70" />
             )}
             <div className="flex gap-10">
-              {children.map((child) => (
-                <div key={child.name} className="relative flex flex-col items-center">
+              {children.map((child, index) => (
+                <div key={`${child.kind ?? "node"}-${child.name}-${index}`} className="relative flex flex-col items-center">
                   <div className="absolute left-1/2 top-0 h-6 w-[2px] -translate-x-1/2 bg-muted-foreground/70" />
                   <div className="pt-6">
                     <OrgTree node={child} selectedName={selectedName} onSelect={onSelect} />
@@ -1078,23 +1173,23 @@ function EmployeeListManager({
   const [recommendations, setRecommendations] = useState<HR3Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    hcmApi.hr3Recommendations
-      .list()
-      .then((res) => {
-        if (!cancelled) setRecommendations(res.data.map(toUiRecommendation));
-      })
-      .catch(() => {
-        if (!cancelled) setRecommendations([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+  const refreshRecommendations = useCallback(async () => {
+    try {
+      const res = await hcmApi.hr3Recommendations.list();
+      setRecommendations(res.data.map(toUiRecommendation));
+    } catch {
+      setRecommendations([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshRecommendations();
+    return onHcmChanged(() => {
+      void refreshRecommendations();
+    });
+  }, [refreshRecommendations]);
 
   const [recStatusFilter, setRecStatusFilter] = useState("all");
   const [recTypeFilter, setRecTypeFilter] = useState("all");
@@ -1187,25 +1282,64 @@ function EmployeeListManager({
   const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{
     target: "promote" | "exit" | "regularize";
   } | null>(null);
-
-  const hasPendingRec = (empId: string) =>
-    recommendations.some((r) => r.employeeId === empId && r.status === "Pending HR Action");
-
-  const isAcknowledged = (empId: string) => acknowledgedIds.has(empId);
-
-  const canActOnEmployee = (empId: string) => isAcknowledged(empId) || !hasPendingRec(empId);
+  const [mockRecLoading, setMockRecLoading] = useState<"regularize" | "promote" | null>(null);
 
   /** Pending performance evaluations (HR3 recommendations) usable for an action. */
   const recommendationsFor = (empId: string, type: "Regularization" | "Promotion") =>
     recommendations.filter(
       (r) =>
         r.employeeId === empId &&
-        r.status === "Pending HR Action" &&
+        (r.status === "Pending HR Action" || r.status === "Acknowledged") &&
         (r.recommendationType === type || r.recommendationType === "Performance Review"),
     );
 
   const regularizeOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Regularization") : [];
   const promotionOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Promotion") : [];
+
+  const createMockRecommendation = async (
+    emp: Employee,
+    type: "Regularization" | "Promotion",
+  ) => {
+    const dbId = employeeIdByCode.get(emp.id);
+    if (!dbId) {
+      toast.error(`Could not resolve ${emp.id} in Core HCM.`);
+      return;
+    }
+
+    setMockRecLoading(type === "Regularization" ? "regularize" : "promote");
+    try {
+      await hcmApi.hr3Recommendations.mock({
+        employee_id: dbId,
+        recommendation_type: type,
+      });
+      const res = await hcmApi.hr3Recommendations.list();
+      const mapped = res.data.map(toUiRecommendation);
+      setRecommendations(mapped);
+
+      const created = mapped.find(
+        (r) =>
+          r.employeeId === emp.id &&
+          (r.recommendationType === type || r.recommendationType === "Performance Review") &&
+          (r.status === "Pending HR Action" || r.status === "Acknowledged"),
+      );
+
+      if (!created) {
+        toast.error("Mock evaluation was created but could not be loaded.");
+        return;
+      }
+
+      if (type === "Regularization") {
+        setRegularizeRecId(created.id);
+      } else {
+        setPromotionRecId(created.id);
+      }
+      toast.success("Mock HR3 evaluation is ready.");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not create a mock HR3 evaluation.");
+    } finally {
+      setMockRecLoading(null);
+    }
+  };
 
   const filteredEmployees = empList.filter((e) => {
     const q = empSearch.trim().toLowerCase();
@@ -1231,7 +1365,14 @@ function EmployeeListManager({
     status: (e) => e.status,
   });
   const empPage = usePagination(empSort.sorted);
-  const deptOptions = Array.from(new Set(empList.map((e) => e.department))).sort();
+  // Departments come from the master list, not from employee rows - a newly
+  // created department with no hires must still be selectable as a filter/edit.
+  const deptOptions = Array.from(
+    new Set([
+      ...hcm.departments.map((d) => d.name),
+      ...empList.map((e) => e.department),
+    ].filter(Boolean)),
+  ).sort();
   const positionOptions = hcm.positions.map((p) => p.title).sort();
   const supervisorOptions = empList.map((e) => e.name).sort();
   const salaryGradeOptions = hcm.salaryGrades.map((g) => g.code);
@@ -1908,9 +2049,7 @@ function EmployeeListManager({
                           <Pencil className="mr-1 h-3 w-3" /> Edit
                         </Button>
 
-                        {e.employmentType === "Probationary" &&
-                          e.status === "Active" &&
-                          canActOnEmployee(e.id) && (
+                        {e.employmentType === "Probationary" && e.status === "Active" && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -1928,19 +2067,11 @@ function EmployeeListManager({
                             </Button>
                           )}
 
-                        {e.status === "Active" &&
-                          e.employmentType !== "Probationary" &&
-                          canActOnEmployee(e.id) && (
+                        {e.status === "Active" && e.employmentType !== "Probationary" && (
                             <Button
                               size="sm"
                               variant="outline"
                               className="h-8 px-2 text-xs"
-                              disabled={recommendationsFor(e.id, "Promotion").length === 0}
-                              title={
-                                recommendationsFor(e.id, "Promotion").length === 0
-                                  ? "No performance evaluation on file — required before promoting."
-                                  : undefined
-                              }
                               onClick={() => {
                                 setSelectedEmp(e);
                                 setNewPosition(e.position);
@@ -1954,12 +2085,6 @@ function EmployeeListManager({
                               <TrendingUp className="mr-1 h-3.5 w-3.5 text-primary" /> Promote
                             </Button>
                           )}
-
-                        {e.status === "Active" && hasPendingRec(e.id) && !isAcknowledged(e.id) && (
-                          <span className="text-[10px] text-muted-foreground italic pr-1">
-                            Acknowledge first
-                          </span>
-                        )}
 
                         {e.status === "Active" && (
                           <Button
@@ -2537,9 +2662,22 @@ function EmployeeListManager({
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
-                  No pending performance evaluation on file. A completed HR3 evaluation is required
-                  before promoting.
+                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
+                  <p>
+                    No pending performance evaluation on file. Generate a mock HR3 evaluation to
+                    continue the promotion demo.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={mockRecLoading === "promote"}
+                    onClick={() => selectedEmp && createMockRecommendation(selectedEmp, "Promotion")}
+                  >
+                    {mockRecLoading === "promote"
+                      ? "Creating evaluation..."
+                      : "Auto-create mock HR3 evaluation"}
+                  </Button>
                 </div>
               )}
             </div>
@@ -2621,9 +2759,22 @@ function EmployeeListManager({
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
-                  No pending performance evaluation on file. A completed HR3 evaluation is required
-                  before regularization.
+                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
+                  <p>
+                    No pending performance evaluation on file. Generate a mock HR3 evaluation to
+                    continue the regularization demo.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={mockRecLoading === "regularize"}
+                    onClick={() => selectedEmp && createMockRecommendation(selectedEmp, "Regularization")}
+                  >
+                    {mockRecLoading === "regularize"
+                      ? "Creating evaluation..."
+                      : "Auto-create mock HR3 evaluation"}
+                  </Button>
                 </div>
               )}
             </div>
@@ -3026,8 +3177,12 @@ function PromotionRequestsManager() {
                               className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
                               onClick={async () => {
                                 try {
-                                  await hcmApi.promotions.forwardToHr3(r.promotion_request_id);
-                                  toast.success("Forwarded to HR3 for evaluation.");
+                                  const res = await hcmApi.promotions.forwardToHr3(
+                                    r.promotion_request_id,
+                                  );
+                                  toast.success(
+                                    res.message || "Forwarded to HR3 for evaluation.",
+                                  );
                                   load();
                                   notifyHcmChanged();
                                 } catch (e: any) {
@@ -3116,10 +3271,13 @@ function PromotionRequestsManager() {
               className="border-primary/40 text-primary hover:bg-primary/10"
               onClick={async () => {
                 try {
-                  await hcmApi.promotions.forwardToHr3(reviewFor.promotion_request_id, {
-                    note: notes || undefined,
-                  });
-                  toast.success("Forwarded to HR3 for evaluation.");
+                  const res = await hcmApi.promotions.forwardToHr3(
+                    reviewFor.promotion_request_id,
+                    {
+                      note: notes || undefined,
+                    },
+                  );
+                  toast.success(res.message || "Forwarded to HR3 for evaluation.");
                   setReviewFor(null);
                   load();
                   notifyHcmChanged();
@@ -3235,6 +3393,14 @@ type LifecycleLog = {
   details: string;
 };
 
+const LIFECYCLE_ACTIONS = [
+  "Employee regularized",
+  "Employee promoted",
+  "Employee exited",
+  "Promotion request approved",
+  "Promotion request terminated",
+] as const;
+
 function LifecycleLogsViewer() {
   const hcm = useHcmData();
   const [filterType, setFilterType] = useState("all");
@@ -3250,36 +3416,44 @@ function LifecycleLogsViewer() {
       setLogsError("");
       setLogsLoading(true);
       try {
-        const res = await auditLogApi.list({ module: "Core HCM", per_page: 100 });
+        const res = await auditLogApi.list({
+          module: "Core HCM,New Hire Onboarding,Employee Records",
+          actions: LIFECYCLE_ACTIONS.join(","),
+          per_page: 100,
+        });
         if (cancelled) return;
         const employees = hcm.employees;
-        const relevant = (res.data ?? []).filter((a) => {
-          const act = a.action.toLowerCase();
-          return act.includes("regulariz") || act.includes("promot") || act.includes("exit");
-        });
+        const relevant = (res.data ?? []).filter((a) =>
+          LIFECYCLE_ACTIONS.some((action) => action === a.action),
+        );
         const mapped: LifecycleLog[] = relevant.map((a) => {
           const detailsText = a.details || a.action || "";
+          const actionText = a.action.toLowerCase();
+          const detailsLower = detailsText.toLowerCase();
           const category: LifecycleLog["category"] =
-            a.action.includes("regulariz") || a.action.includes("Regulariz")
+            actionText.includes("regulariz")
               ? "Regularization"
-              : a.action.includes("promot") || a.action.includes("Promot")
-                ? "Promotion"
-                : detailsText.includes("Retired")
-                  ? "Retirement"
-                  : detailsText.includes("Terminated")
-                    ? "Termination"
+              : detailsLower.includes("retired")
+                ? "Retirement"
+                : detailsLower.includes("terminated") || actionText.includes("terminated")
+                  ? "Termination"
+                  : actionText.includes("promot")
+                    ? "Promotion"
                     : "Resignation";
-          const emp = employees.find((e) => e.employee_code === a.target_id);
+          const emp = employees.find(
+            (e) => e.employee_code === a.target_id || String(e.employee_id) === a.target_id,
+          );
+          const detailName =
+            detailsText.match(/Employment type of (.+?) set to Regular/i)?.[1] ??
+            detailsText.match(
+              /^(?:Regularized|Promoted|Exited|Resigned|Terminated|Retired)\s+(.+?)(?:\s+to position\b|$)/i,
+            )?.[1];
           return {
             id: `LC-${a.audit_log_id}`,
             timestamp: (a.occurred_at || a.timestamp || "").replace("T", " ").slice(0, 16),
             category,
-            employeeName:
-              emp?.full_name ||
-              a.details?.replace(/^(Regularized|Promoted|Exited)\s+/, "").split(" ")[0] ||
-              a.target_id ||
-              "Unknown",
-            employeeId: a.target_id || "—",
+            employeeName: emp?.full_name || detailName || a.target_id || "Unknown",
+            employeeId: emp?.employee_code || a.target_id || "—",
             position: emp?.position_title || "—",
             department: emp?.department_name || "—",
             actor: a.user || a.role || "System",

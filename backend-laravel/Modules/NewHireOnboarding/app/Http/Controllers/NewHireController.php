@@ -3,17 +3,21 @@
 namespace Modules\NewHireOnboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
+use App\Observers\ActivityObserver;
+use App\Services\AuditLogger;
+use App\Services\Hr3MockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Modules\CoreHCM\Http\Controllers\Concerns\HcmCache;
+use Modules\CoreHCM\Services\EmployeeLifecycleService;
 use Modules\NewHireOnboarding\Http\Requests\StoreNewHireRequest;
 use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
 use Modules\NewHireOnboarding\Models\NewHire;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
 use Modules\NewHireOnboarding\Services\NewHireIntakeService;
-use App\Services\AuditLogger;
-use Modules\CoreHCM\Services\EmployeeLifecycleService;
 
 class NewHireController extends Controller
 {
@@ -83,6 +87,23 @@ class NewHireController extends Controller
             }
         }
 
+        // A hire entering Probationary/Regular immediately becomes a Core HCM
+        // employee, which is impossible without an assignment. Reject the
+        // request instead of silently creating a hire that never reaches the
+        // org chart / employee roster.
+        if (
+            $data['stage'] !== 'Pre-onboarding'
+            && (empty($data['position_id']) || empty($data['department_id']))
+        ) {
+            return response()->json([
+                'message' => 'Select both a department and a position before adding a hire at Probationary or Regular stage.',
+                'errors' => [
+                    'position_id' => ['A position is required for this stage.'],
+                    'department_id' => ['A department is required for this stage.'],
+                ],
+            ], 422);
+        }
+
         $newHire = NewHire::create($data);
 
         AuditLogger::log(
@@ -112,6 +133,8 @@ class NewHireController extends Controller
             NewHireIntakeService::sendCredentialsEmail($newHire, $account);
         }
 
+        HcmCache::flush();
+
         return response()->json(
             new NewHireResource($newHire->load(['department', 'position', 'onboardingItems.templateItem.template'])),
             201
@@ -137,7 +160,41 @@ class NewHireController extends Controller
     public function update(UpdateNewHireRequest $request, int $new_hire): JsonResponse
     {
         $model = NewHire::findOrFail($new_hire);
-        $model->update($request->validated());
+        $data = $request->validated();
+        $previousStage = $model->stage;
+
+        $stage = $data['stage'] ?? $model->stage;
+        $positionId = array_key_exists('position_id', $data)
+            ? $data['position_id']
+            : $model->position_id;
+        $departmentId = array_key_exists('department_id', $data)
+            ? $data['department_id']
+            : $model->department_id;
+
+        if ($stage !== 'Pre-onboarding' && (! $positionId || ! $departmentId)) {
+            return response()->json([
+                'message' => 'Select both a department and a position before moving this hire past Pre-onboarding.',
+                'errors' => [
+                    'position_id' => ['A position is required for this stage.'],
+                    'department_id' => ['A department is required for this stage.'],
+                ],
+            ], 422);
+        }
+
+        $model->update($data);
+
+        // Keep the linked Core HCM employee on the same assignment as the
+        // hire. Without this, changing the hire's department/position left
+        // the org chart showing the old (or no) department.
+        $this->syncEmployeeAssignment($model, $positionId, $departmentId);
+
+        if ($stage === 'Regular' && $previousStage !== 'Regular') {
+            $this->regularizeEmployeeRecord($model);
+        } elseif ($stage === 'Probationary' && ! $model->employee_id) {
+            NewHireIntakeService::ensureEmployeeRecord($model);
+        }
+
+        HcmCache::flush();
 
         AuditLogger::log(
             action: 'New Hire Updated',
@@ -152,6 +209,49 @@ class NewHireController extends Controller
         );
     }
 
+    /**
+     * Mirrors a hire's department/position change onto its linked employee so
+     * the org chart and employee roster stay in step, including the position
+     * history + filled-count bookkeeping Core HCM's lifecycle service owns.
+     */
+    private function syncEmployeeAssignment(NewHire $newHire, ?int $positionId, ?int $departmentId): void
+    {
+        if (! $newHire->employee_id || ! $positionId || ! $departmentId) {
+            return;
+        }
+
+        $employee = \App\Models\Employee::find($newHire->employee_id);
+        if (! $employee) {
+            return;
+        }
+
+        if (
+            (int) $employee->position_id === (int) $positionId
+            && (int) $employee->department_id === (int) $departmentId
+        ) {
+            return;
+        }
+
+        try {
+            app(EmployeeLifecycleService::class)->applyPositionChange(
+                $employee,
+                (int) $positionId,
+                (int) $departmentId,
+                null,
+                'Transfer',
+                now()->toDateString(),
+                'Updated from the new hire record.',
+                'update',
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Could not sync new hire assignment to employee record', [
+                'new_hire_id' => $newHire->new_hire_id,
+                'employee_id' => $employee->employee_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     /* ------------------------------------------------------------------ */
     /* DELETE /api/v1/new-hires/{new_hire}                                 */
     /* ------------------------------------------------------------------ */
@@ -159,6 +259,7 @@ class NewHireController extends Controller
     public function destroy(int $new_hire): JsonResponse
     {
         NewHire::findOrFail($new_hire)->delete();
+        HcmCache::flush();
 
         AuditLogger::log(
             action: 'New Hire Removed',
@@ -190,6 +291,19 @@ class NewHireController extends Controller
         if (!$nextStage) {
             return response()->json([
                 'message' => "New hire is already at the final stage ({$model->stage}).",
+            ], 422);
+        }
+
+        // Promotion is what turns a hire into a Core HCM employee. Without an
+        // assignment the employee record used to be silently skipped, leaving
+        // the person missing from the org chart while the stage advanced.
+        if (! $model->position_id || ! $model->department_id) {
+            return response()->json([
+                'message' => 'Complete the hire\'s department and position before promoting them.',
+                'errors' => [
+                    'position_id' => ['A position is required before promotion.'],
+                    'department_id' => ['A department is required before promotion.'],
+                ],
             ], 422);
         }
 
@@ -226,6 +340,8 @@ class NewHireController extends Controller
 
         // Email the employee their portal credentials (email + password)
         NewHireIntakeService::sendCredentialsEmail($model, $account);
+
+        HcmCache::flush();
 
         return response()->json(
             new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))
@@ -337,9 +453,68 @@ class NewHireController extends Controller
             action: 'Employee regularized',
             module: 'New Hire Onboarding',
             targetType: 'Employee',
-            targetId: (string) $employee->employee_id,
+            targetId: (string) $employee->employee_code,
             details: "Employment type of {$employee->full_name} set to Regular (hire {$newHire->new_hire_code} reached the Regular stage).",
         );
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/new-hires/{new_hire}/complete                          */
+    /* ------------------------------------------------------------------ */
+
+    public function complete(Request $request, int $new_hire): JsonResponse
+    {
+        $model = NewHire::with('onboardingItems.templateItem.template')->findOrFail($new_hire);
+
+        $force = $request->boolean('force');
+
+        if (! $force && $model->visibleCompletionPercentage() < 100) {
+            return response()->json([
+                'message' => 'Complete every onboarding checklist item before sending this hire to Core HCM.',
+            ], 422);
+        }
+
+        $model->update([
+            'completed_at' => $model->completed_at ?? now(),
+            'evaluation_requested_at' => $model->evaluation_requested_at ?? now(),
+        ]);
+
+        $employee = $model->employee_id
+            ? Employee::find($model->employee_id)
+            : NewHireIntakeService::ensureEmployeeRecord($model);
+
+        if (! $employee && $model->email) {
+            $employee = Employee::where('email', $model->email)->first();
+        }
+
+        if ($employee) {
+            ActivityObserver::withoutLogging(fn () => $employee->forceFill([
+                'onboarding_complete' => true,
+                'employee_record_last_updated_at' => now()->toDateString(),
+            ])->save());
+
+            $model->update(['employee_id' => $employee->employee_id]);
+        }
+
+        $recommendation = app(Hr3MockService::class)->createForOnboarding($model->fresh(), $employee);
+
+        HcmCache::flush();
+
+        AuditLogger::log(
+            action: 'Onboarding Completed',
+            module: 'New Hire Onboarding',
+            targetType: 'New Hire',
+            targetId: (string) $model->new_hire_id,
+            details: $recommendation
+                ? "Onboarding completed for {$model->new_hire_code}; HR3 evaluation #{$recommendation->recommendation_id} auto-created."
+                : "Onboarding completed for {$model->new_hire_code}; no linked employee record to update.",
+        );
+
+        return response()->json([
+            'message' => 'Onboarding completion sent to Core HCM.',
+            'data' => new NewHireResource($model->fresh()->load(['department', 'position', 'onboardingItems.templateItem.template'])),
+            'recommendation' => $recommendation,
+        ]);
     }
 
     /* ------------------------------------------------------------------ */

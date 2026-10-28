@@ -23,11 +23,13 @@ class NewHire extends Model
         'stage',
         'start_date',
         'evaluation_requested_at',
+        'completed_at',
     ];
 
     protected $casts = [
         'start_date'               => 'date',
         'evaluation_requested_at'  => 'datetime',
+        'completed_at'             => 'datetime',
     ];
 
     /* ------------------------------------------------------------------ */

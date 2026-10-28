@@ -48,7 +48,16 @@ let positionsCache: ApiPosition[] = [];
 async function resolveDepartmentId(name: string): Promise<number> {
   const known = departmentsCache.find((d) => d.name === name);
   if (known) return known.department_id;
-  const created = await coreHcmApi.createDepartment({ name });
+  const code =
+    name
+      .split(/[\s&/\\-]+/)
+      .filter(Boolean)
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 20) || "DEPT";
+  const created = await coreHcmApi.createDepartment({ name, code });
   departmentsCache = [...departmentsCache, created];
   return created.department_id;
 }

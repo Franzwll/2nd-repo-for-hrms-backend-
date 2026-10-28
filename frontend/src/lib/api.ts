@@ -13,6 +13,33 @@ const BASE_URL =
   (RAW_BASE_URL.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1");
 export const API_BASE_URL = BASE_URL;
 
+function fileApiUrl(path: string): string {
+  const suffix = path.replace(/^\/api\/v1(?=\/|$)/, "");
+  return `${BASE_URL}${suffix.startsWith("/") ? suffix : `/${suffix}`}`;
+}
+
+/**
+ * Build a query string while dropping empty values. `new URLSearchParams`
+ * stringifies `undefined` as "undefined", which breaks server-side filters and
+ * validation for optional params.
+ */
+function toQueryString(params?: Record<string, unknown>): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item === undefined || item === null || item === "") continue;
+        qs.append(key, String(item));
+      }
+      continue;
+    }
+    qs.append(key, String(value));
+  }
+  return qs.toString();
+}
+
 /** Never show raw SQL / DB internals to users — collapse them to a generic message. */
 function sanitizeErrorMessage(raw: unknown): string {
   const text = String(raw ?? "");
@@ -576,7 +603,7 @@ export function resolveStorageUrl(value: string | null): string | null {
 
 export const applicantsApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiApplicant[]; meta: any }>(`/applicants${qs ? `?${qs}` : ""}`);
   },
   get: (id: number | string) => request<ApiApplicant>(`/applicants/${id}`),
@@ -677,9 +704,11 @@ export const applicantsApi = {
    *  request authenticates server-side without an Authorization header. */
   resumeDocumentUrl: (applicantId: number | string) => {
     const token = getToken();
-    return `/api/v1/applicants/${applicantId}/resume-document${
-      token ? `?token=${encodeURIComponent(token)}` : ""
-    }`;
+    return fileApiUrl(
+      `/api/v1/applicants/${applicantId}/resume-document${
+        token ? `?token=${encodeURIComponent(token)}` : ""
+      }`,
+    );
   },
   createAssessment: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessment>(`/applicants/${applicantId}/assessments`, {
@@ -687,8 +716,7 @@ export const applicantsApi = {
       body: JSON.stringify(data),
     }),
   /** Same-email past applications + cooldown countdown for the HR profile strip. */
-  history: (id: number | string) =>
-    request<ApiApplicantHistory>(`/applicants/${id}/history`),
+  history: (id: number | string) => request<ApiApplicantHistory>(`/applicants/${id}/history`),
   /** HR allows early re-application (lifts the waiting period, audited). */
   overrideCooldown: (id: number | string) =>
     request<{ message: string; data: ApiApplicant }>(
@@ -813,7 +841,7 @@ export const assessmentsApi = {
       `/assessments/config`,
     ),
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ""}`);
   },
 };
@@ -895,7 +923,7 @@ export const screeningApi = {
         meta: { counts: Record<string, number> };
       }>("/screening/reference-data"),
     list: (params?: { data_type?: string; search?: string }) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{ success: boolean; data: ApiScreeningReference[]; meta: any }>(
         `/screening/reference-data/list${qs ? `?${qs}` : ""}`,
       );
@@ -990,7 +1018,7 @@ export const screeningApi = {
 
 export const interviewsApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiInterview[]; meta: any }>(`/interviews${qs ? `?${qs}` : ""}`);
   },
   create: (data: Record<string, any>) =>
@@ -1041,14 +1069,14 @@ export const interviewsApi = {
 
 export const facilitiesApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiFacility[]; meta: any }>(`/facilities${qs ? `?${qs}` : ""}`);
   },
 };
 
 export const assessmentTestsApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiAssessmentTest[]; meta: any }>(
       `/assessment-tests${qs ? `?${qs}` : ""}`,
     );
@@ -1093,7 +1121,7 @@ export interface ApiAssessmentInvite {
 
 export const assessmentInvitesApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiAssessmentInvite[] }>(`/assessment-invites${qs ? `?${qs}` : ""}`);
   },
   create: (applicantId: number | string, data: Record<string, any>) =>
@@ -1105,7 +1133,7 @@ export const assessmentInvitesApi = {
 
 export const practicalTestsApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiPracticalTest[]; meta: any }>(
       `/practical-tests${qs ? `?${qs}` : ""}`,
     );
@@ -1154,7 +1182,7 @@ export interface ApiFinalEvaluationPreview {
 
 export const finalEvaluationsApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiFinalEvaluation[]; meta: any }>(
       `/final-evaluations${qs ? `?${qs}` : ""}`,
     );
@@ -1175,7 +1203,7 @@ export const finalEvaluationsApi = {
 
 export const applicantDocumentsApi = {
   list: (applicantId: number | string, params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiApplicantDocument[]; meta: any }>(
       `/applicants/${applicantId}/documents${qs ? `?${qs}` : ""}`,
     );
@@ -1209,7 +1237,7 @@ export const applicantDocumentsApi = {
     if (token) qs.set("token", token);
     if (download) qs.set("download", "1");
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return `/api/v1/applicant-documents/${id}/file${suffix}`;
+    return fileApiUrl(`/api/v1/applicant-documents/${id}/file${suffix}`);
   },
 };
 
@@ -1373,7 +1401,7 @@ export const jobPostsApi = {
   /** Usage/limit snapshot for the AI draft indicator (triggers no generation). */
   aiUsage: (params?: { clear?: boolean }) => request<{ success: boolean; data: JobAiUsage }>(`/job-posts/ai-usage${params?.clear ? "?clear=1" : ""}`),
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiJobPost[]; meta: any }>(`/job-posts${qs ? `?${qs}` : ""}`);
   },
   get: (id: number | string) => request<ApiJobPost>(`/job-posts/${id}`),
@@ -1416,7 +1444,7 @@ export const jobPostsApi = {
 
 export const requisitionsApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiRequisition[]; meta: any }>(`/requisitions${qs ? `?${qs}` : ""}`);
   },
   get: (id: number | string) => request<ApiRequisition>(`/requisitions/${id}`),
@@ -1473,26 +1501,26 @@ export interface ApiPosition {
 /** Core HCM lookups — departments & positions live in the database. */
 export const coreHcmApi = {
   departments: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ""}`);
   },
   createDepartment: (data: Record<string, any>) =>
-    request<ApiDepartment>("/departments", {
+    request<{ message: string; data: ApiDepartment }>("/departments", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
+    }).then((res) => res.data),
   positions: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ""}`);
   },
   createPosition: (data: Record<string, any>) =>
-    request<ApiPosition>("/positions", {
+    request<{ message: string; data: ApiPosition }>("/positions", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
+    }).then((res) => res.data),
   salaryGrades: {
     list: (params?: Record<string, any>) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ""}`);
     },
   },
@@ -1519,6 +1547,7 @@ export interface ApiNewHire {
   /** When HR requested the probationary performance evaluation (ISO timestamp
    *  or null) — drives the DOLE auto-regularization countdown. */
   evaluation_requested_at?: string | null;
+  completed_at?: string | null;
   completion_percent?: number;
   onboarding_items?: {
     employee_onboarding_item_id: number | null;
@@ -1585,7 +1614,7 @@ export interface ApiChecklistRequest {
 
 export const newHiresApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiNewHire[]; meta: any }>(`/new-hires${qs ? `?${qs}` : ""}`);
   },
   get: (id: number | string) => request<ApiNewHire>(`/new-hires/${id}`),
@@ -1603,12 +1632,20 @@ export const newHiresApi = {
     request<{ message: string }>(`/new-hires/${id}`, { method: "DELETE" }),
   promoteStage: (id: number | string) =>
     request<ApiNewHire>(`/new-hires/${id}/promote-stage`, { method: "POST" }),
+  complete: (id: number | string, data?: Record<string, any>) =>
+    request<{ message: string; data: ApiNewHire; recommendation?: any }>(
+      `/new-hires/${id}/complete`,
+      {
+        method: "POST",
+        body: JSON.stringify(data ?? {}),
+      },
+    ),
   stats: () => request<any>("/new-hires/stats"),
 };
 
 export const checklistTemplatesApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiChecklistTemplate[]; meta: any }>(
       `/checklist-templates${qs ? `?${qs}` : ""}`,
     );
@@ -1713,15 +1750,17 @@ export const onboardingItemsApi = {
    *  request authenticates server-side without an Authorization header. */
   documentUrl: (itemId: number | string) => {
     const token = getToken();
-    return `/api/v1/onboarding-items/${itemId}/document${
-      token ? `?token=${encodeURIComponent(token)}` : ""
-    }`;
+    return fileApiUrl(
+      `/api/v1/onboarding-items/${itemId}/document${
+        token ? `?token=${encodeURIComponent(token)}` : ""
+      }`,
+    );
   },
 };
 
 export const checklistRequestsApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiChecklistRequest[]; meta: any }>(
       `/checklist-requests${qs ? `?${qs}` : ""}`,
     );
@@ -1791,12 +1830,28 @@ export const settingsApi = {
       { method: "POST" },
     ),
   /** Downloads the .sql dump file for a backup entry. */
-  downloadBackup: (id: string) => {
-    window.open(
+  downloadBackup: async (id: string) => {
+    const token = getToken();
+    const response = await fetch(
       `${BASE_URL}/settings/backups/${encodeURIComponent(id)}/download`,
-      "_blank",
-      "noopener",
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
     );
+
+    if (!response.ok) {
+      throw new Error(`Could not download the backup (HTTP ${response.status})`);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `backup-${id}.sql`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   },
   /** Rolls the database back to the selected snapshot. */
   restoreBackup: (id: string) =>
@@ -1814,7 +1869,6 @@ export interface ApiLoginResponse {
   message: string;
   login_token: string;
   expires_in: number;
-  debug_otp: string;
   /** True when the user's role still requires OTP verification at /otp. */
   otp_required?: boolean;
   /** Which second factor the /otp step expects. */
@@ -1885,7 +1939,7 @@ export const authApi = {
       body: JSON.stringify({ login_token, otp, captcha_token }),
     }),
   resendOtp: (login_token: string, captcha_token?: string) =>
-    request<{ message: string; expires_in: number; debug_otp: string }>("/auth/otp/resend", {
+    request<{ message: string; expires_in: number }>("/auth/otp/resend", {
       method: "POST",
       body: JSON.stringify({ login_token, captcha_token }),
     }),
@@ -2145,7 +2199,7 @@ export interface ApiOrgNode {
 export const hcmApi = {
   employees: {
     list: (params?: Record<string, any>) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{ data: ApiEmployee[]; meta: any }>(`/employees${qs ? `?${qs}` : ""}`);
     },
     get: (id: number | string) => request<{ data: ApiEmployee }>(`/employees/${id}`),
@@ -2179,7 +2233,7 @@ export const hcmApi = {
   },
   departments: {
     list: (params?: Record<string, any>) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ""}`);
     },
     create: (data: Record<string, any>) =>
@@ -2197,7 +2251,7 @@ export const hcmApi = {
   },
   positions: {
     list: (params?: Record<string, any>) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ""}`);
     },
     create: (data: Record<string, any>) =>
@@ -2215,7 +2269,7 @@ export const hcmApi = {
   },
   salaryGrades: {
     list: (params?: Record<string, any>) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ""}`);
     },
     create: (data: Record<string, any>) =>
@@ -2240,10 +2294,20 @@ export const hcmApi = {
       request<{ message: string }>(`/hr3-recommendations/${id}/acknowledge`, {
         method: "POST",
       }),
+    mock: (data: {
+      employee_id: number;
+      recommendation_type: "Regularization" | "Promotion" | "Performance Review";
+      evaluation_score?: number;
+      comments?: string;
+    }) =>
+      request<{ message: string; data: ApiHR3Recommendation }>("/hr3-recommendations/mock", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
   promotions: {
     list: (params?: Record<string, any>) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{ data: ApiPromotionRequest[]; meta: any }>(
         `/promotion-requests${qs ? `?${qs}` : ""}`,
       );
@@ -2350,7 +2414,7 @@ export interface ApiLoginActivity {
 export const userManagementApi = {
   users: {
     list: (params?: Record<string, any>) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{
         data: ApiSystemUser[];
         meta: any;
@@ -2385,7 +2449,7 @@ export const userManagementApi = {
   },
   roles: {
     list: (params?: Record<string, any>) => {
-      const qs = new URLSearchParams(params).toString();
+      const qs = toQueryString(params);
       return request<{ data: ApiRole[]; meta: any }>(`/roles${qs ? `?${qs}` : ""}`);
     },
     get: (id: number | string) => request<{ data: ApiRole }>(`/roles/${id}`),
@@ -2442,7 +2506,7 @@ export interface ApiAuditLog {
 
 export const auditLogApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiAuditLog[]; meta: any }>(`/audit-logs${qs ? `?${qs}` : ""}`);
   },
   stats: () =>
@@ -2523,7 +2587,7 @@ export interface ApiAnnouncement {
 
 export const announcementsApi = {
   list: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiAnnouncement[] }>(`/announcements${qs ? `?${qs}` : ""}`);
   },
   create: (data: { title: string; body: string; audience: string; status?: string }) =>
@@ -2594,12 +2658,12 @@ export const dashboardApi = {
 export const landingApi = {
   company: () => request<{ data: ApiLandingCompany }>("/landing/company"),
   jobs: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiLandingJob[]; meta: any }>(`/landing/jobs${qs ? `?${qs}` : ""}`);
   },
   job: (id: number | string) => request<{ data: ApiLandingJob }>(`/landing/jobs/${id}`),
   announcements: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = toQueryString(params);
     return request<{ data: ApiAnnouncement[]; meta: any }>(
       `/landing/announcements${qs ? `?${qs}` : ""}`,
     );
@@ -2633,7 +2697,7 @@ export const landingApi = {
 /* ========================================================================= */
 
 export interface ApiEssEmployee {
-  id: number;
+  id: number | null;
   code: string;
   name: string;
   email: string;
@@ -2642,6 +2706,34 @@ export interface ApiEssEmployee {
   supervisor: string;
   employment_type?: string;
   date_hired?: string;
+  salary_grade?: string | null;
+  salary_step?: string | null;
+  phone?: string;
+  personal_email?: string;
+  address?: string;
+  birth_date?: string | null;
+  gender?: string;
+  civil_status?: string;
+  nationality?: string;
+  status?: string;
+  sss_number?: string;
+  philhealth_number?: string;
+  pagibig_number?: string;
+  tin_number?: string;
+  emergency_contacts?: {
+    name: string;
+    relationship: string;
+    phone: string;
+    address: string;
+  }[];
+}
+
+export interface ApiEssColleague {
+  id: number;
+  code: string;
+  name: string;
+  position: string;
+  department: string;
 }
 
 export interface ApiLeaveBalance {
@@ -2688,6 +2780,12 @@ export interface ApiPayrollData {
   employee_name: string;
   position: string;
   department: string;
+  statutory?: {
+    sss: string;
+    philhealth: string;
+    pagibig: string;
+    tin: string;
+  };
   baseSalary: number;
   allowances: number;
   gross: number;
@@ -2749,6 +2847,15 @@ export interface ApiEssOverview {
   leave_balances: ApiLeaveBalance[];
   pending_requests_count: number;
   recent_requests: any[];
+  documents_summary?: {
+    total: number;
+    verified: number;
+  };
+  recognition_summary?: {
+    received: number;
+    given: number;
+    top_pillar: string;
+  };
 }
 
 export interface ApiEssBenefit {
@@ -2847,7 +2954,20 @@ export interface ApiEssCategory {
 
 export const essApi = {
   // Employee Portal
+  myContext: () =>
+    request<{
+      linked: boolean;
+      employee: {
+        id: number;
+        code: string;
+        name: string;
+        email: string | null;
+        department: string | null;
+        position: string | null;
+      } | null;
+    }>("/ess/my-context"),
   overview: () => request<ApiEssOverview>("/ess/my-overview"),
+  colleagues: () => request<{ colleagues: ApiEssColleague[] }>("/ess/colleagues"),
   schedule: () =>
     request<{ employee: ApiEssEmployee; weekly_roster: ApiScheduleDay[] }>("/ess/my-schedule"),
   myAttendance: () =>
@@ -2903,6 +3023,8 @@ export const essApi = {
         department: string;
         overall_rating: number | null;
         competency_level: string | null;
+        salary_grade?: string | null;
+        salary_step?: string | null;
       };
       stats: {
         completed_courses: number;
@@ -2925,6 +3047,8 @@ export const essApi = {
         estimated_reading_minutes?: number | null;
         estimated_pages?: number | null;
         mandatory?: boolean;
+        /** A failed attempt is final — the quiz stays locked. */
+        quiz_failed?: boolean;
       }[];
     }>("/ess/my-performance"),
   updateLearningProgress: (data: { course_code: string }) =>
@@ -2995,14 +3119,15 @@ export const essApi = {
       status: string;
       certificate_eligible: boolean;
       already_completed?: boolean;
+      /** Failed attempts are final, so this is always false in the current policy. */
+      retake_allowed?: boolean;
       review: {
         id: number;
         question: string;
         options: string[];
-        correct_index: number;
+        // The answer key (correct_index / explanation) is never sent.
         your_index: number | null;
         is_correct: boolean;
-        explanation: string;
       }[];
     }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`, {
       method: "POST",
@@ -3013,7 +3138,7 @@ export const essApi = {
   learningMaterialUrl: (courseCode: string) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/my-learning/${encodeURIComponent(courseCode)}/file${qs}`;
+    return fileApiUrl(`/api/v1/ess/my-learning/${encodeURIComponent(courseCode)}/file${qs}`);
   },
   adminLearning: () =>
     request<{
@@ -3075,7 +3200,7 @@ export const essApi = {
       method: "POST",
     }),
   myRequests: (params?: Record<string, any>) => {
-    const qs = params ? new URLSearchParams(params).toString() : "";
+    const qs = params ? toQueryString(params) : "";
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ""}`);
   },
   createRequest: (data: Record<string, any> | FormData) => {
@@ -3135,25 +3260,22 @@ export const essApi = {
   },
   /** ESS Management releases a module result to the employee. */
   releaseRequest: (id: string | number, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/release`,
-      { method: "POST", body: JSON.stringify({ ...(note ? { note } : {}) }) },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/release`, {
+      method: "POST",
+      body: JSON.stringify({ ...(note ? { note } : {}) }),
+    }),
   /** ESS Management sends an already-reviewed request to a module. */
   dispatchRequest: (id: string | number, module?: string, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/dispatch`,
-      {
-        method: "POST",
-        body: JSON.stringify({ ...(module ? { module } : {}), ...(note ? { note } : {}) }),
-      },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/dispatch`, {
+      method: "POST",
+      body: JSON.stringify({ ...(module ? { module } : {}), ...(note ? { note } : {}) }),
+    }),
   /** ESS Management reroutes a request; any applied module result is reversed. */
   rerouteRequest: (id: string | number, module: string, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/reroute`,
-      { method: "POST", body: JSON.stringify({ module, ...(note ? { note } : {}) }) },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/reroute`, {
+      method: "POST",
+      body: JSON.stringify({ module, ...(note ? { note } : {}) }),
+    }),
   /** Routing ledger for one request (dispatch/accept/complete/release legs). */
   requestRoutings: (id: string | number) =>
     request<{ routings: any[] }>(`/ess/admin/requests/${id}/routings`),
@@ -3161,7 +3283,7 @@ export const essApi = {
   // Generic module inbox (ERM uses its bespoke endpoints; these serve the
   // Attendance / Payroll / Performance queues and future modules).
   moduleRequests: (module: string, params?: Record<string, any>) => {
-    const qs = params ? new URLSearchParams(params).toString() : "";
+    const qs = params ? toQueryString(params) : "";
     return request<{
       module: string;
       module_label: string;
@@ -3184,11 +3306,7 @@ export const essApi = {
       `/ess/modules/${module}/requests/${id}/decline`,
       { method: "POST", body: JSON.stringify({ reason }) },
     ),
-  completeModuleRequest: (
-    module: string,
-    id: string | number,
-    data: Record<string, any> = {},
-  ) => {
+  completeModuleRequest: (module: string, id: string | number, data: Record<string, any> = {}) => {
     const isForm = Object.values(data).some((v) => v instanceof File);
     if (!isForm) {
       return request<{ message: string; request: ApiEssRequestItem }>(
@@ -3214,22 +3332,21 @@ export const essApi = {
   requestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+    return fileApiUrl(`/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`);
   },
   /** HR view of an attachment on any employee request (ESS Management access). */
-  adminRequestAttachmentUrl: (
-    requestId: string | number,
-    attachmentId: string | number,
-  ) => {
+  adminRequestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/admin/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+    return fileApiUrl(
+      `/api/v1/ess/admin/requests/${requestId}/attachments/${attachmentId}/file${qs}`,
+    );
   },
   /** Same-origin URL to stream the employee's own document file with ?token= auth. */
   documentFileUrl: (documentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/my-documents/${documentId}/file${qs}`;
+    return fileApiUrl(`/api/v1/ess/my-documents/${documentId}/file${qs}`);
   },
   clock: (action: "clock_in" | "clock_out") =>
     request<{ message: string; record: any }>("/ess/clock", {
@@ -3248,19 +3365,15 @@ export const essApi = {
       data: any[];
       new_hire: { new_hire_id: number; new_hire_code: string; name: string; stage: string } | null;
     }>("/ess/my-checklist"),
-  createPromotionRequest: (data: {
-    requested_position_id?: number | null;
-    requested_salary_grade_id?: number | null;
-    justification: string;
-  }) =>
+  createPromotionRequest: (data: FormData) =>
     request<{ message: string; data: ApiPromotionRequest }>("/ess/my-promotion-requests", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: data,
     }),
 
   // Admin & Superadmin Management
   adminRequests: (params?: Record<string, any>) => {
-    const qs = params ? new URLSearchParams(params).toString() : "";
+    const qs = params ? toQueryString(params) : "";
     return request<{
       counts: {
         total: number;
@@ -3311,7 +3424,7 @@ export const essApi = {
 export const ermApi = {
   /** Document requests filed by employees in ESS and routed to ERM. */
   documentRequests: (params?: Record<string, any>) => {
-    const qs = params ? new URLSearchParams(params).toString() : "";
+    const qs = params ? toQueryString(params) : "";
     return request<{
       counts: { total: number; pending: number; for_release: number; fulfilled: number };
       requests: ApiDocumentRequest[];
@@ -3334,7 +3447,9 @@ export const ermApi = {
   attachmentFileUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/erm/document-requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+    return fileApiUrl(
+      `/api/v1/erm/document-requests/${requestId}/attachments/${attachmentId}/file${qs}`,
+    );
   },
 
   /** The ERM-owned 201 dossier (employment master + personal/gov data). */
@@ -3413,7 +3528,7 @@ export const ermApi = {
     documentFileUrl: (id: number | string, documentId: number | string) => {
       const token = getToken();
       const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-      return `/api/v1/erm/employees/${id}/documents/${documentId}/file${qs}`;
+      return fileApiUrl(`/api/v1/erm/employees/${id}/documents/${documentId}/file${qs}`);
     },
     updateExitRecord: (id: number | string, data: Record<string, any>) =>
       request<{ message: string; exit_record: ApiExitRecord }>(`/erm/employees/${id}/exit-record`, {

@@ -136,6 +136,24 @@ function api(string $method, string $path, $json = null, ?array $multipart = nul
     ];
 }
 
+function latestOtpFromLog(string $email): ?string
+{
+    $needle = "OTP issued for {$email}: >";
+    $files = glob(storage_path('logs/*.log')) ?: [];
+    usort($files, fn (string $a, string $b): int => filemtime($b) <=> filemtime($a));
+
+    foreach (array_slice($files, 0, 5) as $file) {
+        $lines = @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        for ($i = count($lines) - 1; $i >= 0; $i--) {
+            if (str_contains($lines[$i], $needle) && preg_match('/>(\d{6})</', $lines[$i], $m)) {
+                return $m[1];
+            }
+        }
+    }
+
+    return null;
+}
+
 function login(): bool
 {
     global $TOKEN, $ME, $EMAIL, $PASSWORD;
@@ -149,11 +167,12 @@ function login(): bool
     $j = $r['json'];
 
     if (! empty($j['otp_required'])) {
-        if (empty($j['debug_otp'])) {
-            record('auth', 'login', false, 'OTP required but debug_otp missing (APP_ENV not local?)');
+        $otp = latestOtpFromLog($EMAIL);
+        if (empty($otp)) {
+            record('auth', 'login', false, 'OTP required but no local log entry found (APP_ENV must be local and logging enabled)');
             return false;
         }
-        $v = api('POST', '/auth/otp/verify', ['login_token' => $j['login_token'], 'otp' => $j['debug_otp']], null, true);
+        $v = api('POST', '/auth/otp/verify', ['login_token' => $j['login_token'], 'otp' => $otp], null, true);
         if ($v['status'] !== 200) {
             record('auth', 'login', false, "OTP verify HTTP {$v['status']} " . ($v['json']['message'] ?? ''));
             return false;
