@@ -32,6 +32,7 @@ class StoreApplicantRequest extends FormRequest
             'name'         => ['required', 'string', 'max:160'],
             'email'        => ['required', 'email', 'max:190'],
             'phone'        => ['nullable', 'string', 'max:40'],
+            'address'      => ['nullable', 'string', 'max:500'],
             'source'       => ['nullable', 'string', 'max:60'],
             'summary'      => ['nullable', 'string'],
             'flags_json'   => ['nullable', 'array'],
@@ -43,6 +44,7 @@ class StoreApplicantRequest extends FormRequest
             /* HR early re-application override — skips the failed-applicant
                cooldown for this create (audited in the controller). */
             'override_cooldown' => ['nullable', 'boolean'],
+            'override_block'    => ['nullable', 'boolean'],
             // `extensions` (not `mimes`): validates the uploaded file's own
             // extension instead of the MIME type guessed from its bytes, which
             // Windows/PHP fileinfo often reports as application/octet-stream —

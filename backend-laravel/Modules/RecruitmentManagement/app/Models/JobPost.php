@@ -137,6 +137,26 @@ class JobPost extends Model
     }
 
     /**
+     * Release one filled slot — used when a Super Admin returns a Hired
+     * applicant to the recruitment pipeline. Mirrors fillOneSlot(): the
+     * counter never drops below zero, and a post that was auto-closed by the
+     * hire becomes open again as soon as it has a vacancy.
+     */
+    public function releaseOneSlot(): void
+    {
+        if ($this->trashed() || (int) ($this->filled_count ?? 0) <= 0) {
+            return;
+        }
+
+        $this->decrement('filled_count');
+        $this->refresh();
+
+        if ($this->remainingSlots() > 0 && $this->status === 'Closed') {
+            $this->update(['status' => 'published', 'active' => 1]);
+        }
+    }
+
+    /**
      * title and slug always refer to the linked Core HR position title,
      * so job posts can never drift out of sync with the position.
      */

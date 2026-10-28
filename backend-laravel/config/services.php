@@ -38,7 +38,7 @@ return [
     'gemini' => [
         'key' => env('GEMINI_API_KEY'),
         'fallback_key' => env('GEMINI_FALLBACK_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.1-flash-lite'),
         'fallback_model' => env('GEMINI_FALLBACK_MODEL'),
         'timeout' => (int) env('GEMINI_TIMEOUT', 30),
         'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 2048),
@@ -49,7 +49,7 @@ return [
     | AI chat (Landing + ESS share one chain)
     |--------------------------------------------------------------------------
     | 1st Groq (openai/gpt-oss-20b) -> 2nd OpenRouter
-    | (nvidia/nemotron-3-super-120b-a12b:free) -> 3rd shared Gemini.
+    | (nvidia/nemotron-3.5-lightning:free) -> 3rd shared Gemini.
     */
     'chat_groq' => [
         'key' => env('CHAT_GROQ_API_KEY'),
@@ -58,7 +58,7 @@ return [
 
     'chat_openrouter' => [
         'key' => env('CHAT_OPENROUTER_API_KEY'),
-        'model' => env('CHAT_OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free'),
+        'model' => env('CHAT_OPENROUTER_MODEL', 'nvidia/nemotron-3.5-lightning:free'),
     ],
 
     /*
@@ -75,7 +75,7 @@ return [
 
     'job_openrouter' => [
         'key' => env('JOB_OPENROUTER_API_KEY'),
-        'model' => env('JOB_OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free'),
+        'model' => env('JOB_OPENROUTER_MODEL', 'nvidia/nemotron-3.5-lightning:free'),
     ],
 
     'turnstile' => [
@@ -86,7 +86,7 @@ return [
         'key' => env('OPENROUTER_API_KEY'),
         // Free auto-router across all free models (not a Gemini model — it
         // picks whatever free model is available). Pin a specific slug
-        // (e.g. "google/gemini-2.5-flash" or "...:free") to fix the model.
+        // (e.g. "nvidia/nemotron-3.5-lightning:free" or "...:free") to fix the model.
         'model' => env('OPENROUTER_MODEL', 'openrouter/free'),
     ],
 
@@ -114,7 +114,7 @@ return [
         // Ceiling (seconds) for one generation across all providers. When it
         // is reached no further provider is started, so a fully degraded chain
         // answers with a clean error instead of a hanging request.
-        'total_budget' => (int) env('JOB_AI_TOTAL_BUDGET', 25),
+        'total_budget' => (int) env('JOB_AI_TOTAL_BUDGET', 40),
     ],
 
     /*

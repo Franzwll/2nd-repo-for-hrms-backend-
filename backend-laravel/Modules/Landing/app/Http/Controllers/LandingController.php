@@ -7,6 +7,7 @@ use App\Models\Announcement;
 use App\Models\Applicant;
 use App\Models\JobPost;
 use App\Models\SystemSetting;
+use App\Services\ApplicantRecognitionService;
 use App\Services\DuplicateApplicationService;
 use App\Services\NlpService;
 use App\Services\NotificationService;
@@ -373,6 +374,8 @@ class LandingController extends Controller
      */
     public function extractResume(Request $request): JsonResponse
     {
+        ScreeningService::raiseTimeLimit();
+
         $request->validate([
             'resume' => ['required', 'file', self::uploadExtensionRule(), 'max:20480'],
         ]);
@@ -422,6 +425,8 @@ class LandingController extends Controller
      */
     public function classifyDocument(Request $request): JsonResponse
     {
+        ScreeningService::raiseTimeLimit();
+
         $request->validate([
             'file' => ['required', 'file', self::uploadExtensionRule(), 'max:20480'],
             // NOTE: 'boolean' rule rejects the strings FormData sends
@@ -452,17 +457,35 @@ class LandingController extends Controller
     }
 
     public function apply(JobApplicationRequest $request): JsonResponse    {
+        ScreeningService::raiseTimeLimit();
+
         $jobPost = JobPost::find($request->integer('job_post_id'));
 
         if (! $jobPost || ! $jobPost->active || ! in_array($jobPost->status, ['published', 'Open']) || $jobPost->remainingSlots() <= 0) {
             return response()->json(['message' => 'This position is no longer accepting applications. All slots have been filled.'], 422);
         }
 
-        // Failed-applicant cooldown first: same email blocked from ANY job
-        // inside the waiting window (decliners + HR overrides skip it).
-        // Same resume file used for a DIFFERENT job is otherwise allowed.
-        $cooldown = DuplicateApplicationService::findCooldown(
-            (string) $request->string('email')
+        // Block check first: recognized applicant restricted from recruitment
+        $block = ApplicantRecognitionService::findBlock(
+            (string) $request->string('email'),
+            (string) $request->string('name'),
+            $request->filled('phone') ? (string) $request->string('phone') : null,
+            $request->filled('address') ? (string) $request->string('address') : null,
+            (int) $jobPost->job_post_id
+        );
+        if ($block) {
+            return response()->json(
+                DuplicateApplicationService::blockResponse($block),
+                403
+            );
+        }
+
+        // Failed-applicant cooldown: recognized applicant blocked from ANY job inside waiting window
+        $cooldown = ApplicantRecognitionService::findCooldown(
+            (string) $request->string('email'),
+            (string) $request->string('name'),
+            $request->filled('phone') ? (string) $request->string('phone') : null,
+            $request->filled('address') ? (string) $request->string('address') : null
         );
         if ($cooldown) {
             return response()->json(
@@ -471,10 +494,13 @@ class LandingController extends Controller
             );
         }
 
-        // Scoped duplicate guard: same email + same job + active stage only.
-        $existing = DuplicateApplicationService::findDuplicate(
+        // Scoped duplicate guard: recognized applicant + same job + active stage only.
+        $existing = ApplicantRecognitionService::findDuplicate(
             (string) $request->string('email'),
-            (int) $jobPost->job_post_id
+            (int) $jobPost->job_post_id,
+            (string) $request->string('name'),
+            $request->filled('phone') ? (string) $request->string('phone') : null,
+            $request->filled('address') ? (string) $request->string('address') : null
         );
         if ($existing) {
             return response()->json(
@@ -489,6 +515,7 @@ class LandingController extends Controller
             'name' => $request->string('name'),
             'email' => $request->string('email'),
             'phone' => $request->string('phone'),
+            'address' => $request->filled('address') ? $request->string('address') : null,
             'applied_at' => now(),
             'status' => 'fit',
             'stage' => 'Screened',

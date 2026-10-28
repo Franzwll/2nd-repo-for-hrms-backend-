@@ -3510,12 +3510,35 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     const educationLevels = levelChips(draft.educationLevels, parts.educationLevels);
     const experienceLevels = levelChips(draft.experienceLevels, parts.experienceLevels);
 
+    const matchedPosition =
+      template.position_id !== null && template.position_id !== undefined
+        ? knownPositions.find((p) => p.dbId === template.position_id)
+        : null;
+
     setDraft((d) => ({
       ...d,
+      ...(matchedPosition
+        ? {
+            positionDbId: matchedPosition.dbId,
+            title: matchedPosition.title,
+            department: matchedPosition.department,
+            ...(matchedPosition.salaryGradeId
+              ? { salaryGradeId: String(matchedPosition.salaryGradeId) }
+              : {}),
+            ...(matchedPosition.salaryGradeMin !== null && matchedPosition.salaryGradeMin !== undefined
+              ? { salaryMin: String(matchedPosition.salaryGradeMin) }
+              : {}),
+            ...(matchedPosition.salaryGradeMax !== null && matchedPosition.salaryGradeMax !== undefined
+              ? { salaryMax: String(matchedPosition.salaryGradeMax) }
+              : {}),
+          }
+        : {}),
       skills: nextSkills.join("\n"),
       qualifications: nextQualifications.join("\n"),
       educationLevels,
       experienceLevels,
+      education: (weakestAcceptedLevel(educationLevels, EDUCATION_LEVEL_OPTIONS) ?? d.education) as Job["education"],
+      experience: (weakestAcceptedLevel(experienceLevels, EXPERIENCE_LEVEL_OPTIONS) ?? d.experience) as Job["experience"],
     }));
     setAppliedTemplate(template);
     // Make sure the seeded blocks sit on the builder canvas and are active.
@@ -3573,6 +3596,39 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           : "Review the builder draft before saving.",
       },
     );
+  };
+
+  const handleUseTemplateFromManager = (template: ApiRequirementTemplate) => {
+    const pos =
+      template.position_id !== null && template.position_id !== undefined
+        ? knownPositions.find((p) => p.dbId === template.position_id)
+        : null;
+    const positionLabel = pos
+      ? `${pos.title} — ${pos.department}`
+      : template.name;
+
+    const hasExistingContent =
+      draft.skills.trim() !== "" ||
+      draft.qualifications
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .some((l) =>
+          CERTIFICATION_LINE_RE.test(l) ||
+          EXPERIENCE_ROLE_LINE_RE.test(l) ||
+          EDUCATION_NOTE_LINE_RE.test(l) ||
+          EXPERIENCE_NOTE_LINE_RE.test(l),
+        );
+
+    setScreeningOpen(false);
+    setTab("builder");
+    setBuilderStarted(true);
+
+    if (hasExistingContent) {
+      setPendingTemplate({ template, positionLabel });
+    } else {
+      applyRequirementTemplateToDraft(template, { replaceRequirements: true });
+    }
   };
 
   /** Adds a template term to the Reference Data vocabulary (skill/role/cert)
@@ -4168,9 +4224,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
    * Refreshes the AI usage/limit snapshot shown beside Generate with AI.
    * Best-effort: a failing indicator must never block the builder.
    */
-  const loadAiUsage = useCallback(() => {
+  const loadAiUsage = useCallback((clear = false) => {
     jobPostsApi
-      .aiUsage()
+      .aiUsage(clear ? { clear: true } : undefined)
       .then((res) => setAiUsage(res.data))
       .catch(() => {
         // Keep the last known snapshot — no toast, this is background data.
@@ -4396,7 +4452,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         limited: false,
       };
     }
-    if (aiBlockedSeconds > 0) {
+    if (aiBlockedSeconds > 0 && aiUsage.blocked_code && AI_LIMIT_CODES.has(aiUsage.blocked_code)) {
       return {
         tone: "limit" as const,
         label: `AI limit · ${aiCountdown(aiBlockedSeconds)}`,
@@ -4405,6 +4461,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         } Use a Content Template meanwhile.`,
         percent: 100 as number | null,
         limited: true,
+      };
+    }
+    if (aiBlockedSeconds > 0) {
+      return {
+        tone: "busy" as const,
+        label: `AI cooling down · ${aiCountdown(aiBlockedSeconds)}`,
+        title: `${aiFailureLabel(aiUsage.blocked_code)} — ${
+          aiUsage.blocked_reason ?? "AI service temporarily cooling down."
+        }`,
+        percent: null as number | null,
+        limited: false,
       };
     }
 
@@ -6376,7 +6443,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     if (!tpl) {
       setAppliedTemplate(null);
     } else if (draft.skills.trim() === "") {
-      applyRequirementTemplateToDraft(tpl);
+      applyRequirementTemplateToDraft(tpl, { replaceRequirements: true });
     } else {
       setPendingTemplate({ template: tpl, positionLabel: `${title} — ${department}` });
     }
@@ -7572,7 +7639,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                   <p className="text-[0.7rem] font-semibold">Usage &amp; limits</p>
                                   <button
                                     type="button"
-                                    onClick={() => void loadAiUsage()}
+                                    onClick={() => void loadAiUsage(true)}
                                     className="text-[0.65rem] font-medium text-primary underline-offset-2 hover:underline"
                                   >
                                     Refresh
@@ -7624,8 +7691,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     </ul>
                                     {aiUsage.blocked_until && aiBlockedSeconds > 0 && (
                                       <p className="text-[0.68rem] font-medium text-amber-600 dark:text-amber-400">
-                                        Limit reached — ready again in{" "}
-                                        {aiCountdown(aiBlockedSeconds)}.
+                                        {aiUsage.blocked_code && AI_LIMIT_CODES.has(aiUsage.blocked_code)
+                                          ? `Limit reached — ready again in ${aiCountdown(aiBlockedSeconds)}.`
+                                          : `Service cooling down — ready again in ${aiCountdown(aiBlockedSeconds)}.`}
                                       </p>
                                     )}
                                     {aiUsage.last_error && (
@@ -8472,16 +8540,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     )}
                   </SelectContent>
                 </Select>
-                {!addPresetJob && (
-                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      Position not listed? Create it first in Core HCM → Departments &amp;
-                      Positions, then create and publish a job post — applicants can only be added
-                      to open postings with remaining slots.
-                    </span>
-                  </p>
-                )}
                 {!addPresetJob &&
                   addForm.position !== "" &&
                   addDept !== "" &&
@@ -9874,7 +9932,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   busyId={templateBusyId}
                   onReload={loadRequirementTemplates}
                   onToggleActive={toggleRequirementTemplate}
-                  onUseTemplate={applyRequirementTemplateToDraft}
+                  onUseTemplate={handleUseTemplateFromManager}
                   onAddToVocabulary={addTermToVocabulary}
                 />
               </TabsContent>

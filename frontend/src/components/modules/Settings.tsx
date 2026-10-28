@@ -35,7 +35,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,

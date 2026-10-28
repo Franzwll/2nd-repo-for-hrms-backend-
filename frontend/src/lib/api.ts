@@ -172,6 +172,7 @@ export interface ApiApplicant {
   name: string;
   email: string;
   phone: string | null;
+  address?: string | null;
   applied_at: string | null;
   fit_score: number | null;
   status: "fit" | "other-role" | "credential" | "not-fit";
@@ -203,6 +204,19 @@ export interface ApiApplicant {
    *  cooldown_lifted_at records an HR early override. */
   rejected_at?: string | null;
   cooldown_lifted_at?: string | null;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archived_reason?: string | null;
+  is_archived?: boolean;
+  is_blocked?: boolean;
+  blocked_at?: string | null;
+  blocked_by?: string | null;
+  blocked_reason?: string | null;
+  block_scope?: string | null;
+  block_expires_at?: string | null;
+  is_active_blocked?: boolean;
+  rejected_at_stage?: string | null;
+  allowed_return_stages?: string[] | null;
   source: string | null;
   summary: string | null;
   flags_json: string[];
@@ -613,6 +627,18 @@ export const applicantsApi = {
     request<{ message: string }>(`/applicants/${id}`, { method: "DELETE" }),
   hire: (id: number | string) =>
     request<ApiApplicant>(`/applicants/${id}/hire`, { method: "POST" }),
+  /** Super Admin only — move an applicant back to an earlier stage so a step
+   *  can be redone (Rejected, Hired or still in the process). Clears the
+   *  rejection/cooldown and offer-reply trail; a Pre-onboarding New Hire
+   *  record is removed when the applicant was Hired. */
+  returnToPipeline: (
+    id: number | string,
+    body: { target_stage: string; reason: string },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/return-to-pipeline`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   /** Emails the offer (after a Final Evaluation recommended the candidate)
    *  and starts the applicant's 7-day response window. */
   sendOffer: (id: number | string, details?: string) =>
@@ -686,14 +712,71 @@ export const applicantsApi = {
       body: JSON.stringify(data),
     }),
   /** Same-email past applications + cooldown countdown for the HR profile strip. */
-  history: (id: number | string) =>
-    request<ApiApplicantHistory>(`/applicants/${id}/history`),
+  history: (id: number | string) => request<ApiApplicantHistory>(`/applicants/${id}/history`),
   /** HR allows early re-application (lifts the waiting period, audited). */
   overrideCooldown: (id: number | string) =>
     request<{ message: string; data: ApiApplicant }>(
       `/applicants/${id}/cooldown/override`,
       { method: "POST" },
     ),
+  /** Super Admin only — move an applicant to a selected recruitment stage. */
+  moveToStage: (
+    id: number | string,
+    body: { target_stage: string; reason: string },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/move-to-stage`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Super Admin only — reopen a closed/rejected application. */
+  reopen: (
+    id: number | string,
+    body: { target_stage?: string; reason: string },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/reopen`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Super Admin only — correct an incorrect hiring decision. */
+  correctHiring: (
+    id: number | string,
+    body: {
+      correction_type: "mistaken_hire" | "no_show" | "reneged";
+      reason: string;
+      apply_cooldown?: boolean;
+    },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/correct-hiring`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Archive an applicant from active views. */
+  archive: (id: number | string, body: { reason: string }) =>
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/archive`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Restore an applicant from archive back to active views. */
+  restore: (id: number | string, body: { reason: string }) =>
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/restore`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Super Admin only — block an applicant from recruitment activities. */
+  block: (
+    id: number | string,
+    body: { reason: string; scope?: "all_jobs" | "specific_job"; expires_at?: string | null },
+  ) =>
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/block`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Super Admin only — unblock a restricted applicant. */
+  unblock: (id: number | string, body: { reason: string }) =>
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/unblock`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export interface ApiApplicantHistoryRow {
@@ -707,7 +790,20 @@ export interface ApiApplicantHistoryRow {
   offer_status?: string | null;
   rejected_at?: string | null;
   cooldown_lifted_at?: string | null;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archived_reason?: string | null;
+  is_archived?: boolean;
+  is_blocked?: boolean;
+  blocked_at?: string | null;
+  blocked_by?: string | null;
+  blocked_reason?: string | null;
+  block_scope?: string | null;
+  block_expires_at?: string | null;
+  is_active_blocked?: boolean;
   is_current: boolean;
+  matched_rules?: string[];
+  confidence?: string;
 }
 
 export interface ApiApplicantHistory {
@@ -722,8 +818,16 @@ export interface ApiApplicantHistory {
     days_left: number;
     job_post_id: number;
   } | null;
+  block?: {
+    is_blocked: boolean;
+    reason: string | null;
+    scope: string | null;
+    applicant_code: string | null;
+    matched_rules?: string[];
+  } | null;
   cooldown_days: number;
   attempt_count: number;
+  matched_applicants_count?: number;
 }
 
 export const assessmentsApi = {
@@ -1109,6 +1213,11 @@ export const applicantDocumentsApi = {
    *  resume claims (e.g. after the resume was re-screened). */
   verify: (id: number | string) =>
     request<ApiApplicantDocument>(`/applicant-documents/${id}/verify`, { method: "POST" }),
+  override: (id: number | string, reason?: string) =>
+    request<ApiApplicantDocument>(`/applicant-documents/${id}/override`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   /** Streams the stored supporting-document file from the backend —
    *  same-origin (relative) so PDFs/images render inline in a new tab,
    *  with ?token= auth like the resume preview. Pass download=true to
@@ -1282,7 +1391,7 @@ export const jobPostsApi = {
       body: JSON.stringify(payload),
     }),
   /** Usage/limit snapshot for the AI draft indicator (triggers no generation). */
-  aiUsage: () => request<{ success: boolean; data: JobAiUsage }>("/job-posts/ai-usage"),
+  aiUsage: (params?: { clear?: boolean }) => request<{ success: boolean; data: JobAiUsage }>(`/job-posts/ai-usage${params?.clear ? "?clear=1" : ""}`),
   list: (params?: Record<string, any>) => {
     const qs = toQueryString(params);
     return request<{ data: ApiJobPost[]; meta: any }>(`/job-posts${qs ? `?${qs}` : ""}`);
@@ -2872,6 +2981,8 @@ export const essApi = {
         estimated_reading_minutes?: number | null;
         estimated_pages?: number | null;
         mandatory?: boolean;
+        /** A failed attempt is final — the quiz stays locked. */
+        quiz_failed?: boolean;
       }[];
     }>("/ess/my-performance"),
   updateLearningProgress: (data: { course_code: string }) =>
@@ -2942,14 +3053,15 @@ export const essApi = {
       status: string;
       certificate_eligible: boolean;
       already_completed?: boolean;
+      /** Failed attempts are final, so this is always false in the current policy. */
+      retake_allowed?: boolean;
       review: {
         id: number;
         question: string;
         options: string[];
-        correct_index: number;
+        // The answer key (correct_index / explanation) is never sent.
         your_index: number | null;
         is_correct: boolean;
-        explanation: string;
       }[];
     }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`, {
       method: "POST",
@@ -3082,25 +3194,22 @@ export const essApi = {
   },
   /** ESS Management releases a module result to the employee. */
   releaseRequest: (id: string | number, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/release`,
-      { method: "POST", body: JSON.stringify({ ...(note ? { note } : {}) }) },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/release`, {
+      method: "POST",
+      body: JSON.stringify({ ...(note ? { note } : {}) }),
+    }),
   /** ESS Management sends an already-reviewed request to a module. */
   dispatchRequest: (id: string | number, module?: string, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/dispatch`,
-      {
-        method: "POST",
-        body: JSON.stringify({ ...(module ? { module } : {}), ...(note ? { note } : {}) }),
-      },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/dispatch`, {
+      method: "POST",
+      body: JSON.stringify({ ...(module ? { module } : {}), ...(note ? { note } : {}) }),
+    }),
   /** ESS Management reroutes a request; any applied module result is reversed. */
   rerouteRequest: (id: string | number, module: string, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/reroute`,
-      { method: "POST", body: JSON.stringify({ module, ...(note ? { note } : {}) }) },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/reroute`, {
+      method: "POST",
+      body: JSON.stringify({ module, ...(note ? { note } : {}) }),
+    }),
   /** Routing ledger for one request (dispatch/accept/complete/release legs). */
   requestRoutings: (id: string | number) =>
     request<{ routings: any[] }>(`/ess/admin/requests/${id}/routings`),
@@ -3131,11 +3240,7 @@ export const essApi = {
       `/ess/modules/${module}/requests/${id}/decline`,
       { method: "POST", body: JSON.stringify({ reason }) },
     ),
-  completeModuleRequest: (
-    module: string,
-    id: string | number,
-    data: Record<string, any> = {},
-  ) => {
+  completeModuleRequest: (module: string, id: string | number, data: Record<string, any> = {}) => {
     const isForm = Object.values(data).some((v) => v instanceof File);
     if (!isForm) {
       return request<{ message: string; request: ApiEssRequestItem }>(
@@ -3164,10 +3269,7 @@ export const essApi = {
     return fileApiUrl(`/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`);
   },
   /** HR view of an attachment on any employee request (ESS Management access). */
-  adminRequestAttachmentUrl: (
-    requestId: string | number,
-    attachmentId: string | number,
-  ) => {
+  adminRequestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
     return fileApiUrl(

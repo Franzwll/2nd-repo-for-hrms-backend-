@@ -32,6 +32,77 @@ class ScreeningService
         'not-fit' => 'Not Fitted to Job',
     ];
 
+    /**
+     * Wall-clock budget for one synchronous screening request.
+     *
+     * Screening fans out into several slow NLP calls (OCR + NER for the
+     * resume, one comparison per supporting document, then a reclassify).
+     * On Windows PHP counts time spent waiting on those outbound HTTP calls
+     * toward max_execution_time, so the default 30-60s limit fatals inside
+     * Guzzle's CurlHandler before the NLP service can answer. Raising the
+     * limit here keeps every screening entry point (preview, save, update,
+     * recompute, landing apply) on the same 300s budget.
+     */
+    public const REQUEST_TIME_LIMIT_SECONDS = 300;
+
+    /** Kept back after the last NLP call for DB writes + the HTTP response. */
+    private const REQUEST_RESPONSE_RESERVE_SECONDS = 15;
+
+    /** Per-call ceilings so one slow step cannot consume the whole budget. */
+    private const NLP_SCORE_TIMEOUT_SECONDS = 120;
+    private const NLP_DOCUMENT_TIMEOUT_SECONDS = 60;
+    private const NLP_RECLASSIFY_TIMEOUT_SECONDS = 30;
+
+    /**
+     * Raise PHP's execution limit for the current request. Safe to call
+     * repeatedly; when a deadline is threaded through several service calls
+     * only the outermost call should raise it.
+     */
+    public static function raiseTimeLimit(int $seconds = self::REQUEST_TIME_LIMIT_SECONDS): void
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit($seconds);
+        }
+    }
+
+    /**
+     * Deadline for the NLP work of the current request, leaving room for
+     * persistence and the response. Call right after raiseTimeLimit().
+     */
+    public static function requestDeadline(): float
+    {
+        return microtime(true)
+            + self::REQUEST_TIME_LIMIT_SECONDS
+            - self::REQUEST_RESPONSE_RESERVE_SECONDS;
+    }
+
+    /**
+     * Seconds left in the current screening budget. Returns $min when the
+     * budget is exhausted so callers can decide to skip the remaining work.
+     */
+    public static function remainingTime(float $deadline, int $min = 0): int
+    {
+        return max($min, (int) floor($deadline - microtime(true)));
+    }
+
+    /** Per-call timeout for the full resume scoring call. */
+    public static function scoreTimeout(float $deadline): int
+    {
+        return min(self::NLP_SCORE_TIMEOUT_SECONDS, self::remainingTime($deadline, 10));
+    }
+
+    /** Per-call timeout for one supporting-document comparison. */
+    public static function documentTimeout(float $deadline): int
+    {
+        return min(self::NLP_DOCUMENT_TIMEOUT_SECONDS, self::remainingTime($deadline, 10));
+    }
+
+    /** Per-call timeout for the stored-profile reclassification. */
+    public static function reclassifyTimeout(float $deadline): int
+    {
+        return min(self::NLP_RECLASSIFY_TIMEOUT_SECONDS, self::remainingTime($deadline, 5));
+    }
+
     public function __construct(protected NlpService $nlp)
     {
     }
@@ -218,6 +289,9 @@ class ScreeningService
      */
     public function screenAndPersist(Applicant $applicant, ?array $precomputed = null): ?ApplicantScreening
     {
+        self::raiseTimeLimit();
+        $deadline = self::requestDeadline();
+
         $jobPost = JobPost::find($applicant->job_post_id);
         if (! $jobPost) {
             Log::warning("Screening skipped: job post {$applicant->job_post_id} missing for applicant {$applicant->applicant_id}");
@@ -244,6 +318,7 @@ class ScreeningService
                 basename($applicant->resume_file_path),
                 $requirements,
                 $openJobs,
+                timeoutSeconds: self::scoreTimeout($deadline),
                 referenceData: $this->referenceData(),
                 screeningSettings: self::screeningSettings(),
                 documentVerifications: $this->documentVerifications($applicant)
@@ -266,9 +341,9 @@ class ScreeningService
            the evidence in — otherwise Resume vs Documents Match stays empty
            and the documents never move the ranking score. */
         if ($screening && $screening->processing_status !== 'FAILED') {
-            $pending = app(DocumentVerificationService::class)->verifyPendingDocuments($applicant);
+            $pending = app(DocumentVerificationService::class)->verifyPendingDocuments($applicant, $deadline);
             if ($pending > 0) {
-                $screening = $this->recomputeWithDocuments($applicant) ?? $screening;
+                $screening = $this->recomputeWithDocuments($applicant, $deadline) ?? $screening;
             }
         }
 
@@ -281,6 +356,9 @@ class ScreeningService
      */
     public function screenPreviewFile(string $storedPath, string $originalName, int $jobPostId): array
     {
+        self::raiseTimeLimit();
+        $deadline = self::requestDeadline();
+
         $jobPost = JobPost::find($jobPostId);
         if (! $jobPost) {
             return ['success' => false, 'processing_status' => 'FAILED', 'error' => "Job post {$jobPostId} not found."];
@@ -292,6 +370,7 @@ class ScreeningService
             $originalName,
             $this->buildRequirements($jobPost),
             $this->buildOpenJobs($jobPost),
+            timeoutSeconds: self::scoreTimeout($deadline),
             referenceData: $this->referenceData(),
             screeningSettings: self::screeningSettings()
         );
@@ -321,6 +400,9 @@ class ScreeningService
         int $jobPostId,
         array $documents = []
     ): array {
+        self::raiseTimeLimit();
+        $deadline = self::requestDeadline();
+
         $jobPost = JobPost::find($jobPostId);
         if (! $jobPost) {
             return ['success' => false, 'processing_status' => 'FAILED', 'error' => "Job post {$jobPostId} not found."];
@@ -332,6 +414,7 @@ class ScreeningService
             $originalName,
             $this->buildRequirements($jobPost),
             $this->buildOpenJobs($jobPost),
+            timeoutSeconds: self::scoreTimeout($deadline),
             referenceData: $this->referenceData(),
             screeningSettings: self::screeningSettings()
         );
@@ -373,26 +456,32 @@ class ScreeningService
             $status = 'UNABLE_TO_VERIFY';
 
             try {
-                $absoluteDoc = $docPath !== '' ? Storage::disk('local')->path($docPath) : null;
-                if ($absoluteDoc && is_file($absoluteDoc)) {
-                    $verify = $this->nlp->verifySupportingDocument(
-                        $absoluteDoc,
-                        $docOriginal,
-                        $docType,
-                        $profile,
-                        $referenceData
-                    );
-                    $data = $verify['data'] ?? null;
-                    if (is_array($data)) {
-                        $status = (string) ($data['verification_status'] ?? 'UNABLE_TO_VERIFY');
-                        $checks = is_array($data['checks'] ?? null) ? $data['checks'] : [];
-                        $summary = $data['summary'] ?? ($verify['error'] ?? null);
-                        $extracted = $data['extracted_document_profile'] ?? null;
-                    } else {
-                        $summary = $verify['error'] ?? 'Document verification failed.';
-                    }
+                $remaining = self::remainingTime($deadline, 0);
+                if ($remaining < 10) {
+                    $summary = 'Verification skipped: this screening request reached its time budget. Save the applicant and re-verify the document afterwards.';
                 } else {
-                    $summary = 'The staged document file could not be read, so no comparison was possible.';
+                    $absoluteDoc = $docPath !== '' ? Storage::disk('local')->path($docPath) : null;
+                    if ($absoluteDoc && is_file($absoluteDoc)) {
+                        $verify = $this->nlp->verifySupportingDocument(
+                            $absoluteDoc,
+                            $docOriginal,
+                            $docType,
+                            $profile,
+                            $referenceData,
+                            timeoutSeconds: self::documentTimeout($deadline)
+                        );
+                        $data = $verify['data'] ?? null;
+                        if (is_array($data)) {
+                            $status = (string) ($data['verification_status'] ?? 'UNABLE_TO_VERIFY');
+                            $checks = is_array($data['checks'] ?? null) ? $data['checks'] : [];
+                            $summary = $data['summary'] ?? ($verify['error'] ?? null);
+                            $extracted = $data['extracted_document_profile'] ?? null;
+                        } else {
+                            $summary = $verify['error'] ?? 'Document verification failed.';
+                        }
+                    } else {
+                        $summary = 'The staged document file could not be read, so no comparison was possible.';
+                    }
                 }
             } catch (\Throwable $e) {
                 Log::warning('Preview document verification failed: ' . $e->getMessage());
@@ -433,15 +522,17 @@ class ScreeningService
         // Blend the staged evidence into the ranking so the percentage shown
         // in Step 3 already reflects the supporting documents.
         try {
-            $re = $this->nlp->reclassifyScreening([
-                'profile' => $profile,
-                'validation' => is_array($result['validation'] ?? null) ? $result['validation'] : [],
-                'requirements' => $this->buildRequirements($jobPost),
-                'open_jobs' => $this->buildOpenJobs($jobPost),
-                'document_verifications' => $docVerifications,
-                'screening_settings' => self::screeningSettings(),
-                'reference_data' => $referenceData,
-            ]);
+            $re = self::remainingTime($deadline, 0) < 5
+                ? ['ok' => false, 'data' => null, 'error' => 'time budget exhausted']
+                : $this->nlp->reclassifyScreening([
+                    'profile' => $profile,
+                    'validation' => is_array($result['validation'] ?? null) ? $result['validation'] : [],
+                    'requirements' => $this->buildRequirements($jobPost),
+                    'open_jobs' => $this->buildOpenJobs($jobPost),
+                    'document_verifications' => $docVerifications,
+                    'screening_settings' => self::screeningSettings(),
+                    'reference_data' => $referenceData,
+                ], self::reclassifyTimeout($deadline));
             $blended = ($re['ok'] ?? false) ? ($re['data'] ?? null) : null;
             if (is_array($blended) && ($blended['success'] ?? false)) {
                 $result['resume_match_score'] = $result['match_score'] ?? ($result['resume_match_score'] ?? null);
@@ -690,8 +781,13 @@ class ScreeningService
      * Returns the updated ApplicantScreening, or null when there is nothing to
      * recompute (no screening yet, job post gone, or NLP unavailable).
      */
-    public function recomputeWithDocuments(Applicant $applicant): ?ApplicantScreening
+    public function recomputeWithDocuments(Applicant $applicant, ?float $deadline = null): ?ApplicantScreening
     {
+        if ($deadline === null) {
+            self::raiseTimeLimit();
+            $deadline = self::requestDeadline();
+        }
+
         $screening = $applicant->screenings()->latest('screening_id')->first();
         $profile = $screening?->profile_json;
 
@@ -714,7 +810,7 @@ class ScreeningService
             'document_verifications' => $this->documentVerifications($applicant),
             'screening_settings' => self::screeningSettings(),
             'reference_data' => $this->referenceData(),
-        ]);
+        ], self::reclassifyTimeout($deadline));
 
         $data = $response['ok'] ? ($response['data'] ?? null) : null;
 

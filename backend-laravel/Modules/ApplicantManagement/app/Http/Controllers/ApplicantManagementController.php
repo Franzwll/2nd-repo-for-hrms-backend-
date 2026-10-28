@@ -7,12 +7,15 @@ use App\Mail\ApplicantAcceptedMail;
 use App\Mail\ApplicantRejectedMail;
 use App\Mail\OfferNewJobMail;
 use App\Models\SystemUser;
+use App\Services\ApplicantRecognitionService;
 use App\Services\AuditLogger;
 use App\Services\DuplicateApplicationService;
 use App\Services\NotificationService;
 use App\Services\ResumeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -20,9 +23,13 @@ use Modules\ApplicantManagement\Http\Requests\StoreApplicantRequest;
 use Modules\ApplicantManagement\Http\Requests\UpdateApplicantRequest;
 use Modules\ApplicantManagement\Http\Resources\ApplicantResource;
 use Modules\ApplicantManagement\Models\Applicant;
+use Modules\ApplicantManagement\Models\ApplicantBlockHistory;
+use Modules\ApplicantManagement\Models\AssessmentInvite;
+use Modules\ApplicantManagement\Models\FinalEvaluation;
 use Modules\ApplicantManagement\Services\DocumentVerificationService;
 use Modules\ApplicantManagement\Services\OfferService;
 use Modules\ApplicantManagement\Services\ScreeningService;
+use Modules\NewHireOnboarding\Models\NewHire;
 use Modules\RecruitmentManagement\Models\JobPost;
 use App\Services\NlpService;
 
@@ -87,6 +94,31 @@ class ApplicantManagementController extends Controller
             }
         }
 
+        // Archive & Blocked filter:
+        if ($request->boolean('only_hidden') || $request->boolean('only_archived_or_blocked')) {
+            // Merged view: show ONLY archived OR blocked applicants
+            $query->where(function ($q) {
+                $q->whereNotNull('archived_at')
+                  ->orWhere('is_blocked', true);
+            });
+        } elseif ($request->boolean('include_archived')) {
+            // Keep all including archived
+        } elseif ($request->boolean('only_archived')) {
+            $query->whereNotNull('archived_at');
+        } else {
+            // Default: normal pipeline view — HIDE archived and HIDE blocked
+            $query->whereNull('archived_at')
+                  ->where(function ($q) {
+                      $q->where('is_blocked', false)
+                        ->orWhereNull('is_blocked');
+                  });
+        }
+
+        // Filter by blocked flag if explicitly specified and not in merged hidden view
+        if ($request->has('is_blocked') && ! $request->boolean('only_hidden') && ! $request->boolean('only_archived_or_blocked')) {
+            $query->where('is_blocked', $request->boolean('is_blocked'));
+        }
+
         $perPage = (int) $request->query('per_page', 15);
         $paginated = $query->paginate($perPage);
 
@@ -109,10 +141,30 @@ class ApplicantManagementController extends Controller
     {
         $data = $request->validated();
 
-        // Failed-applicant cooldown first (any job). HR may override it
+        // Blocked applicant check (any recognized identity)
+        $block = ApplicantRecognitionService::findBlock(
+            (string) ($data['email'] ?? ''),
+            (string) ($data['name'] ?? ''),
+            $data['phone'] ?? null,
+            $data['address'] ?? null,
+            isset($data['job_post_id']) ? (int) $data['job_post_id'] : null
+        );
+        if ($block && empty($data['override_block'])) {
+            return response()->json(
+                DuplicateApplicationService::blockResponse($block),
+                403
+            );
+        }
+
+        // Failed-applicant cooldown first (any recognized identity). HR may override it
         // deliberately with override_cooldown=true (audited below).
         $cooldown = ! empty($data['email'])
-            ? DuplicateApplicationService::findCooldown((string) $data['email'])
+            ? ApplicantRecognitionService::findCooldown(
+                (string) $data['email'],
+                $data['name'] ?? null,
+                $data['phone'] ?? null,
+                $data['address'] ?? null
+            )
             : null;
         if ($cooldown && empty($data['override_cooldown'])) {
             return response()->json(
@@ -121,10 +173,13 @@ class ApplicantManagementController extends Controller
             );
         }
 
-        // HR-side duplicate guard mirrors public apply: same email + same job + active stage.
-        $existing = DuplicateApplicationService::findDuplicate(
+        // HR-side duplicate guard: recognized identity + same job + active stage.
+        $existing = ApplicantRecognitionService::findDuplicate(
             (string) ($data['email'] ?? ''),
-            (int) ($data['job_post_id'] ?? 0)
+            (int) ($data['job_post_id'] ?? 0),
+            $data['name'] ?? null,
+            $data['phone'] ?? null,
+            $data['address'] ?? null
         );
         if ($existing && ! empty($data['email']) && ! empty($data['job_post_id'])) {
             return response()->json(
@@ -218,7 +273,7 @@ class ApplicantManagementController extends Controller
         );
 
         return response()->json(
-            new ApplicantResource($applicant->load(['jobPost.department'])),
+            new ApplicantResource($applicant->load(['jobPost.department', 'jobPost.position'])),
             201
         );
     }
@@ -261,6 +316,7 @@ class ApplicantManagementController extends Controller
     {
         $model = Applicant::with([
             'jobPost.department',
+            'jobPost.position',
             'screeningEntities',
             'screeningScores',
             'interviews',
@@ -282,31 +338,63 @@ class ApplicantManagementController extends Controller
     {
         $model = Applicant::findOrFail($applicant);
 
+        // Find matches across multi-field recognition
+        $matches = ApplicantRecognitionService::findMatches(
+            (string) $model->email,
+            (string) $model->name,
+            $model->phone,
+            $model->address
+        );
+
+        $matchedIds = $matches->pluck('applicant_id')->push($model->applicant_id)->unique()->all();
+
         $rows = Applicant::with('jobPost')
-            ->whereRaw('LOWER(email) = ?', [mb_strtolower($model->email)])
+            ->whereIn('applicant_id', $matchedIds)
             ->orderByDesc('applied_at')
             ->limit(20)
             ->get();
 
-        $cooldown = DuplicateApplicationService::findCooldown((string) $model->email);
+        $matchLookup = $matches->keyBy('applicant_id');
+
+        $cooldown = ApplicantRecognitionService::findCooldown(
+            (string) $model->email,
+            (string) $model->name,
+            $model->phone,
+            $model->address
+        );
+
+        $block = ApplicantRecognitionService::findBlock(
+            (string) $model->email,
+            (string) $model->name,
+            $model->phone,
+            $model->address
+        );
 
         return response()->json([
-            'data' => $rows->map(fn (Applicant $row) => [
-                'applicant_id' => $row->applicant_id,
-                'applicant_code' => $row->applicant_code,
-                'job_post_id' => $row->job_post_id,
-                'position' => $row->jobPost?->title ?? 'Position',
-                'applied_at' => $row->applied_at?->toISOString(),
-                'stage' => $row->stage,
-                'status' => $row->status,
-                'offer_status' => $row->offer_status,
-                'rejected_at' => $row->rejected_at?->toISOString(),
-                'cooldown_lifted_at' => $row->cooldown_lifted_at?->toISOString(),
-                'is_current' => $row->applicant_id === $model->applicant_id,
-            ]),
+            'data' => $rows->map(function (Applicant $row) use ($model, $matchLookup) {
+                $matchInfo = $matchLookup->get($row->applicant_id);
+
+                return [
+                    'applicant_id' => $row->applicant_id,
+                    'applicant_code' => $row->applicant_code,
+                    'job_post_id' => $row->job_post_id,
+                    'position' => $row->jobPost?->title ?? 'Position',
+                    'applied_at' => $row->applied_at?->toISOString(),
+                    'stage' => $row->stage,
+                    'status' => $row->status,
+                    'offer_status' => $row->offer_status,
+                    'rejected_at' => $row->rejected_at?->toISOString(),
+                    'cooldown_lifted_at' => $row->cooldown_lifted_at?->toISOString(),
+                    'is_current' => $row->applicant_id === $model->applicant_id,
+                    'matched_rules' => $matchInfo['matched_rules'] ?? ['Current record'],
+                    'confidence' => $matchInfo['confidence'] ?? 'High',
+                ];
+            }),
             'cooldown' => $cooldown,
+            'block' => $block,
             'cooldown_days' => DuplicateApplicationService::cooldownDays(),
             'attempt_count' => $rows->count(),
+            'matched_applicants_count' => count($matchedIds),
         ]);
     }
 
@@ -363,14 +451,17 @@ class ApplicantManagementController extends Controller
 
     public function recomputeScreening(int $applicant): JsonResponse
     {
+        ScreeningService::raiseTimeLimit();
+        $deadline = ScreeningService::requestDeadline();
+
         $model = Applicant::with('jobPost')->findOrFail($applicant);
 
         /* Documents uploaded before the resume was screened were never
            compared (PENDING). Verify them first so a manual recompute really
            reflects every uploaded paper, not just the ones checked by hand. */
-        app(DocumentVerificationService::class)->verifyPendingDocuments($model);
+        app(DocumentVerificationService::class)->verifyPendingDocuments($model, $deadline);
 
-        $screening = $this->screening->recomputeWithDocuments($model);
+        $screening = $this->screening->recomputeWithDocuments($model, $deadline);
 
         if (! $screening) {
             return response()->json([
@@ -395,6 +486,7 @@ class ApplicantManagementController extends Controller
             'data'      => $screening,
             'applicant' => new ApplicantResource($model->fresh([
                 'jobPost.department',
+                'jobPost.position',
                 'screeningEntities',
                 'screeningScores',
                 'latestScreening',
@@ -598,6 +690,10 @@ class ApplicantManagementController extends Controller
 
     public function extractResume(Request $request): JsonResponse
     {
+        // OCR/extraction is synchronous; keep PHP from killing the request
+        // before NlpService::extractResume()'s own 30s timeout can return.
+        ScreeningService::raiseTimeLimit();
+
         $validated = $request->validate([
             'resume' => ['required', 'file', 'max:20480'],
         ]);
@@ -666,7 +762,7 @@ class ApplicantManagementController extends Controller
         unset($data['resume']);
 
         $model->update($data);
-        $model->refresh()->load(['jobPost.department', 'screeningEntities', 'screeningScores', 'interviews', 'assessment']);
+        $model->refresh()->load(['jobPost.department', 'jobPost.position', 'screeningEntities', 'screeningScores', 'interviews', 'assessment']);
 
         // Re-screen automatically when the resume was replaced.
         if (isset($data['resume_file_path']) && $model->job_post_id) {
@@ -689,9 +785,14 @@ class ApplicantManagementController extends Controller
 
             // Entering Rejected starts the re-apply cooldown clock.
             // Leaving Rejected (re-book / override) keeps the stamp as history.
-            if ($newStage === 'Rejected' && empty($model->rejected_at)) {
-                $model->forceFill(['rejected_at' => now()])->save();
-                $model->refresh();
+            if ($newStage === 'Rejected') {
+                if ($model->offer_status !== 'Declined') {
+                    $model->forceFill([
+                        'rejected_at' => now(),
+                        'cooldown_lifted_at' => null,
+                    ])->save();
+                    $model->refresh();
+                }
             }
 
             AuditLogger::log(
@@ -887,7 +988,906 @@ class ApplicantManagementController extends Controller
             }
         }
 
-        return response()->json(new ApplicantResource($model->load(['jobPost.department'])));
+        return response()->json(new ApplicantResource($model->load(['jobPost.department', 'jobPost.position'])));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/return-to-pipeline               */
+    /* Super Admin only: move an applicant back to an earlier stage so a    */
+    /* step can be redone. Works for Rejected, Hired and in-progress        */
+    /* applicants. Subsequent pipeline records are reset so the applicant   */
+    /* is cleanly back at the target stage.                                 */
+    /* ------------------------------------------------------------------ */
+
+    /** Pipeline order used to decide which stages count as "earlier". */
+    private const RETURN_STAGE_ORDER = [
+        'Screened'            => 0,
+        'Accepted'            => 1,
+        'Interview Scheduled' => 2,
+        'Assessed'            => 3,
+        'Assessment Test'     => 4,
+        'Practical Test'      => 5,
+        'Final Evaluation'    => 6,
+        'Offer'               => 7,
+        'Hired'               => 8,
+    ];
+
+    /**
+     * Where a Rejected applicant actually failed, inferred from the process
+     * records that survive the rejection. A final evaluation is written before
+     * the stage flips to Rejected, and an offer reply stays on the record, so
+     * the latest surviving evidence is the failure point.
+     */
+    private function rejectedAtStage(Applicant $model): string
+    {
+        if ($model->offer_status !== null || $model->offer_sent_at !== null) {
+            return 'Offer';
+        }
+
+        if (FinalEvaluation::where('applicant_id', $model->applicant_id)->exists()) {
+            return 'Final Evaluation';
+        }
+
+        if ($model->practicalTests()->exists()) {
+            return 'Practical Test';
+        }
+
+        if ($model->assessmentTests()->exists()) {
+            return 'Assessment Test';
+        }
+
+        if ($model->assessments()->exists()) {
+            return 'Assessed';
+        }
+
+        if ($model->interviews()->exists()) {
+            return 'Interview Scheduled';
+        }
+
+        return 'Screened';
+    }
+
+    /**
+     * Active stages this applicant may be returned to — strictly earlier than
+     * their current step, or than the step where a Rejected applicant failed.
+     * A rejection at screening has nothing before it, so Screened is offered
+     * as the restart point.
+     *
+     * @return array<int, string>
+     */
+    private function allowedReturnStages(Applicant $model): array
+    {
+        $order = self::RETURN_STAGE_ORDER;
+
+        $active = array_keys(array_filter(
+            $order,
+            fn (int $index): bool => $index < $order['Hired'],
+        ));
+
+        if ($model->stage === 'Rejected') {
+            $failedAt = $order[$this->rejectedAtStage($model)];
+
+            $allowed = array_values(array_filter(
+                $active,
+                fn (string $stage): bool => $order[$stage] < $failedAt,
+            ));
+
+            return $allowed !== [] ? $allowed : ['Screened'];
+        }
+
+        if (! isset($order[$model->stage])) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $active,
+            fn (string $stage): bool => $order[$stage] < $order[$model->stage],
+        ));
+    }
+
+    public function returnToPipeline(Request $request, int $applicant): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Only a Super Admin may return an applicant to the recruitment pipeline.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'target_stage' => ['required', 'string'],
+            'reason'       => ['required', 'string', 'max:1000'],
+        ]);
+
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
+        $fromStage = $model->stage;
+
+        $allowedStages = $this->allowedReturnStages($model);
+
+        if ($allowedStages === []) {
+            return response()->json([
+                'message' => "{$model->name} is at the start of the pipeline ({$fromStage}) — there is no earlier stage to return to.",
+            ], 422);
+        }
+
+        $targetStage = $validated['target_stage'];
+
+        if (! in_array($targetStage, $allowedStages, true)) {
+            return response()->json([
+                'message' => "{$model->name} can only be returned to an earlier stage: "
+                    . implode(', ', $allowedStages) . '.',
+            ], 422);
+        }
+
+        // An Offer must still be backed by a positive final evaluation —
+        // otherwise the pipeline would jump past the whole process.
+        if ($targetStage === 'Offer') {
+            $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+            if (! $final || $final->recommendation === 'Not Recommended') {
+                return response()->json([
+                    'message' => 'Returning to Offer requires a final evaluation that is not "Not Recommended".',
+                ], 422);
+            }
+        }
+
+        $newHire = $fromStage === 'Hired'
+            ? NewHire::where('applicant_id', $model->applicant_id)->first()
+            : null;
+
+        // A hire that already became an employee (Probationary / Regular or a
+        // linked employee record) is real headcount — never silently undo it.
+        if ($newHire && ($newHire->employee_id || $newHire->stage !== 'Pre-onboarding')) {
+            return response()->json([
+                'message' => "{$model->name} has already progressed past Pre-onboarding and can no longer be returned automatically.",
+            ], 422);
+        }
+
+        $portalEmail = $newHire?->email;
+        $removedNewHireCode = $newHire?->new_hire_code;
+
+        DB::beginTransaction();
+        try {
+            if ($newHire) {
+                // onboarding_items.new_hire_id has no cascade, so clear the
+                // checklist rows before deleting the Pre-onboarding record.
+                $newHire->onboardingItems()->delete();
+                $newHire->delete();
+            }
+
+            // A Hired applicant consumed a job-post slot — release it (and
+            // reopen the post when a vacancy is available again).
+            if ($fromStage === 'Hired' && $model->jobPost) {
+                $model->jobPost->releaseOneSlot();
+            }
+
+            // Clean up subsequent pipeline records so the applicant's record
+            // in the pipeline accurately reflects $targetStage.
+            $this->performReturnCleanup($model, $targetStage);
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Could not return the applicant to the pipeline: '.$e->getMessage(),
+            ], 500);
+        }
+
+        // Best-effort: remove the portal account that was auto-created for the
+        // Pre-onboarding hire (Employee role, not linked to an employee yet).
+        if ($newHire && $portalEmail) {
+            try {
+                SystemUser::where('email', $portalEmail)
+                    ->where('role_id', 3)
+                    ->whereNull('employee_id')
+                    ->delete();
+            } catch (\Throwable $e) {
+                Log::warning('Could not remove returned applicant portal account', [
+                    'email' => $portalEmail,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $positionTitle = $model->jobPost?->title ?? 'Position';
+        $reason = trim($validated['reason']);
+
+        AuditLogger::log(
+            action: 'Applicant Returned to Recruitment',
+            module: 'Applicant Management',
+            severity: 'Warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Returned {$model->name} from {$fromStage} to {$targetStage} for {$positionTitle}. Subsequent pipeline records were reset. Reason: {$reason}"
+                . ($removedNewHireCode ? " Removed Pre-onboarding record {$removedNewHireCode}." : ''),
+        );
+
+        NotificationService::send(
+            title: "Applicant {$model->name} returned to {$targetStage}",
+            body: "{$fromStage} → {$targetStage}. Reason: {$reason}",
+            module: 'Applicant Management',
+            type: 'warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin'],
+        );
+
+        return response()->json(new ApplicantResource($model->fresh(['jobPost.department', 'jobPost.position'])));
+    }
+
+    /**
+     * Clean up subsequent pipeline records so the applicant's record
+     * in the pipeline accurately reflects $targetStage.
+     */
+    private function performReturnCleanup(Applicant $model, string $targetStage): void
+    {
+        $targetIndex = self::RETURN_STAGE_ORDER[$targetStage] ?? 0;
+
+        // Stages >= 6: Final Evaluation
+        if ($targetIndex <= 6) {
+            FinalEvaluation::where('applicant_id', $model->applicant_id)->delete();
+        }
+
+        // Stages >= 5: Practical Test
+        if ($targetIndex <= 5) {
+            $model->practicalTests()->delete();
+        }
+
+        // Stages >= 4: Assessment Test & Invites
+        if ($targetIndex <= 4) {
+            $model->assessmentTests()->delete();
+            AssessmentInvite::where('applicant_id', $model->applicant_id)->delete();
+        }
+
+        // Stages >= 3: Interview Assessment (Assessed verdict)
+        if ($targetIndex <= 3) {
+            $model->assessments()->delete();
+            if ($targetIndex === 2) {
+                // When returning to Interview Scheduled, reset completed interview back to Scheduled
+                $model->interviews()->where('status', 'Completed')->update(['status' => 'Scheduled']);
+            }
+        }
+
+        // Stages >= 2: Interview Scheduling
+        if ($targetIndex <= 1) {
+            $model->interviews()->delete();
+        }
+
+        // If returning to Screened, Accepted, or Interview Scheduled, restore
+        // fit_score back to the resume screening match score if available.
+        $fitScore = $model->fit_score;
+        if ($targetIndex <= 2) {
+            $screening = $model->screenings()->latest('screening_id')->first();
+            if ($screening && $screening->match_score !== null) {
+                $fitScore = $screening->match_score;
+            }
+        }
+
+        // The step is being redone: clear the rejection/cooldown anchors,
+        // any active archive flag (since candidate returns to active pipeline),
+        // and any offer reply trail so the pipeline starts clean at the
+        // target stage.
+        $model->forceFill([
+            'stage'                      => $targetStage,
+            'status'                     => 'fit',
+            'fit_score'                  => $fitScore,
+            'rejected_at'                => null,
+            'cooldown_lifted_at'         => null,
+            'archived_at'                => null,
+            'archived_by'                => null,
+            'archived_reason'            => null,
+            'offer_status'               => null,
+            'offer_sent_at'              => null,
+            'offer_expires_at'           => null,
+            'offer_start_date'           => null,
+            'offer_response_channel'     => null,
+            'offer_response_note'        => null,
+            'offer_responded_at'         => null,
+            'offer_response_recorded_by' => null,
+        ])->save();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/move-to-stage                   */
+    /* Moves an applicant to a selected recruitment stage (forward or back) */
+    /* ------------------------------------------------------------------ */
+    public function moveToStage(Request $request, int $applicant): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Only a Super Admin may move an applicant across recruitment stages.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'target_stage' => ['required', 'string', 'in:Screened,Accepted,Interview Scheduled,Assessed,Assessment Test,Practical Test,Final Evaluation,Offer'],
+            'reason'       => ['required', 'string', 'max:1000'],
+        ]);
+
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
+        $fromStage = $model->stage;
+        $targetStage = $validated['target_stage'];
+
+        if ($fromStage === 'Rejected' || $model->status === 'rejected') {
+            return response()->json([
+                'message' => "{$model->name} is currently Rejected. Please use 'Reopen Application' to reconsider this candidate.",
+            ], 422);
+        }
+
+        if ($fromStage === $targetStage) {
+            return response()->json([
+                'message' => "{$model->name} is already at {$targetStage}.",
+            ], 422);
+        }
+
+        $targetIndex = self::RETURN_STAGE_ORDER[$targetStage] ?? null;
+        $currentIndex = self::RETURN_STAGE_ORDER[$fromStage] ?? null;
+
+        $newHire = $fromStage === 'Hired'
+            ? NewHire::where('applicant_id', $model->applicant_id)->first()
+            : null;
+
+        if ($newHire && ($newHire->employee_id || $newHire->stage !== 'Pre-onboarding')) {
+            return response()->json([
+                'message' => "{$model->name} has already progressed past Pre-onboarding and cannot be moved automatically.",
+            ], 422);
+        }
+
+        $isMovingBackward = ($currentIndex === null || $fromStage === 'Hired' || $targetIndex < $currentIndex);
+
+        if ($isMovingBackward) {
+            // Backward move: clean up downstream records
+            DB::beginTransaction();
+            try {
+                if ($fromStage === 'Hired') {
+                    if ($newHire) {
+                        $newHire->onboardingItems()->delete();
+                        $newHire->delete();
+                    }
+                    if ($model->jobPost) {
+                        $model->jobPost->releaseOneSlot();
+                    }
+                }
+
+                $this->performReturnCleanup($model, $targetStage);
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+
+                return response()->json([
+                    'message' => 'Could not move applicant: ' . $e->getMessage(),
+                ], 500);
+            }
+        } else {
+            // Forward move: validate prerequisites
+            if ($targetIndex >= 2) {
+                $screening = $model->screenings()->latest('screening_id')->first();
+                if ($screening && $screening->screening_result === 'Rejected') {
+                    return response()->json(['message' => "Moving to {$targetStage} requires a passing screening."], 422);
+                }
+            }
+            if ($targetIndex >= 3 && ! $model->interviews()->exists()) {
+                return response()->json(['message' => "Moving to {$targetStage} requires an interview."], 422);
+            }
+            if ($targetIndex >= 4) {
+                $latestAssessment = $model->assessments()->latest('assessment_id')->first();
+                if (! $latestAssessment || $latestAssessment->result !== 'Passed') {
+                    return response()->json(['message' => "Moving to {$targetStage} requires a passed interview assessment."], 422);
+                }
+            }
+            if ($targetIndex >= 5) {
+                $latestTest = $model->assessmentTests()->latest('assessment_test_id')->first();
+                if (! $latestTest || $latestTest->result !== 'Passed') {
+                    return response()->json(['message' => "Moving to {$targetStage} requires a passed assessment test."], 422);
+                }
+            }
+            if ($targetIndex >= 6) {
+                $requiresPractical = \Modules\ApplicantManagement\Services\PracticalRequirement::required(
+                    $model->jobPost,
+                    $model->jobPost?->title,
+                    $model->jobPost?->position
+                );
+                if ($requiresPractical) {
+                    $latestPractical = $model->practicalTests()->latest('practical_test_id')->first();
+                    if (! $latestPractical || $latestPractical->result !== 'Passed') {
+                        return response()->json(['message' => "Moving to {$targetStage} requires a passed practical assessment."], 422);
+                    }
+                }
+            }
+            if ($targetIndex >= 7) {
+                $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+                if (! $final || $final->recommendation === 'Not Recommended') {
+                    return response()->json(['message' => "Moving to {$targetStage} requires a passing final evaluation."], 422);
+                }
+            }
+
+            $updateData = [
+                'stage'              => $targetStage,
+                'rejected_at'        => null,
+                'cooldown_lifted_at' => null,
+            ];
+            if (! in_array($targetStage, ['Hired', 'Rejected'], true)) {
+                $updateData['archived_at'] = null;
+                $updateData['archived_by'] = null;
+                $updateData['archived_reason'] = null;
+            }
+            $model->update($updateData);
+        }
+
+        $positionTitle = $model->jobPost?->title ?? 'Position';
+        $reason = trim($validated['reason']);
+
+        AuditLogger::log(
+            action: "Applicant Moved to Stage {$targetStage}",
+            module: 'Applicant Management',
+            severity: 'Warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Moved {$model->name} from {$fromStage} to {$targetStage} for {$positionTitle}. Reason: {$reason}"
+        );
+
+        NotificationService::send(
+            title: "Applicant {$model->name} moved to {$targetStage}",
+            body: "{$fromStage} → {$targetStage}. Reason: {$reason}",
+            module: 'Applicant Management',
+            type: 'warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin'],
+        );
+
+        return response()->json(new ApplicantResource($model->fresh(['jobPost.department', 'jobPost.position'])));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/reopen                          */
+    /* Reopens a previously closed (Rejected) application for reconsideration */
+    /* ------------------------------------------------------------------ */
+    public function reopenApplication(Request $request, int $applicant): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Only a Super Admin may reopen a closed application.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'target_stage' => ['nullable', 'string', 'in:Screened,Accepted,Interview Scheduled,Assessed,Assessment Test,Practical Test,Final Evaluation'],
+            'reason'       => ['required', 'string', 'max:1000'],
+        ]);
+
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
+
+        if ($model->stage !== 'Rejected') {
+            return response()->json([
+                'message' => "Only rejected applications can be reopened. {$model->name} is currently in {$model->stage}.",
+            ], 422);
+        }
+
+        if ($model->isBlocked()) {
+            return response()->json([
+                'message' => "Cannot reopen: {$model->name} is currently blocked from recruitment.",
+            ], 403);
+        }
+
+        $targetStage = $validated['target_stage'] ?? 'Screened';
+
+        $failedAtStage = $model->rejectedAtStage();
+        $failedIndex = self::RETURN_STAGE_ORDER[$failedAtStage] ?? 0;
+        $targetIndex = self::RETURN_STAGE_ORDER[$targetStage] ?? 0;
+
+        if ($targetIndex > $failedIndex) {
+            return response()->json([
+                'message' => "Cannot reopen {$model->name} to {$targetStage}. Candidate was rejected at {$failedAtStage} and cannot skip directly to upcoming uncompleted stages.",
+            ], 422);
+        }
+
+        // Check active duplicate
+        $existing = ApplicantRecognitionService::findDuplicate(
+            (string) $model->email,
+            (int) $model->job_post_id,
+            (string) $model->name,
+            $model->phone,
+            $model->address,
+            $model->applicant_id
+        );
+        if ($existing) {
+            return response()->json([
+                'message' => 'An active application already exists for this position.',
+            ], 409);
+        }
+
+        DB::beginTransaction();
+        try {
+            $this->performReturnCleanup($model, $targetStage);
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Could not reopen application: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        $positionTitle = $model->jobPost?->title ?? 'Position';
+        $reason = trim($validated['reason']);
+
+        AuditLogger::log(
+            action: 'Application Reopened',
+            module: 'Applicant Management',
+            severity: 'Warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Reopened application for {$model->name} ({$positionTitle}) at stage {$targetStage}. Reason: {$reason}"
+        );
+
+        NotificationService::send(
+            title: "Application Reopened: {$model->name}",
+            body: "Reopened at {$targetStage} for {$positionTitle}. Reason: {$reason}",
+            module: 'Applicant Management',
+            type: 'info',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin'],
+        );
+
+        return response()->json(new ApplicantResource($model->fresh(['jobPost.department', 'jobPost.position'])));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/correct-hiring                  */
+    /* Corrects an incorrect hiring decision (mistaken hire, no-show, reneged) */
+    /* ------------------------------------------------------------------ */
+    public function correctHiringDecision(Request $request, int $applicant): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Only a Super Admin may correct a hiring decision.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'correction_type' => ['required', 'string', 'in:mistaken_hire,no_show,reneged'],
+            'reason'          => ['required', 'string', 'max:1000'],
+            'apply_cooldown'  => ['nullable', 'boolean'],
+        ]);
+
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
+
+        if ($model->stage !== 'Hired') {
+            return response()->json([
+                'message' => "Only hired applicants can have their hiring decision corrected. {$model->name} is in {$model->stage}.",
+            ], 422);
+        }
+
+        $newHire = NewHire::where('applicant_id', $model->applicant_id)->first();
+        if ($newHire && ($newHire->employee_id || $newHire->stage !== 'Pre-onboarding')) {
+            return response()->json([
+                'message' => "{$model->name} has already progressed past Pre-onboarding or is linked to an employee record ({$newHire->employee_id}) — cannot correct automatically.",
+            ], 422);
+        }
+
+        $portalEmail = $newHire?->email;
+        $removedNewHireCode = $newHire?->new_hire_code;
+        $correctionType = $validated['correction_type'];
+        $reason = trim($validated['reason']);
+        $shouldCooldown = $validated['apply_cooldown'] ?? in_array($correctionType, ['no_show', 'reneged'], true);
+
+        DB::beginTransaction();
+        try {
+            if ($newHire) {
+                $newHire->onboardingItems()->delete();
+                $newHire->delete();
+            }
+
+            if ($model->jobPost) {
+                $model->jobPost->releaseOneSlot();
+            }
+
+            $model->forceFill([
+                'stage'                      => 'Rejected',
+                'rejected_at'                => $shouldCooldown ? now() : null,
+                'cooldown_lifted_at'         => null,
+                'offer_status'               => 'Declined',
+                'offer_response_note'        => "Hiring Correction ({$correctionType}): {$reason}",
+                'offer_response_channel'     => 'In person',
+                'offer_responded_at'         => now(),
+            ])->save();
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Could not correct hiring decision: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        if ($newHire && $portalEmail) {
+            try {
+                SystemUser::where('email', $portalEmail)
+                    ->where('role_id', 3)
+                    ->whereNull('employee_id')
+                    ->delete();
+            } catch (\Throwable $e) {
+                Log::warning('Could not remove portal account during hiring correction', [
+                    'email' => $portalEmail,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $positionTitle = $model->jobPost?->title ?? 'Position';
+
+        AuditLogger::log(
+            action: 'Hiring Decision Corrected',
+            module: 'Applicant Management',
+            severity: 'Warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Corrected hiring decision for {$model->name} ({$positionTitle}) as {$correctionType}. "
+                . ($shouldCooldown ? '30-day cooldown initiated. ' : 'No cooldown applied. ')
+                . ($removedNewHireCode ? "Removed onboarding record {$removedNewHireCode}. " : '')
+                . "Reason: {$reason}"
+        );
+
+        NotificationService::send(
+            title: "Hiring Decision Corrected: {$model->name}",
+            body: "{$correctionType}: {$reason}",
+            module: 'Applicant Management',
+            type: 'warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin'],
+        );
+
+        return response()->json(new ApplicantResource($model->fresh(['jobPost.department', 'jobPost.position'])));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/archive                         */
+    /* Hides an applicant from active recruitment lists                    */
+    /* ------------------------------------------------------------------ */
+    public function archiveApplicant(Request $request, int $applicant): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $model = Applicant::findOrFail($applicant);
+
+        if ($model->archived_at !== null) {
+            return response()->json(['message' => 'This applicant is already archived.'], 422);
+        }
+
+        if (! in_array($model->stage, ['Hired', 'Rejected'], true)) {
+            return response()->json([
+                'message' => 'Only completed or rejected applications (Hired or Rejected) can be archived. In-flight active applications must be completed or rejected first.',
+            ], 422);
+        }
+
+        $actor = $request->user()?->full_name ?? $request->user()?->username ?? 'HR';
+        $reason = trim($validated['reason']);
+
+        $model->update([
+            'archived_at'     => now(),
+            'archived_by'     => $actor,
+            'archived_reason' => $reason,
+        ]);
+
+        AuditLogger::log(
+            action: 'Applicant Archived',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Archived applicant {$model->name} ({$model->applicant_code}). Reason: {$reason}"
+        );
+
+        return response()->json([
+            'message' => "{$model->name} has been archived.",
+            'data'    => new ApplicantResource($model->fresh()),
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/restore                         */
+    /* Restores an archived applicant back to active views                 */
+    /* ------------------------------------------------------------------ */
+    public function restoreApplicant(Request $request, int $applicant): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $model = Applicant::findOrFail($applicant);
+
+        if ($model->archived_at === null) {
+            return response()->json(['message' => 'This applicant is not archived.'], 422);
+        }
+
+        if (! in_array($model->stage, ['Hired', 'Rejected'], true)) {
+            $existing = ApplicantRecognitionService::findDuplicate(
+                (string) $model->email,
+                (int) $model->job_post_id,
+                (string) $model->name,
+                $model->phone,
+                $model->address,
+                $model->applicant_id
+            );
+            if ($existing) {
+                return response()->json([
+                    'message' => 'Cannot restore: an active application already exists for this candidate on this position.',
+                ], 409);
+            }
+        }
+
+        $reason = trim($validated['reason']);
+
+        $model->update([
+            'archived_at'     => null,
+            'archived_by'     => null,
+            'archived_reason' => null,
+        ]);
+
+        AuditLogger::log(
+            action: 'Applicant Restored from Archive',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Restored applicant {$model->name} ({$model->applicant_code}) from archive. Reason: {$reason}"
+        );
+
+        return response()->json([
+            'message' => "{$model->name} has been restored from archive.",
+            'data'    => new ApplicantResource($model->fresh()),
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/block                           */
+    /* Restricts an applicant from specified recruitment activities        */
+    /* ------------------------------------------------------------------ */
+    public function blockApplicant(Request $request, int $applicant): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Only a Super Admin may block an applicant.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'reason'     => ['required', 'string', 'max:1000'],
+            'scope'      => ['nullable', 'string', 'in:all_jobs,specific_job'],
+            'expires_at' => ['nullable', 'date', 'after:now'],
+        ]);
+
+        $model = Applicant::findOrFail($applicant);
+        $scope = $validated['scope'] ?? 'all_jobs';
+        if ($scope === 'specific_job' && $model->job_post_id) {
+            $scope = 'specific_job:' . $model->job_post_id;
+        }
+
+        $actor = $user->full_name ?? $user->username ?? 'Super Admin';
+        $reason = trim($validated['reason']);
+        $expiresAt = ! empty($validated['expires_at']) ? \Carbon\Carbon::parse($validated['expires_at']) : null;
+
+        $model->update([
+            'is_blocked'       => true,
+            'blocked_at'       => now(),
+            'blocked_by'       => $actor,
+            'blocked_reason'   => $reason,
+            'block_scope'      => $scope,
+            'block_expires_at' => $expiresAt,
+        ]);
+
+        ApplicantBlockHistory::create([
+            'applicant_id' => $model->applicant_id,
+            'action'       => 'blocked',
+            'performed_by' => $actor,
+            'reason'       => $reason,
+            'scope'        => $scope,
+            'performed_at' => now(),
+        ]);
+
+        AuditLogger::log(
+            action: 'Applicant Blocked',
+            module: 'Applicant Management',
+            severity: 'Warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Blocked applicant {$model->name} ({$model->applicant_code}). Scope: {$scope}. Reason: {$reason}"
+                . ($expiresAt ? " Expires: " . $expiresAt->toDateString() : ' (Permanent)')
+        );
+
+        NotificationService::send(
+            title: "Applicant Blocked: {$model->name}",
+            body: "Scope: {$scope}. Reason: {$reason}",
+            module: 'Applicant Management',
+            type: 'warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin'],
+        );
+
+        return response()->json([
+            'message' => "{$model->name} has been restricted from recruitment.",
+            'data'    => new ApplicantResource($model->fresh()),
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/unblock                         */
+    /* Removes an existing recruitment restriction                         */
+    /* ------------------------------------------------------------------ */
+    public function unblockApplicant(Request $request, int $applicant): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Only a Super Admin may unblock an applicant.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $model = Applicant::findOrFail($applicant);
+
+        if (! $model->is_blocked) {
+            return response()->json(['message' => 'This applicant is not blocked.'], 422);
+        }
+
+        $actor = $user->full_name ?? $user->username ?? 'Super Admin';
+        $reason = trim($validated['reason']);
+
+        $model->update([
+            'is_blocked'       => false,
+            'blocked_at'       => null,
+            'blocked_by'       => null,
+            'blocked_reason'   => null,
+            'block_scope'      => null,
+            'block_expires_at' => null,
+        ]);
+
+        ApplicantBlockHistory::create([
+            'applicant_id' => $model->applicant_id,
+            'action'       => 'unblocked',
+            'performed_by' => $actor,
+            'reason'       => $reason,
+            'scope'        => null,
+            'performed_at' => now(),
+        ]);
+
+        AuditLogger::log(
+            action: 'Applicant Unblocked',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Removed recruitment restriction for {$model->name} ({$model->applicant_code}). Reason: {$reason}"
+        );
+
+        NotificationService::send(
+            title: "Applicant Unblocked: {$model->name}",
+            body: "Restriction lifted. Reason: {$reason}",
+            module: 'Applicant Management',
+            type: 'info',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin'],
+        );
+
+        return response()->json([
+            'message' => "Restriction lifted for {$model->name}.",
+            'data'    => new ApplicantResource($model->fresh()),
+        ]);
     }
 
     /* ------------------------------------------------------------------ */
@@ -897,7 +1897,7 @@ class ApplicantManagementController extends Controller
 
     public function sendEmail(Request $request, int $applicant): JsonResponse
     {
-        $model = Applicant::with(['jobPost.department'])->findOrFail($applicant);
+        $model = Applicant::with(['jobPost.department', 'jobPost.position'])->findOrFail($applicant);
 
         $type = $request->input('type', 'accept'); // 'accept' | 'reject' | 'offer'
         $positionTitle = $request->input('position', $model->jobPost?->title ?? 'Position');

@@ -9,9 +9,13 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   ArrowRight,
+  ArrowRightCircle,
   Award,
+  Ban,
   BarChart3,
   BookMarked,
   Briefcase,
@@ -51,6 +55,7 @@ import {
   Printer,
   Repeat2,
   RefreshCw,
+  RotateCcw,
   Save,
   ScanLine,
   Search,
@@ -73,6 +78,7 @@ import {
   Mic,
   MicOff,
   Copy,
+  Phone,
   PhoneOff,
   Volume2,
   VolumeX,
@@ -128,6 +134,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -183,7 +190,7 @@ import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn, downloadTextFile } from "@/lib/utils";
 import { useHighlightId, highlightRowClass } from "@/hooks/useHighlight";
-import { getUser } from "@/lib/auth";
+import { getUser, roleKeyFor } from "@/lib/auth";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import {
   applicantDocumentsApi,
@@ -242,7 +249,8 @@ import {
   sanitizePhone,
 } from "@/lib/validation";
 
-function transformApiApplicant(a: ApiApplicant): Applicant {
+function transformApiApplicant(raw: ApiApplicant): Applicant {
+  const a = (raw as any)?.data && (raw as any).data.applicant_id ? (raw as any).data : raw;
   const position = a.job_post?.title || "Front Desk Receptionist";
   return {
     id: a.applicant_code || `APP-${a.applicant_id}`,
@@ -288,6 +296,20 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
     offerResponseRecordedBy: a.offer_response_recorded_by ?? null,
     rejectedAt: a.rejected_at ?? null,
     cooldownLiftedAt: a.cooldown_lifted_at ?? null,
+    address: a.address ?? null,
+    archivedAt: a.archived_at ?? null,
+    archivedBy: a.archived_by ?? null,
+    archivedReason: a.archived_reason ?? null,
+    isArchived: a.is_archived ?? Boolean(a.archived_at),
+    isBlocked: a.is_blocked ?? false,
+    blockedAt: a.blocked_at ?? null,
+    blockedBy: a.blocked_by ?? null,
+    blockedReason: a.blocked_reason ?? null,
+    blockScope: a.block_scope ?? null,
+    blockExpiresAt: a.block_expires_at ?? null,
+    isActiveBlocked: a.is_active_blocked ?? Boolean(a.is_blocked),
+    rejectedAtStage: a.rejected_at_stage ?? null,
+    allowedReturnStages: a.allowed_return_stages ?? null,
   };
 }
 
@@ -295,6 +317,27 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
  *  inbound email-SMS integration, so HR records the medium. */
 type OfferResponseChannel = "Email" | "SMS" | "Call" | "In person";
 const OFFER_RESPONSE_CHANNELS: OfferResponseChannel[] = ["Email", "SMS", "Call", "In person"];
+
+type ReturnTargetStage =
+  | "Screened"
+  | "Accepted"
+  | "Interview Scheduled"
+  | "Assessed"
+  | "Assessment Test"
+  | "Practical Test"
+  | "Final Evaluation"
+  | "Offer";
+
+const RETURN_TARGET_STAGES: { value: ReturnTargetStage; label: string }[] = [
+  { value: "Screened", label: "Screened — pipeline entry" },
+  { value: "Accepted", label: "Accepted — resume verified" },
+  { value: "Interview Scheduled", label: "Interview Scheduled" },
+  { value: "Assessed", label: "Assessed — interview completed" },
+  { value: "Assessment Test", label: "Assessment Test" },
+  { value: "Practical Test", label: "Practical Test" },
+  { value: "Final Evaluation", label: "Final Evaluation" },
+  { value: "Offer", label: "Offer" },
+];
 
 /** Normalized offer state for the final-evaluation decision (null when no
  *  offer was ever sent). Drives the offer banners + Accept / Decline gates. */
@@ -1887,20 +1930,33 @@ function requirementMatches(candidate: string, requirement: string): boolean {
  *  keyword library, and only then the free-text qualifications (so long HR
  *  sentences never inflate or deflate the score). The candidate side comes from
  *  the stored resume screening profile (skills, certifications, job roles,
- *  education and estimated years of experience). */
+ *  education and estimated years of experience), with the persisted screening
+ *  entities as a fallback for applicants whose screening profile was not saved
+ *  — otherwise every vacancy reads 0% and the ranking is meaningless. */
 function referralMatch(
   a: Applicant,
   post: ApiJobPost | undefined,
 ): { score: number; matched: string[]; total: number; notes: string[]; source: string } {
   const profile = a.screening_detail?.profile;
-  const candidatePool = [
-    ...(profile?.skills ?? []),
-    ...(profile?.certifications ?? []),
-    ...(profile?.unrecognized_certifications ?? []),
-    ...(profile?.job_roles?.recognized ?? []),
-    ...(profile?.job_roles?.unrecognized ?? []),
-    ...(profile?.education ?? []),
-  ].filter(Boolean);
+  /* Persisted entities (applicant_screening_entities) hold the same vocabulary
+     the screening pipeline extracted — SKILL / CERT / EDU. ORG rows are company
+     names and would only create noise, so they are left out. */
+  const entityFallback = (a.entities ?? [])
+    .filter((e) => ["SKILL", "CERT", "EDU"].includes(String(e.label ?? "").toUpperCase()))
+    .map((e) => e.value);
+  const candidatePool = Array.from(
+    new Set(
+      [
+        ...(profile?.skills ?? []),
+        ...(profile?.certifications ?? []),
+        ...(profile?.unrecognized_certifications ?? []),
+        ...(profile?.job_roles?.recognized ?? []),
+        ...(profile?.job_roles?.unrecognized ?? []),
+        ...(profile?.education ?? []),
+        ...entityFallback,
+      ].filter(Boolean),
+    ),
+  );
 
   const postSkills = (post?.skills ?? []).filter(Boolean);
   const template = keywordLibrary[post?.title ?? a.position] ?? [];
@@ -1933,6 +1989,71 @@ function referralMatch(
   }
 
   return { score, matched, total: required.length, notes, source };
+}
+
+/** A vacancy HR can actually transfer an applicant into — a real open job post
+ *  with unfilled seats, plus its fit against the applicant's screening data. */
+type ReferralOption = {
+  post: ApiJobPost;
+  fit: ReturnType<typeof referralMatch>;
+  openSeats: number;
+  department: string;
+  salaryBand: string;
+};
+
+const formatPeso = (value: number) => `₱${Math.round(value).toLocaleString("en-PH")}`;
+
+/** Salary band of a job post, formatted the way the referral list shows it. */
+function salaryBandOf(post: ApiJobPost): string {
+  const min = post.salary_min;
+  const max = post.salary_max;
+  if (min && max) return `${formatPeso(min)} – ${formatPeso(max)}`;
+  if (min) return `From ${formatPeso(min)}`;
+  if (max) return `Up to ${formatPeso(max)}`;
+  return "Salary not set";
+}
+
+/** Vacancies offered in "Refer to Other Position".
+ *
+ *  Only REAL open job posts qualify: the previous implementation listed the
+ *  static `positions` demo rows, so HR could refer someone to positions that
+ *  had no vacancy behind them (Senior Line Cook, Pastry Chef 1–4, …) while
+ *  live posts such as Restaurant Server / Spa Therapist never appeared — and
+ *  a referral to a post-less title silently kept the old job_post_id in the
+ *  database. The applicant's current post is excluded both by id and title. */
+function referralOptions(a: Applicant, jobPosts: ApiJobPost[]): ReferralOption[] {
+  const currentTitle = normalizeMatchText(a.position);
+  const currentJobPostId = Number(a.jobId);
+  const seen = new Set<string>();
+  return jobPosts
+    .filter((post) => {
+      const status = String(post.status ?? "");
+      const open = post.active !== false && ["open", "published"].includes(status.toLowerCase());
+      const seats = Number(post.vacancies ?? 0) - Number(post.filled_count ?? 0);
+      return open && seats > 0;
+    })
+    .filter((post) => {
+      if (Number.isFinite(currentJobPostId) && currentJobPostId > 0) {
+        if (Number(post.job_post_id) === currentJobPostId) return false;
+      }
+      if (normalizeMatchText(post.title) === currentTitle) return false;
+      const key = normalizeMatchText(post.title);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((post) => ({
+      post,
+      fit: referralMatch(a, post),
+      openSeats: Number(post.vacancies ?? 0) - Number(post.filled_count ?? 0),
+      department:
+        post.department ||
+        positions.find((p) => normalizeMatchText(p.title) === normalizeMatchText(post.title))
+          ?.department ||
+        "General",
+      salaryBand: salaryBandOf(post),
+    }))
+    .sort((x, y) => y.fit.score - x.fit.score);
 }
 
 /** Reports every unrecognized entity of a screening result in ONE click —
@@ -2811,6 +2932,7 @@ function ScreeningSupportDocsGrid({
   onDownload,
   reverifyingId = null,
   onReverify,
+  onOverride,
   title = "Supporting Documents",
   subtitle = "These documents help verify the applicant's information.",
   showResume = true,
@@ -2824,6 +2946,7 @@ function ScreeningSupportDocsGrid({
   onDownload: (d: ApiApplicantDocument) => void;
   reverifyingId?: string | null;
   onReverify?: ((d: ApiApplicantDocument) => void) | undefined;
+  onOverride?: ((d: ApiApplicantDocument) => void) | undefined;
   title?: string;
   subtitle?: string;
   /** The resume card belongs to "Resume & Documents"; the Supporting Document
@@ -2981,6 +3104,19 @@ function ScreeningSupportDocsGrid({
                       <p className="text-xs leading-relaxed text-muted-foreground">
                         {d.verification_result.summary}
                       </p>
+                    )}
+                    {onOverride && d.verification_status === "DISCREPANCY_FOUND" && (
+                      <div className="pt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full h-7 text-[0.7rem] border-primary/40 text-primary hover:bg-primary/10"
+                          disabled={busy}
+                          onClick={() => onOverride(d)}
+                        >
+                          <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Resolve Discrepancy (HR Override)
+                        </Button>
+                      </div>
                     )}
                     {checks.length === 0 ? (
                       <p className="text-xs italic text-muted-foreground">
@@ -4928,7 +5064,7 @@ export function ScreeningResumeDocsMatchDetail({
    and Resume & Documents. Activity history lives in Current Stage.
    ============================================================================ */
 
-type ViewPanel = "current" | "details" | "resume" | "interview" | "test" | "practical" | "final";
+type ViewPanel = "current" | "history" | "details" | "resume" | "interview" | "test" | "practical" | "final";
 
 type ViewScreenDoc = {
   docType: VerificationDocType;
@@ -4954,7 +5090,7 @@ type ApplicantViewScreenProps = {
   onRecomputeRanking?: () => void;
   /** True while the recompute request is in flight. */
   recomputingRanking?: boolean;
-  onSchedule: () => void;
+  onSchedule?: () => void;
   onStartInterview: () => void;
   /** Slot length in minutes driving the interview start window
    *  ([start, start + duration) is startable). Falls back to 30. */
@@ -4989,6 +5125,15 @@ type ApplicantViewScreenProps = {
   onOverrideCooldown?: () => void;
   /** True while the override request is in flight. */
   overrideBusy?: boolean;
+  /** Administrative actions inside View profile */
+  isSuperAdmin?: boolean;
+  onMoveToStage?: (a: Applicant) => void;
+  onReopen?: (a: Applicant) => void;
+  onCorrectHiring?: (a: Applicant) => void;
+  onArchive?: (a: Applicant) => void;
+  onRestore?: (a: Applicant) => void;
+  onBlock?: (a: Applicant) => void;
+  onUnblock?: (a: Applicant) => void;
 };
 
 /** Humanized hiring milestones for the stage stepper (maps internal stages). */
@@ -5063,8 +5208,39 @@ function ApplicantViewScreen({
   historyLoading,
   onOverrideCooldown,
   overrideBusy,
+  isSuperAdmin,
+  onMoveToStage,
+  onReopen,
+  onCorrectHiring,
+  onArchive,
+  onRestore,
+  onBlock,
+  onUnblock,
 }: ApplicantViewScreenProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const [panel, setPanel] = useState<ViewPanel>("current");
+
+  /** Reset scroll position to top whenever View Profile is opened or switches applicant. */
+  useEffect(() => {
+    const scrollToTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      const mainEl = document.querySelector("main");
+      if (mainEl) mainEl.scrollTop = 0;
+      rootRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+    };
+
+    scrollToTop();
+    const frameId = requestAnimationFrame(scrollToTop);
+    const timer = setTimeout(scrollToTop, 50);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(timer);
+    };
+  }, [a.id]);
+
   /* Test requirements from the API (Core HCM position flags, owner) with the
      static lists as fallback — must match the API gates. Every applicant for
      a flagged position (e.g. Front Desk) must undergo the required stages. */
@@ -5078,18 +5254,20 @@ function ApplicantViewScreen({
   const practical = practicalTests[0];
   const final = finalEvaluations[0];
   /** Ready-checks mirror the removed Interview / Test / Practical / Final tabs. */
-  const readyForTest = a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
+  const readyForTest = requiresTest && (a.stage === "Assessment Test" || (a.stage === "Assessed" && assessment?.result === "Passed"));
   const readyForPractical =
-    (requiresTest
-      ? a.stage === "Assessment Test" && test?.result === "Passed"
-      : a.stage === "Assessed" && assessment?.result === "Passed") && requiresPrac;
+    requiresPrac &&
+    (a.stage === "Practical Test" ||
+      (requiresTest
+        ? (a.stage === "Assessment Test" || a.stage === "Assessed") && test?.result === "Passed"
+        : a.stage === "Assessed" && assessment?.result === "Passed"));
   const readyForFinal =
     ((requiresTest
-      ? (a.stage === "Practical Test" || a.stage === "Assessment Test") && test?.result === "Passed"
-      : a.stage === "Assessed" && assessment?.result === "Passed") &&
+      ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") && test?.result === "Passed"
+      : (a.stage === "Assessed" || a.stage === "Final Evaluation") && assessment?.result === "Passed") &&
       (!requiresPrac || practical?.result === "Passed")) ||
     (!requiresTest &&
-      a.stage === "Practical Test" &&
+      (a.stage === "Practical Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
       (!requiresPrac || practical?.result === "Passed"));
 
   const tier = computeTopCandidateTier(
@@ -5113,13 +5291,13 @@ function ApplicantViewScreen({
   const stepStates: StageProgressState[] = (() => {
     /* "Accepted" means accepted *for interview* — the pipeline is not closed,
        so it must not read as finished here. */
-    const closed = ["Offer", "Hired", "Rejected"].includes(a.stage);
+    const isOfferOrHired = ["Offer", "Hired"].includes(a.stage);
     const staged = [
-      /* 0 Screening */ closed || a.stage !== "Screened",
-      /* 1 Interview */ closed || !!assessment,
-      /* 2 Test      */ requiresTest ? closed || !!test : false,
-      /* 3 Practical */ requiresPrac ? closed || !!practical : false,
-      /* 4 Final     */ closed || !!final || a.stage === "Final Evaluation",
+      /* 0 Screening */ isOfferOrHired || a.stage === "Rejected" || a.stage !== "Screened",
+      /* 1 Interview */ isOfferOrHired || !!assessment,
+      /* 2 Test      */ requiresTest ? isOfferOrHired || !!test : false,
+      /* 3 Practical */ requiresPrac ? isOfferOrHired || !!practical : false,
+      /* 4 Final     */ isOfferOrHired || !!final || a.stage === "Final Evaluation",
     ];
     const states: StageProgressState[] = staged.map((s) => (s ? "done" : "pending"));
     // A stage the role skips is never "worked on": leave it out when locating
@@ -5128,7 +5306,7 @@ function ApplicantViewScreen({
     const currentIdx = states.findIndex((s, i) => applicable(i) && s === "pending");
     if (!requiresTest && (currentIdx === -1 || currentIdx > 2)) states[2] = "done";
     if (!requiresPrac && (currentIdx === -1 || currentIdx > 3)) states[3] = "done";
-    if (currentIdx !== -1) states[currentIdx] = "current";
+    if (a.stage !== "Rejected" && currentIdx !== -1) states[currentIdx] = "current";
     return states;
   })();
 
@@ -5152,7 +5330,7 @@ function ApplicantViewScreen({
     if (lastFlowKey.current === flowKey) return;
     lastFlowKey.current = flowKey;
     // Leave the user alone when they are reading reference material.
-    if (panel === "details" || panel === "resume") return;
+    if (panel === "details" || panel === "resume" || panel === "history") return;
     // Open the stage being worked on now (the first stage that is not finished).
     const nextIdx = stepStates.findIndex((s) => s === "current");
     // A closed pipeline (offer extended / hired) opens the final evaluation.
@@ -5272,38 +5450,53 @@ function ApplicantViewScreen({
     icon: React.ReactNode,
     badge?: number,
     done?: boolean,
-  ) => (
-    <button
-      type="button"
-      onClick={() => setPanel(id)}
-      className={cn(
-        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold transition-colors",
-        panel === id
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {icon} {label}
-      {done ? (
-        <span
-          className={cn(
-            "ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[0.6rem] font-bold",
-            panel === id ? "bg-success/25 text-success-foreground" : "bg-success/15 text-success",
-          )}
-          title="Completed"
-        >
-          <Check className="h-3 w-3" strokeWidth={3} /> Done
+  ) => {
+    const active = panel === id;
+    return (
+      <button
+        type="button"
+        onClick={() => setPanel(id)}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-semibold transition-colors cursor-pointer",
+          active
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        <span className={cn(active ? "text-primary-foreground" : "text-muted-foreground")}>
+          {icon}
         </span>
-      ) : (
-        badge !== undefined &&
-        badge > 0 && (
-          <span className="ml-auto min-w-4 rounded-full bg-secondary px-1.5 text-center text-[0.65rem] font-bold text-secondary-foreground">
-            {badge}
+        <span className="truncate flex-1">{label}</span>
+        {done ? (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.6rem] font-bold",
+              active
+                ? "bg-primary-foreground/20 text-primary-foreground"
+                : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+            )}
+            title="Completed"
+          >
+            <Check className="h-3 w-3" strokeWidth={3} /> Done
           </span>
-        )
-      )}
-    </button>
-  );
+        ) : (
+          badge !== undefined &&
+          badge > 0 && (
+            <span
+              className={cn(
+                "ml-auto min-w-4 rounded-full px-1.5 py-0.2 text-center text-[0.65rem] font-bold",
+                active
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground",
+              )}
+            >
+              {badge}
+            </span>
+          )
+        )}
+      </button>
+    );
+  };
 
   const emptyNote = (text: string) => (
     <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
@@ -5312,182 +5505,151 @@ function ApplicantViewScreen({
   );
 
   return (
-    <div className="mt-6 space-y-5">
-      {/* Top bar — Review lives in Resume & Documents, scheduling stays here */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onBack}>
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
-          </Button>
-        </div>
-        <Button size="sm" onClick={onSchedule}>
-          <CalendarClock className="mr-1.5 h-3.5 w-3.5" /> Book Interview
+    <div ref={rootRef} className="mt-6 space-y-5">
+      {/* Top bar — Back to applicants navigation */}
+      <div>
+        <Button variant="outline" size="sm" onClick={onBack} className="shadow-xs hover:bg-muted font-medium cursor-pointer">
+          <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
         </Button>
       </div>
 
-      {/* Applicant hero — mirrors the profile mockup: identity + resume file card */}
-      <Card className="border-border/70">
+      {/* Applicant hero — sleek modern card with subtle gradient highlight & rich metadata */}
+      <Card className="relative overflow-hidden border-border/80 bg-gradient-to-br from-card via-card to-muted/20 shadow-xs">
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary via-primary/80 to-primary/40" />
         <CardContent className="p-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <Avatar className="h-14 w-14 shrink-0">
-              <AvatarFallback className="bg-primary text-lg font-semibold text-primary-foreground">
-                {initials(a.name)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <h2 className="font-display text-2xl font-semibold">{a.name}</h2>
-              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Briefcase className="h-3.5 w-3.5 text-primary" />
-                <span className="font-medium text-foreground">{a.position}</span>
-              </p>
-              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <CalendarDays className="h-3.5 w-3.5" /> Applied: {displayAppliedAt(a.appliedAt)}
-                </span>
-                <Badge variant="outline" className={cn("gap-1", statusMeta[a.status].className)}>
-                  <span className={cn("h-1.5 w-1.5 rounded-full", statusMeta[a.status].dot)} />
-                  {statusMeta[a.status].label}
-                </Badge>
-              </p>
-              {/* Onboarding hand-over — the employee's first day of work. */}
-              {linkedHire?.startDate && (
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CalendarClock className="h-3.5 w-3.5 text-gold-foreground dark:text-gold" />
-                  Start Date as Employee:{" "}
-                  <span className="font-medium text-foreground">{linkedHire.startDate}</span>
-                </p>
-              )}
-            </div>
-            {a.resumeUrl ? (
-              <div className="ml-auto flex shrink-0 items-center gap-2.5 rounded-lg border border-border/70 px-3 py-2">
-                <ScreeningDocIcon docType="resume" label="RES" />
-                <div className="min-w-0 max-w-52">
-                  <p
-                    className="truncate text-xs font-semibold"
-                    title={a.resumeOriginalName || undefined}
-                  >
-                    {a.resumeOriginalName || "Resume / CV"}
-                  </p>
-                  <p className="text-[0.7rem] text-muted-foreground">
-                    PDF · Screened at {Math.round(a.score)}%
-                  </p>
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-4">
+              <Avatar className="h-16 w-16 shrink-0 ring-2 ring-primary/20 ring-offset-2 ring-offset-background">
+                <AvatarFallback className="bg-primary/10 text-primary font-display text-xl font-bold">
+                  {initials(a.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-display text-2xl font-bold tracking-tight text-foreground">{a.name}</h2>
+                  <span className="rounded-md border border-border bg-muted/80 px-2 py-0.5 font-mono text-xs font-semibold text-muted-foreground">
+                    {a.id}
+                  </span>
+                  {tier <= 2 && (
+                    <Badge
+                      variant="outline"
+                      className={cn("gap-1 text-[11px] font-semibold", topCandidateTierMeta[tier].className)}
+                    >
+                      <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
+                    </Badge>
+                  )}
+                  {a.isArchived && (
+                    <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px]">
+                      <Archive className="h-3 w-3" /> Archived
+                    </Badge>
+                  )}
+                  {a.isActiveBlocked && (
+                    <Badge variant="outline" className="gap-1 border-destructive/40 bg-destructive/10 text-destructive text-[11px]">
+                      <Ban className="h-3 w-3" /> Blocked
+                    </Badge>
+                  )}
                 </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 shrink-0"
-                  title="Download resume"
-                  onClick={() => window.open(a.resumeUrl!, "_blank", "noopener")}
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="ml-auto text-right">
-                <p className="eyebrow">Resume Score</p>
-                <p
-                  className={cn(
-                    "font-display text-3xl font-semibold",
-                    a.score >= passing
-                      ? "text-success"
-                      : a.score >= 60
-                        ? "text-caution"
-                        : "text-destructive",
-                  )}
-                >
-                  {a.score}%
-                </p>
-                <p className="text-[0.65rem] text-muted-foreground">
-                  {passedScreening ? "Passed screening" : "Below passing score"}
-                </p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Previous applications — same-email history with the re-apply
-          cooldown countdown / eligible flag + HR early override. */}
-      <Card className="border-border/70">
-        <CardContent className="space-y-3 px-6 py-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold">
-              Previous applications
-              {typeof history?.attempt_count === "number" && history.attempt_count > 0 && (
-                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  {history.attempt_count} attempt{history.attempt_count === 1 ? "" : "s"}
-                </span>
-              )}
-            </p>
-            {history?.cooldown && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={overrideBusy}
-                onClick={onOverrideCooldown}
-              >
-                {overrideBusy ? "Allowing…" : "Allow early re-application"}
-              </Button>
-            )}
-          </div>
-          {historyLoading ? (
-            <div className="space-y-2" aria-busy="true" aria-label="Loading application history">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-          ) : history?.cooldown ? (
-            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 dark:border-amber-400/20 dark:bg-amber-400/10 px-3 py-2 text-xs leading-relaxed">
-              Eligible to re-apply on{" "}
-              <span className="font-semibold">{history.cooldown.eligible_after_label}</span> (
-              {history.cooldown.days_left} day(s) left).
-            </p>
-          ) : (
-            <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs">
-              Eligible to re-apply — no waiting period in effect.
-            </p>
-          )}
-          {(history?.data ?? []).length > 0 && (
-            <div className="space-y-1.5">
-              {history!.data.map((row) => (
-                <div
-                  key={row.applicant_id}
-                  className={cn(
-                    "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border/60 px-3 py-2 text-xs",
-                    row.is_current && "border-primary/40 bg-primary/5",
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1 font-medium text-foreground">
+                    <Briefcase className="h-3.5 w-3.5 text-primary" /> {a.position}
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" /> {departmentOf(a.position)}
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <CalendarDays className="h-3.5 w-3.5" /> Applied: {displayAppliedAt(a.appliedAt)}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+                  {a.email && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[11px]">
+                      <Mail className="h-3 w-3 text-muted-foreground" /> {a.email}
+                    </span>
                   )}
-                >
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {row.applicant_code}
-                  </span>
-                  <span className="font-medium">{row.position}</span>
-                  <span className="text-muted-foreground">
-                    {row.applied_at ? new Date(row.applied_at).toLocaleDateString() : "—"}
-                  </span>
-                  <Badge variant="outline" className="text-[11px]">
-                    {row.stage}
+                  {a.phone && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[11px]">
+                      <Phone className="h-3 w-3 text-muted-foreground" /> {a.phone}
+                    </span>
+                  )}
+                  <Badge variant="outline" className={cn("gap-1.5 ml-1 text-[11px]", statusMeta[a.status].className)}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full animate-pulse", statusMeta[a.status].dot)} />
+                    {statusMeta[a.status].label}
                   </Badge>
-                  {row.offer_status === "Declined" && (
-                    <Badge variant="outline" className="border-success/40 text-[11px] text-success">
-                      Declined — no cooldown
-                    </Badge>
-                  )}
-                  {row.is_current && (
-                    <Badge variant="secondary" className="text-[11px]">
-                      Current
-                    </Badge>
-                  )}
+                  <Badge variant="secondary" className="text-[11px]">
+                    {a.stage}
+                  </Badge>
                 </div>
-              ))}
+
+                {linkedHire?.startDate && (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-gold-foreground dark:text-gold">
+                    <CalendarClock className="h-3.5 w-3.5" />
+                    Start Date as Employee: <span className="font-semibold underline">{linkedHire.startDate}</span>
+                  </p>
+                )}
+              </div>
             </div>
-          )}
+
+            {/* Right side: Resume Card or Score Widget */}
+            <div className="shrink-0 flex items-center">
+              {a.resumeUrl ? (
+                <div className="flex items-center gap-3 rounded-xl border border-border/80 bg-background/80 p-3 shadow-2xs backdrop-blur-xs">
+                  <ScreeningDocIcon docType="resume" label="RES" />
+                  <div className="min-w-0 max-w-48">
+                    <p className="truncate text-xs font-semibold text-foreground" title={a.resumeOriginalName || undefined}>
+                      {a.resumeOriginalName || "Resume / CV"}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={cn(
+                        "inline-flex items-center rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                        a.score >= passing ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-destructive/15 text-destructive"
+                      )}>
+                        {Math.round(a.score)}% Score
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">PDF</span>
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                    title="Download resume"
+                    onClick={() => window.open(a.resumeUrl!, "_blank", "noopener")}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/80 bg-background/80 px-4 py-3 text-right shadow-2xs">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Screening Score</p>
+                  <p
+                    className={cn(
+                      "font-display text-3xl font-bold tracking-tight",
+                      a.score >= passing
+                        ? "text-success"
+                        : a.score >= 60
+                          ? "text-caution"
+                          : "text-destructive",
+                    )}
+                  >
+                    {a.score}%
+                  </p>
+                  <p className="text-[10px] font-medium text-muted-foreground">
+                    {passedScreening ? "Passed screening" : "Below passing threshold"}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Stage stepper — timeline: Screening → Interview → Assessment Test →
-          Practical Assessment → Final Evaluation. Every node is clickable and
-          opens its section. */}
-      <Card className="border-border/70">
-        <CardContent className="overflow-x-auto px-6 py-5">
+      {/* Stage stepper — timeline: Screening → Interview → Assessment Test → Practical Assessment → Final Evaluation */}
+      <Card className="border-border/70 bg-card/60 backdrop-blur-xs shadow-xs">
+        <CardContent className="overflow-x-auto px-6 py-4">
           <div className="flex min-w-[640px] items-start">
             {VIEW_MILESTONES.map((m, i) => {
               /* Colour comes from the recorded progress, not the stage label:
@@ -5507,17 +5669,25 @@ function ApplicantViewScreen({
                     : i === 3
                       ? (practical?.result ?? null)
                       : null;
+              const isFailed =
+                verdict === "Failed" ||
+                (i === 4 && final?.recommendation === "Not Recommended") ||
+                (i === 0 && a.stage === "Rejected" && !assessment && !test && !practical && !final);
               const statusText = skipped
                 ? done
                   ? "Not required — Completed"
                   : "Not required"
-                : done
-                  ? verdict
-                    ? `Completed · ${verdict}`
-                    : "Completed"
-                  : current
-                    ? "In Progress"
-                    : "Pending";
+                : isFailed
+                  ? `Failed${verdict ? ` · ${verdict}` : ""}`
+                  : done
+                    ? verdict
+                      ? `Completed · ${verdict}`
+                      : "Completed"
+                    : a.stage === "Rejected"
+                      ? "Disqualified"
+                      : current
+                        ? "In Progress"
+                        : "Pending";
               const isLast = i === VIEW_MILESTONES.length - 1;
 
               // Connector to the next node: green behind a completed stage, a
@@ -5525,9 +5695,9 @@ function ApplicantViewScreen({
               const nextState = stepStates[i + 1] ?? "pending";
               const lineClass =
                 nextState === "done"
-                  ? "bg-success"
+                  ? "bg-emerald-500"
                   : nextState === "current"
-                    ? "bg-gradient-to-r from-success to-destructive/50"
+                    ? "bg-gradient-to-r from-emerald-500 to-primary/60"
                     : "bg-muted";
 
               return (
@@ -5540,8 +5710,8 @@ function ApplicantViewScreen({
                     <div
                       aria-hidden
                       className={cn(
-                        "absolute top-[14px] h-0.5",
-                        "left-[calc(50%+22px)] right-[calc(-50%+22px)]",
+                        "absolute top-[14px] h-[2px]",
+                        "left-[calc(50%+16px)] right-[calc(-50%+16px)]",
                         lineClass,
                       )}
                     />
@@ -5553,23 +5723,31 @@ function ApplicantViewScreen({
                     title={`Open ${m.label}`}
                     className={cn(
                       "relative z-10 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-bold transition-all",
-                      "hover:ring-4 hover:ring-primary/25 disabled:cursor-not-allowed disabled:hover:ring-0",
-                      done
-                        ? "bg-success text-success-foreground"
-                        : current
-                          ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/15"
-                          : "bg-muted text-muted-foreground",
+                      "hover:scale-105 active:scale-95 disabled:cursor-not-allowed",
+                      isFailed
+                        ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/20 shadow-xs"
+                        : done
+                          ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20"
+                          : current
+                            ? "bg-primary text-primary-foreground ring-4 ring-primary/25 shadow-xs"
+                            : "bg-muted text-muted-foreground border border-border",
                     )}
                   >
-                    {done ? <Check className="h-4 w-4" strokeWidth={3} /> : i + 1}
+                    {isFailed ? (
+                      <X className="h-3.5 w-3.5" strokeWidth={3} />
+                    ) : done ? (
+                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                    ) : (
+                      i + 1
+                    )}
                   </button>
                   <span
                     className={cn(
                       "mt-2 px-1 text-xs font-semibold leading-tight",
                       done
-                        ? "text-success"
+                        ? "text-emerald-600 dark:text-emerald-400"
                         : current
-                          ? "text-destructive"
+                          ? "text-primary font-bold"
                           : "text-muted-foreground",
                     )}
                   >
@@ -5579,10 +5757,10 @@ function ApplicantViewScreen({
                     className={cn(
                       "mt-0.5 text-[11px] font-medium leading-tight",
                       done
-                        ? "text-success"
+                        ? "text-emerald-600/80 dark:text-emerald-400/80"
                         : current
-                          ? "text-destructive"
-                          : "text-muted-foreground",
+                          ? "text-primary/90"
+                          : "text-muted-foreground/70",
                     )}
                   >
                     {statusText}
@@ -5594,52 +5772,75 @@ function ApplicantViewScreen({
         </CardContent>
       </Card>
 
-      {/* Body grid: section nav + panels. */}
-      <div className="grid items-start gap-4 lg:grid-cols-[240px_1fr] lg:items-stretch">
-        <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh]">
-          <CardContent className="h-full p-3 lg:overflow-y-auto">
-            <div>
-              <p className="eyebrow mb-2">Applicant sections</p>
-              <div className="space-y-1">
-                {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
-                {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
-                {sectionBtn(
-                  "resume",
-                  "Resume & Documents",
-                  <Upload className="h-4 w-4" />,
-                  docCount,
-                  passedScreening,
-                )}
-                {sectionBtn(
-                  "interview",
-                  "Interview",
-                  <ClipboardCheck className="h-4 w-4" />,
-                  assessments.length,
-                  !!assessment,
-                )}
-                {sectionBtn(
-                  "test",
-                  "Assessment Test",
-                  <BookMarked className="h-4 w-4" />,
-                  assessmentTests.length,
-                  !!test,
-                )}
-                {sectionBtn(
-                  "practical",
-                  "Practical Assessment",
-                  <Wrench className="h-4 w-4" />,
-                  requiresPrac ? practicalTests.length : undefined,
-                  /* Not required for this position: done as soon as the
-                   applicant has advanced past the stage (progress bar rule). */
-                  requiresPrac ? !!practical : stepStates[3] === "done",
-                )}
-                {sectionBtn(
-                  "final",
-                  "Final Evaluation",
-                  <CheckCircle2 className="h-4 w-4" />,
-                  finalEvaluations.length,
-                  stepStates[4] === "done",
-                )}
+      {/* Body grid: section nav + panels */}
+      <div className="grid items-start gap-4 lg:grid-cols-[250px_1fr] lg:items-stretch">
+        <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh] shadow-xs">
+          <CardContent className="h-full p-3 flex flex-col justify-between lg:overflow-y-auto">
+            <div className="space-y-4">
+              <div>
+                <p className="px-2 pb-2 text-[10px] font-bold tracking-wider uppercase text-muted-foreground">
+                  Applicant Sections
+                </p>
+                <div className="space-y-1">
+                  {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
+                  {sectionBtn(
+                    "history",
+                    "Previous Applications",
+                    <History className="h-4 w-4" />,
+                    (history?.data?.length ?? 0) > 0 ? history?.data?.length : undefined,
+                    !history?.cooldown && !history?.block?.is_blocked && (history?.data?.length ?? 0) > 0,
+                  )}
+                  {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
+                  {sectionBtn(
+                    "resume",
+                    "Resume & Documents",
+                    <Upload className="h-4 w-4" />,
+                    docCount,
+                    passedScreening,
+                  )}
+                  {sectionBtn(
+                    "interview",
+                    "Interview",
+                    <ClipboardCheck className="h-4 w-4" />,
+                    assessments.length,
+                    !!assessment,
+                  )}
+                  {sectionBtn(
+                    "test",
+                    "Assessment Test",
+                    <BookMarked className="h-4 w-4" />,
+                    assessmentTests.length,
+                    !!test,
+                  )}
+                  {sectionBtn(
+                    "practical",
+                    "Practical Assessment",
+                    <Wrench className="h-4 w-4" />,
+                    requiresPrac ? practicalTests.length : undefined,
+                    /* Not required for this position: done as soon as the
+                     applicant has advanced past the stage (progress bar rule). */
+                    requiresPrac ? !!practical : stepStates[3] === "done",
+                  )}
+                  {sectionBtn(
+                    "final",
+                    "Final Evaluation",
+                    <CheckCircle2 className="h-4 w-4" />,
+                    finalEvaluations.length,
+                    stepStates[4] === "done",
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Summary Pill at bottom of sidebar */}
+            <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] uppercase font-bold tracking-wider">Applicant ID</span>
+                <span className="font-mono text-[11px] font-medium text-foreground">{a.id}</span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] uppercase font-bold tracking-wider">Current Stage</span>
+                <span className="text-[11px] font-semibold text-primary">{a.stage}</span>
               </div>
             </div>
           </CardContent>
@@ -5650,22 +5851,22 @@ function ApplicantViewScreen({
             switch (panel) {
               case "current":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
                         <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                             <Info className="h-4 w-4 text-primary" /> {a.stage}
                           </h3>
-                          <p className="text-xs text-muted-foreground">
-                            {stageDesc[a.stage] ?? "Process stage for this applicant."}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {stageDesc[a.stage] ?? "Current recruitment pipeline stage for this applicant."}
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           {tier <= 2 && (
                             <Badge
                               variant="outline"
-                              className={cn(topCandidateTierMeta[tier].className)}
+                              className={cn("gap-1 font-semibold", topCandidateTierMeta[tier].className)}
                             >
                               <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
                             </Badge>
@@ -5673,14 +5874,59 @@ function ApplicantViewScreen({
                         </div>
                       </div>
 
-                      {/* Stage overview — shortcuts only, details live in each section */}
+                      {/* Quick Administrative Controls Bar */}
+                      <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                          <Sliders className="h-3.5 w-3.5 text-primary" />
+                          <span>Administrative Actions</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isSuperAdmin && a.stage !== "Rejected" && onMoveToStage && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 cursor-pointer" onClick={() => onMoveToStage(a)}>
+                              <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
+                            </Button>
+                          )}
+                          {isSuperAdmin && a.stage === "Rejected" && onReopen && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onReopen(a)}>
+                              <RotateCcw className="h-3.5 w-3.5" /> Reopen application
+                            </Button>
+                          )}
+                          {isSuperAdmin && (a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") && onCorrectHiring && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer" onClick={() => onCorrectHiring(a)}>
+                              <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
+                            </Button>
+                          )}
+                          {!a.isArchived && onArchive ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground cursor-pointer" onClick={() => onArchive(a)}>
+                              <Archive className="h-3.5 w-3.5" /> Archive
+                            </Button>
+                          ) : a.isArchived && onRestore ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onRestore(a)}>
+                              <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+                            </Button>
+                          ) : null}
+                          {isSuperAdmin && (!a.isActiveBlocked && onBlock ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer" onClick={() => onBlock(a)}>
+                              <Ban className="h-3.5 w-3.5" /> Block
+                            </Button>
+                          ) : a.isActiveBlocked && onUnblock ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onUnblock(a)}>
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                            </Button>
+                          ) : null)}
+                        </div>
+                      </div>
+
+                      {/* Stage overview — interactive shortcut cards */}
                       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {[
                           {
-                            id: "details" as ViewPanel,
+                            id: "resume" as ViewPanel,
                             icon: <FileText className="h-4 w-4" />,
                             label: "Screening",
                             meta: passedScreening ? "Passed" : "For Review",
+                            tone: passedScreening ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+                            dot: passedScreening ? "bg-emerald-500" : "bg-amber-500",
                           },
                           {
                             id: "interview" as ViewPanel,
@@ -5691,42 +5937,60 @@ function ApplicantViewScreen({
                               : interview
                                 ? `Scheduled · ${interview.date}`
                                 : "Not yet conducted",
+                            tone: assessment?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : assessment?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
+                            dot: assessment?.result === "Passed" ? "bg-emerald-500" : assessment?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
                           },
                           {
                             id: "test" as ViewPanel,
                             icon: <BookMarked className="h-4 w-4" />,
                             label: "Assessment Test",
                             meta: test ? `${test.result} · ${test.total}%` : "Not yet taken",
+                            tone: test?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : test?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
+                            dot: test?.result === "Passed" ? "bg-emerald-500" : test?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
                           },
                           {
                             id: "practical" as ViewPanel,
                             icon: <Wrench className="h-4 w-4" />,
-                            label: "Practical Assessment",
+                            label: "Practical",
                             meta: !requiresPrac
                               ? "Not required"
                               : practical
                                 ? `${practical.result} · ${practical.total}%`
                                 : "Pending",
+                            tone: !requiresPrac ? "text-muted-foreground" : practical?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : practical?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
+                            dot: !requiresPrac ? "bg-muted-foreground/30" : practical?.result === "Passed" ? "bg-emerald-500" : practical?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
                           },
                         ].map((r) => (
                           <button
                             key={r.id}
                             type="button"
                             onClick={() => setPanel(r.id)}
-                            className="flex min-h-0 flex-col items-start gap-1.5 rounded-md border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/40"
+                            className="group relative flex min-h-0 flex-col items-start gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition-all hover:border-primary/40 hover:shadow-sm hover:bg-muted/30"
                           >
-                            <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                              {r.icon} {r.label}
-                            </span>
-                            <span className="text-[0.7rem] text-muted-foreground">{r.meta}</span>
+                            <div className="flex w-full items-center justify-between">
+                              <span className="flex items-center gap-2">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-primary">
+                                  {r.icon}
+                                </span>
+                                <span className="text-xs font-semibold text-foreground">{r.label}</span>
+                              </span>
+                              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", r.dot)} />
+                              <span className={cn("text-[0.68rem] font-medium", r.tone)}>{r.meta}</span>
+                            </div>
                           </button>
                         ))}
                       </div>
 
-                      <div className="mt-4">
-                        <h4 className="text-sm font-semibold tracking-wide text-muted-foreground">
-                          Recent Activity
-                        </h4>
+                      <div className="mt-5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            <History className="h-3.5 w-3.5 text-primary" /> Recent Activity & Milestones
+                          </h4>
+                          <span className="text-[11px] text-muted-foreground">Latest events</span>
+                        </div>
                         {(() => {
                           const stageFallback =
                             audit.length === 0
@@ -5789,29 +6053,38 @@ function ApplicantViewScreen({
                             );
                           }
                           return (
-                            <div className="mt-2 space-y-2">
+                            <div className="space-y-2">
                               {items.map((e) => (
                                 <div
                                   key={e.id}
-                                  className="flex items-start gap-2.5 rounded-md border border-border px-3 py-2"
+                                  className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/20 p-3 transition-colors hover:bg-muted/40 hover:border-border"
                                 >
-                                  <span
-                                    className={cn(
-                                      "mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full",
-                                      /Rejected|Cancelled|No-Show/.test(e.actionType)
-                                        ? "bg-destructive"
-                                        : "bg-primary",
-                                    )}
-                                  />
+                                  <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center">
+                                    <span
+                                      className={cn(
+                                        "h-2 w-2 rounded-full ring-4",
+                                        /Rejected|Cancelled|No-Show/.test(e.actionType)
+                                          ? "bg-destructive ring-destructive/20"
+                                          : /Passed|Hired|Completed/.test(e.actionType)
+                                            ? "bg-emerald-500 ring-emerald-500/20"
+                                            : "bg-primary ring-primary/20",
+                                      )}
+                                    />
+                                  </div>
                                   <div className="min-w-0 flex-1">
-                                    <p className="truncate text-xs font-semibold">{e.actionType}</p>
-                                    <p className="truncate text-[0.7rem] text-muted-foreground">
+                                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                      <p className="text-xs font-semibold text-foreground">{e.actionType}</p>
+                                      <span className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                        {e.date} {e.time}
+                                      </span>
+                                    </div>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
                                       {e.details}
                                     </p>
+                                    <span className="mt-1 inline-block text-[10px] text-muted-foreground/80">
+                                      Recorded by: {e.actorName}
+                                    </span>
                                   </div>
-                                  <span className="shrink-0 text-[0.65rem] text-muted-foreground">
-                                    {e.actorName} · {e.date} {e.time}
-                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -5821,52 +6094,234 @@ function ApplicantViewScreen({
                     </CardContent>
                   </Card>
                 );
+              case "history":
+                return (
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-5">
+                      {/* Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                        <div>
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <History className="h-4 w-4 text-primary" /> Previous Applications
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Past application attempts by the same email address.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {historyLoading ? (
+                            <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs font-semibold">
+                              {history?.data?.length ?? 0} attempt{(history?.data?.length ?? 0) !== 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                          {onOverrideCooldown && (history?.cooldown?.active || history?.blocked) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                              disabled={overrideBusy}
+                              onClick={onOverrideCooldown}
+                            >
+                              {overrideBusy ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <ShieldAlert className="h-3.5 w-3.5" />
+                              )}
+                              Override cooldown
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Block alert */}
+                      {history?.blocked && (
+                        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
+                          <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-destructive">Applicant is blocked</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              This applicant has been restricted from re-applying. Only a super admin can lift this restriction.
+                            </p>
+                          </div>
+                          {isSuperAdmin && onUnblock && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 shrink-0 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                              onClick={() => onUnblock(a)}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Cooldown / eligible status card */}
+                      {!historyLoading && history && (
+                        history.cooldown?.active ? (
+                          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
+                            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Cooling-down period active</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {history.cooldown.message ?? "This applicant must wait before re-applying."}
+                              </p>
+                            </div>
+                          </div>
+                        ) : !history.blocked ? (
+                          <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4">
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                            <div>
+                              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Eligible to re-apply</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">No cooldown or block restriction is active.</p>
+                            </div>
+                          </div>
+                        ) : null
+                      )}
+
+                      {/* History list */}
+                      {historyLoading ? (
+                        <div className="space-y-3">
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <div key={i} className="h-20 animate-pulse rounded-xl border border-border bg-muted/30" />
+                          ))}
+                        </div>
+                      ) : history?.data && history.data.length > 0 ? (
+                        <div className="space-y-3">
+                          {history.data.map((row, idx) => {
+                            const isCurrent = row.id === a.id;
+                            return (
+                              <div
+                                key={row.id ?? idx}
+                                className={cn(
+                                  "rounded-xl border p-4 transition-colors",
+                                  isCurrent
+                                    ? "border-primary/40 bg-primary/5"
+                                    : "border-border bg-card hover:border-border/80 hover:bg-muted/20"
+                                )}
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-mono text-[11px] font-bold text-muted-foreground">
+                                        {row.applicantCode ?? `#${idx + 1}`}
+                                      </span>
+                                      {isCurrent && (
+                                        <Badge variant="outline" className="text-[10px] gap-1 border-primary/40 text-primary">
+                                          Current
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <p className="text-sm font-semibold text-foreground">{row.position ?? a.position}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Applied: {row.appliedAt ? displayAppliedAt(row.appliedAt) : "—"}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1.5">
+                                    {row.stage && (
+                                      <Badge variant="secondary" className="text-[11px]">{row.stage}</Badge>
+                                    )}
+                                    {row.status && (
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-[10px]",
+                                          row.status === "hired" ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/8" :
+                                          row.status === "rejected" ? "border-destructive/40 text-destructive bg-destructive/8" :
+                                          "border-border text-muted-foreground"
+                                        )}
+                                      >
+                                        {row.status}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : !historyLoading && (
+                        <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/60">
+                            <History className="h-7 w-7 text-muted-foreground/50" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">First-Time Applicant</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">No previous applications found for this email address.</p>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
               case "details":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-5">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <FileText className="h-4 w-4 text-primary" /> Application Details
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Submitted via {a.source} · {displayAppliedAt(a.appliedAt)}
                         </p>
                       </div>
 
-                      <div className="mt-4 grid gap-x-10 gap-y-3 sm:grid-cols-2">
-                        {[
-                          ["Applicant ID", a.id],
-                          ["Full Name", a.name],
-                          ["Email", a.email],
-                          ["Phone", a.phone],
-                          ["Position Applied", a.position],
-                          ["Department", departmentOf(a.position)],
-                          ["Source", a.source],
-                          ["Current Stage", a.stage],
-                          ["Applied", displayAppliedAt(a.appliedAt)],
-                        ].map(([k, v]) => (
-                          <div key={k}>
-                            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                              {k}
-                            </p>
-                            <p className="text-sm font-medium">{v}</p>
-                          </div>
-                        ))}
+                      <div className="grid gap-4">
+                        {/* Card 1 — Candidate Profile */}
+                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            <User className="h-3.5 w-3.5" /> Candidate Profile
+                          </h4>
+                          {[
+                            { label: "Full Name", value: a.name },
+                            { label: "Email", value: a.email, mono: true },
+                            { label: "Phone", value: a.phone, mono: true },
+                            { label: "Source", value: a.source },
+                          ].map(({ label, value, mono }) => (
+                            <div key={label} className="flex items-start justify-between gap-2">
+                              <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">{label}</span>
+                              <span className={cn("text-right text-xs font-medium text-foreground break-all", mono && "font-mono")}>{value ?? "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Card 2 — Application Metadata */}
+                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            <Briefcase className="h-3.5 w-3.5" /> Application Metadata
+                          </h4>
+                          {[
+                            { label: "Applicant ID", value: String(a.id), mono: true },
+                            { label: "Position", value: a.position },
+                            { label: "Department", value: departmentOf(a.position) },
+                            { label: "Current Stage", value: a.stage },
+                            { label: "Date Applied", value: displayAppliedAt(a.appliedAt) },
+                          ].map(({ label, value, mono }) => (
+                            <div key={label} className="flex items-start justify-between gap-2">
+                              <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">{label}</span>
+                              <span className={cn("text-right text-xs font-medium text-foreground break-all", mono && "font-mono")}>{value ?? "—"}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 );
               case "resume":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
                         <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                             <Upload className="h-4 w-4 text-primary" /> Resume &amp; Documents
                           </h3>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             Resume screening result plus supporting verification documents (COE,
                             Certificate, Credentials, Others).
                           </p>
@@ -6103,22 +6558,21 @@ function ApplicantViewScreen({
                 );
               case "interview":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <ClipboardCheck className="h-4 w-4 text-primary" /> Interview
                         </h3>
-                        <p className="text-xs text-muted-foreground">
-                          This applicant&apos;s interview record — booking &amp; rescheduling stay
-                          in the main list.
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          This applicant&apos;s interview record and evaluation outcomes.
                         </p>
                       </div>
 
                       {(showAcceptInterview ||
                         showScheduleInterview ||
                         showRescheduleInterview) && (
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2">
                           {showAcceptInterview && (
                             <Button size="sm" onClick={onAcceptAndSchedule}>
                               <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Accept &amp; Schedule
@@ -6142,9 +6596,9 @@ function ApplicantViewScreen({
                       )}
 
                       {assessment ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-semibold text-foreground">
                               Interview completed {assessment.date}
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
@@ -6152,14 +6606,14 @@ function ApplicantViewScreen({
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-semibold text-primary">
+                            <span className="font-display text-2xl font-bold text-primary">
                               {assessment.total}%
                             </span>
                             <Badge
                               variant="outline"
                               className={cn(
                                 assessment.result === "Passed"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : "border-destructive/30 bg-destructive/10 text-destructive",
                               )}
                             >
@@ -6169,7 +6623,7 @@ function ApplicantViewScreen({
                               variant="outline"
                               className={cn(
                                 assessment.outcome === "Recommended"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : assessment.outcome === "Hold"
                                     ? "border-warning/40 bg-warning/10 text-warning"
                                     : "border-destructive/30 bg-destructive/10 text-destructive",
@@ -6187,8 +6641,8 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : interview ? (
-                        <div className="mt-4 space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                             <div className="min-w-0">
                               <p className="text-sm font-medium">
                                 {interview.date} · {interview.time}
@@ -6326,41 +6780,41 @@ function ApplicantViewScreen({
                 );
               case "test":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <BookMarked className="h-4 w-4 text-primary" /> Assessment Test
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Job-specific test that unlocks after the interview assessment is passed.
                           {!requiresTest && " This position does not require it (set in Core HCM)."}
                         </p>
                       </div>
 
                       {!requiresTest ? (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote(
                             "This position does not require an assessment test (Core HCM).",
                           )}
                         </div>
                       ) : test ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">{test.title}</p>
+                            <p className="text-sm font-semibold text-foreground">{test.title}</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               {test.name} · {test.position} · {test.date}
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-semibold text-primary">
+                            <span className="font-display text-2xl font-bold text-primary">
                               {test.total}%
                             </span>
                             <Badge
                               variant="outline"
                               className={cn(
                                 test.result === "Passed"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : "border-destructive/30 bg-destructive/10 text-destructive",
                               )}
                             >
@@ -6372,9 +6826,9 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : readyForTest ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">Ready for the assessment test</p>
+                            <p className="text-sm font-semibold text-foreground">Ready for the assessment test</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               {a.position} — the interview assessment was passed.
                             </p>
@@ -6394,13 +6848,10 @@ function ApplicantViewScreen({
                               )}
                               Copy applicant test link
                             </Button>
-                            <Button size="sm" onClick={onStartTest}>
-                              <BookMarked className="mr-1.5 h-3.5 w-3.5" /> Start Assessment Test
-                            </Button>
                           </div>
                         </div>
                       ) : (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote(
                             requiresTest
                               ? "Assessment test unlocks after the interview stage is completed and passed."
@@ -6413,39 +6864,39 @@ function ApplicantViewScreen({
                 );
               case "practical":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <Wrench className="h-4 w-4 text-primary" /> Practical Assessment
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Hands-on practical exam — required only when the Core HCM position
                           requires it.
                         </p>
                       </div>
 
                       {!requiresPrac ? (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote("This position does not require a practical assessment.")}
                         </div>
                       ) : practical ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">{practical.taskTitle}</p>
+                            <p className="text-sm font-semibold text-foreground">{practical.taskTitle}</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               {practical.name} · {practical.position} · {practical.date}
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-semibold text-primary">
+                            <span className="font-display text-2xl font-bold text-primary">
                               {practical.total}%
                             </span>
                             <Badge
                               variant="outline"
                               className={cn(
                                 practical.result === "Passed"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : "border-destructive/30 bg-destructive/10 text-destructive",
                               )}
                             >
@@ -6461,9 +6912,9 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : readyForPractical ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-semibold text-foreground">
                               Ready for the practical assessment
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
@@ -6475,7 +6926,7 @@ function ApplicantViewScreen({
                           </Button>
                         </div>
                       ) : (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote(
                             requiresTest
                               ? "Practical exam unlocks after passing the assessment test."
@@ -6488,22 +6939,22 @@ function ApplicantViewScreen({
                 );
               case "final":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <CheckCircle2 className="h-4 w-4 text-primary" /> Final Evaluation
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Whole-process verdict — resume screening, interview, assessment test and
                           practical.
                         </p>
                       </div>
 
                       {final ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-semibold text-foreground">
                               Final evaluation recorded {final.date}
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
@@ -6515,7 +6966,7 @@ function ApplicantViewScreen({
                               variant="outline"
                               className={cn(
                                 final.recommendation === "Recommended for Hire"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : final.recommendation === "For Another Position"
                                     ? "border-warning/40 bg-warning/10 text-warning"
                                     : "border-destructive/30 bg-destructive/10 text-destructive",
@@ -6529,9 +6980,9 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : readyForFinal ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">Ready for the final evaluation</p>
+                            <p className="text-sm font-semibold text-foreground">Ready for the final evaluation</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               {a.position} — all process stages completed.
                             </p>
@@ -6542,7 +6993,7 @@ function ApplicantViewScreen({
                           </Button>
                         </div>
                       ) : (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote(
                             "Final evaluation unlocks after the assessment test (and the practical, when required) is passed.",
                           )}
@@ -6624,8 +7075,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const { gateSensitive, gateDialog } = usePasswordGate();
   const { requestPrint, printDialog } = useSecuredPrint();
   const navigate = useNavigate();
+  const isSuperAdmin = role === "superadmin" || roleKeyFor(getUser()?.role) === "superadmin";
   const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
+  const [showArchivedAndBlocked, setShowArchivedAndBlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   /* Only the very first load shows skeletons. The 20s background poll and the
      focus/visibility re-read refresh silently, so the table stays clickable
@@ -6643,11 +7096,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const loadApplicantRecords = useCallback(async () => {
     // Hired applicants leave the pipeline (they move to New Hire Onboarding);
     // rejected applicants stay in the list, only labelled as "Rejected".
-    const excludeStages = "Hired";
+    const listParams: Record<string, any> = { exclude_stages: "Hired" };
+    if (showArchivedAndBlocked) listParams["only_hidden"] = "1";
     try {
       if (!hasLoadedRef.current) setLoading(true);
       const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
-        fetchAllPages(applicantsApi.list, { exclude_stages: excludeStages }),
+        fetchAllPages(applicantsApi.list, listParams),
         fetchAllPages(interviewsApi.list),
         fetchAllPages(assessmentsApi.list),
         fetchAllPages(assessmentTestsApi.list),
@@ -6697,7 +7151,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       hasLoadedRef.current = true;
       setLoading(false);
     }
-  }, []);
+  }, [showArchivedAndBlocked]);
 
   useEffect(() => {
     void loadApplicantRecords();
@@ -6781,9 +7235,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  is pre-filled with this person — they are the one processing the step —
    *  and stays editable so a different interviewer can be recorded. */
   const [currentUserId, setCurrentUserId] = useState("");
+  /** Display name of the signed-in host. The Zoom room header shows whoever is
+   *  actually in the meeting rather than the interviewer stored on the booking
+   *  (which can point at someone else, e.g. when HR starts the call). */
+  const [currentStaffName, setCurrentStaffName] = useState("");
   useEffect(() => {
     const user = getUser();
     if (user?.system_user_id) setCurrentUserId(String(user.system_user_id));
+    if (user?.full_name) setCurrentStaffName(user.full_name);
   }, []);
   /** The logged-in user's id, but only when they are a selectable system user
    *  (before the user list loads we trust the session value so the field is
@@ -6854,6 +7313,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [evaluating, setEvaluating] = useState<Applicant | null>(null);
   const [referring, setReferring] = useState<Applicant | null>(null);
   const [referTarget, setReferTarget] = useState("");
+  /** When true the referral dialog also lists vacancies with no matched
+   *  requirement, so HR can still refer manually. */
+  const [showAllReferrals, setShowAllReferrals] = useState(false);
   const [criteria, setCriteria] = useState(screeningCriteria);
   const [passing, setPassing] = useState(75);
   const [keywordPosition, setKeywordPosition] = useState(positions[0]!.title);
@@ -6893,6 +7355,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [reverifyingDocId, setReverifyingDocId] = useState<string | null>(null);
   /** True while the ranking is being recomputed with the document evidence. */
   const [recomputingRanking, setRecomputingRanking] = useState(false);
+  /** Document discrepancy override */
+  const [overrideDocFor, setOverrideDocFor] = useState<ApiApplicantDocument | null>(null);
+  const [overrideDocReason, setOverrideDocReason] = useState("");
+  const [overrideDocBusy, setOverrideDocBusy] = useState(false);
   const [assessmentFilter, setAssessmentFilter] = useState<"ready" | "completed" | "all">("all");
   /** "Recommend to other Position" — applicant whose alternative position is
    *  being chosen; confirming saves the decision and emails the offer. */
@@ -6909,6 +7375,46 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** How the applicant replied (Email / SMS / Call / In person) — HR records it. */
   const [offerResponseChannel, setOfferResponseChannel] = useState<OfferResponseChannel | "">("");
   const [offerResponseNote, setOfferResponseNote] = useState("");
+
+  /* Function 2: Move to Specific Stage */
+  const [moveToStageFor, setMoveToStageFor] = useState<Applicant | null>(null);
+  const [moveToStageTarget, setMoveToStageTarget] = useState<ReturnTargetStage>("Screened");
+  const [moveToStageReason, setMoveToStageReason] = useState("");
+  const [moveToStageBusy, setMoveToStageBusy] = useState(false);
+
+  /* Function 3: Reopen Application */
+  const [reopenFor, setReopenFor] = useState<Applicant | null>(null);
+  const [reopenTarget, setReopenTarget] = useState<ReturnTargetStage>("Screened");
+  const [reopenReason, setReopenReason] = useState("");
+  const [reopenBusy, setReopenBusy] = useState(false);
+
+  /* Function 4: Correct Hiring Decision */
+  const [correctHiringFor, setCorrectHiringFor] = useState<Applicant | null>(null);
+  const [correctHiringType, setCorrectHiringType] = useState<"mistaken_hire" | "no_show" | "reneged">("no_show");
+  const [correctHiringReason, setCorrectHiringReason] = useState("");
+  const [correctHiringCooldown, setCorrectHiringCooldown] = useState(true);
+  const [correctHiringBusy, setCorrectHiringBusy] = useState(false);
+
+  /* Function 5 & 6: Archive / Restore */
+  const [archiveFor, setArchiveFor] = useState<Applicant | null>(null);
+  const [archiveReason, setArchiveReason] = useState("");
+  const [archiveBusy, setArchiveBusy] = useState(false);
+
+  const [restoreFor, setRestoreFor] = useState<Applicant | null>(null);
+  const [restoreReason, setRestoreReason] = useState("");
+  const [restoreBusy, setRestoreBusy] = useState(false);
+
+  /* Function 7 & 8: Block / Unblock */
+  const [blockFor, setBlockFor] = useState<Applicant | null>(null);
+  const [blockReason, setBlockReason] = useState("");
+  const [blockScope, setBlockScope] = useState<"all_jobs" | "specific_job">("all_jobs");
+  const [blockExpiresAt, setBlockExpiresAt] = useState("");
+  const [blockBusy, setBlockBusy] = useState(false);
+
+  const [unblockFor, setUnblockFor] = useState<Applicant | null>(null);
+  const [unblockReason, setUnblockReason] = useState("");
+  const [unblockBusy, setUnblockBusy] = useState(false);
+
   const [assessmentSearch, setAssessmentSearch] = useState("");
   const [assessmentDept, setAssessmentDept] = useState<string>("all");
   const [assessmentOutcome, setAssessmentOutcome] = useState<string>("all");
@@ -6925,6 +7431,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [zoomRoom, setZoomRoom] = useState<{ applicant: Applicant; interview: Interview } | null>(
     null,
   );
+  // Leaving the Zoom room ends the meeting for the applicant too, so every
+  // manual exit (X, Leave, Escape, overlay, tab close) asks first.
+  const [zoomLeaveConfirm, setZoomLeaveConfirm] = useState(false);
   const [zoomMicOn, setZoomMicOn] = useState(true);
   const [zoomCamOn, setZoomCamOn] = useState(true);
   const [zoomEmbed, setZoomEmbed] = useState<ZoomEmbedState>({ status: "idle" });
@@ -7662,6 +8171,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     };
   }, [review?.id]);
 
+  /** Manually overrides / resolves a supporting-document discrepancy (HR review). */
+  const overrideDocumentDiscrepancy = async (doc: ApiApplicantDocument, reason?: string) => {
+    const key = String(doc.applicant_document_id);
+    setOverrideDocBusy(true);
+    try {
+      const updated = await applicantDocumentsApi.override(doc.applicant_document_id, reason);
+      setReviewDocVerifications((prev) => ({ ...prev, [key]: updated }));
+      toast.success("Discrepancy resolved — document marked as Verified.");
+      setOverrideDocFor(null);
+      setOverrideDocReason("");
+      if (review?.dbId) {
+        const res = await applicantsApi.recomputeScreening(review.dbId);
+        const updatedApplicant = transformApiApplicant(res.applicant);
+        setRows((prev) => prev.map((r) => (r.id === updatedApplicant.id ? updatedApplicant : r)));
+        setReview((prev) => (prev && prev.id === updatedApplicant.id ? updatedApplicant : prev));
+      }
+    } catch (e: any) {
+      console.warn("Override failed:", e);
+      toast.error(e?.message || "Could not resolve the discrepancy.");
+    } finally {
+      setOverrideDocBusy(false);
+    }
+  };
+
   /** Re-runs supporting-document verification against the resume claims. */
   const reverifyDocument = async (doc: ApiApplicantDocument) => {
     const key = String(doc.applicant_document_id);
@@ -8245,6 +8778,258 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
   };
 
+  /* Function 2: Move to Specific Stage */
+  const openMoveToStage = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may move an applicant across stages.");
+      return;
+    }
+    setMoveToStageFor(a);
+    setMoveToStageReason("");
+    setMoveToStageTarget((a.stage as ReturnTargetStage) || "Screened");
+  };
+
+  const confirmMoveToStage = async () => {
+    const a = moveToStageFor;
+    if (!a?.dbId) return;
+    const reason = moveToStageReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please provide a reason of at least 5 characters.");
+      return;
+    }
+    setMoveToStageBusy(true);
+    try {
+      const saved = await applicantsApi.moveToStage(a.dbId, {
+        target_stage: moveToStageTarget,
+        reason,
+      });
+      const updated = transformApiApplicant(saved);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.success(`${a.name} moved to ${moveToStageTarget}`);
+      setMoveToStageFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Move to stage", e);
+    } finally {
+      setMoveToStageBusy(false);
+    }
+  };
+
+  /* Function 3: Reopen Application */
+  const openReopen = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may reopen a closed application.");
+      return;
+    }
+    setReopenFor(a);
+    setReopenReason("");
+    const allowed = a.allowedReturnStages && a.allowedReturnStages.length > 0
+      ? a.allowedReturnStages
+      : ["Screened", "Accepted"];
+    const defaultStage = (allowed[allowed.length - 1] as ReturnTargetStage) || "Screened";
+    setReopenTarget(defaultStage);
+  };
+
+  const confirmReopen = async () => {
+    const a = reopenFor;
+    if (!a?.dbId) return;
+    const reason = reopenReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please provide a reason of at least 5 characters.");
+      return;
+    }
+    setReopenBusy(true);
+    try {
+      const saved = await applicantsApi.reopen(a.dbId, {
+        target_stage: reopenTarget,
+        reason,
+      });
+      const updated = transformApiApplicant(saved);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
+      toast.success(`Application reopened for ${a.name} at ${reopenTarget}`);
+      setReopenFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Reopen application", e);
+    } finally {
+      setReopenBusy(false);
+    }
+  };
+
+  /* Function 4: Correct Hiring Decision */
+  const openCorrectHiring = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may correct a hiring decision.");
+      return;
+    }
+    setCorrectHiringFor(a);
+    setCorrectHiringReason("");
+    setCorrectHiringType("no_show");
+    setCorrectHiringCooldown(true);
+  };
+
+  const confirmCorrectHiring = async () => {
+    const a = correctHiringFor;
+    if (!a?.dbId) return;
+    const reason = correctHiringReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please provide a reason of at least 5 characters.");
+      return;
+    }
+    setCorrectHiringBusy(true);
+    try {
+      const saved = await applicantsApi.correctHiring(a.dbId, {
+        correction_type: correctHiringType,
+        reason,
+        apply_cooldown: correctHiringCooldown,
+      });
+      const updated = transformApiApplicant(saved);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      toast.success(`Hiring decision corrected for ${a.name}`);
+      setCorrectHiringFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Correct hiring decision", e);
+    } finally {
+      setCorrectHiringBusy(false);
+    }
+  };
+
+  /* Function 5: Archive Applicant */
+  const openArchive = (a: Applicant) => {
+    setArchiveFor(a);
+    setArchiveReason("");
+  };
+
+  const confirmArchive = async () => {
+    const a = archiveFor;
+    if (!a?.dbId) return;
+    const reason = archiveReason.trim();
+    if (reason.length < 3) {
+      toast.error("Please provide an archive reason.");
+      return;
+    }
+    setArchiveBusy(true);
+    try {
+      const res = await applicantsApi.archive(a.dbId, { reason });
+      const updated = transformApiApplicant(res.data);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
+      toast.success(`${a.name} archived`);
+      setArchiveFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Archive applicant", e);
+    } finally {
+      setArchiveBusy(false);
+    }
+  };
+
+  /* Function 6: Restore Applicant */
+  const openRestore = (a: Applicant) => {
+    setRestoreFor(a);
+    setRestoreReason("");
+  };
+
+  const confirmRestore = async () => {
+    const a = restoreFor;
+    if (!a?.dbId) return;
+    const reason = restoreReason.trim();
+    if (reason.length < 3) {
+      toast.error("Please provide a restoration reason.");
+      return;
+    }
+    setRestoreBusy(true);
+    try {
+      const res = await applicantsApi.restore(a.dbId, { reason });
+      const updated = transformApiApplicant(res.data);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
+      toast.success(`${a.name} restored from archive`);
+      setRestoreFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Restore applicant", e);
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
+  /* Function 7: Block Applicant */
+  const openBlock = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may block an applicant.");
+      return;
+    }
+    setBlockFor(a);
+    setBlockReason("");
+    setBlockScope("all_jobs");
+    setBlockExpiresAt("");
+  };
+
+  const confirmBlock = async () => {
+    const a = blockFor;
+    if (!a?.dbId) return;
+    const reason = blockReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please enter a blocking reason (at least 5 characters).");
+      return;
+    }
+    setBlockBusy(true);
+    try {
+      const res = await applicantsApi.block(a.dbId, {
+        reason,
+        scope: blockScope,
+        expires_at: blockExpiresAt || null,
+      });
+      const updated = transformApiApplicant(res.data);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
+      toast.warning(`${a.name} has been restricted from recruitment`);
+      setBlockFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Block applicant", e);
+    } finally {
+      setBlockBusy(false);
+    }
+  };
+
+  /* Function 8: Unblock Applicant */
+  const openUnblock = (a: Applicant) => {
+    if (!isSuperAdmin) {
+      toast.error("Only a Super Admin may lift a recruitment restriction.");
+      return;
+    }
+    setUnblockFor(a);
+    setUnblockReason("");
+  };
+
+  const confirmUnblock = async () => {
+    const a = unblockFor;
+    if (!a?.dbId) return;
+    const reason = unblockReason.trim();
+    if (reason.length < 5) {
+      toast.error("Please enter a reason for lifting the restriction (at least 5 characters).");
+      return;
+    }
+    setUnblockBusy(true);
+    try {
+      const res = await applicantsApi.unblock(a.dbId, { reason });
+      const updated = transformApiApplicant(res.data);
+      setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
+      toast.success(`Recruitment restriction lifted for ${a.name}`);
+      setUnblockFor(null);
+      await loadApplicantRecords();
+    } catch (e) {
+      reportStageSaveFailure("Unblock applicant", e);
+    } finally {
+      setUnblockBusy(false);
+    }
+  };
+
   /** Accept → prefill the scheduler and jump to the Interview Scheduling tab. */
   const acceptAndSchedule = (a: Applicant) => {
     // "Accepted" applicants are exactly the ones this action is for — only
@@ -8443,19 +9228,71 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setZoomRoom({ applicant: a, interview: iv });
   };
 
-  const closeZoomRoom = () => {
+  const closeZoomRoom = async () => {
     try {
       zoomStreamRef.current?.getTracks().forEach((t) => t.stop());
     } catch {
       /* ignore */
     }
     zoomStreamRef.current = null;
+    // Tell the embedded SDK to LEAVE the meeting before the dialog (and its
+    // iframe) is unmounted. Otherwise Zoom keeps the account inside the room
+    // and the next "Start Zoom Interview" is rejected with "Already has other
+    // meetings in progress" — most visible right after a reschedule, when a
+    // brand-new meeting has to be started.
+    try {
+      await zoomEmbedRef.current?.leave();
+    } catch {
+      /* leaving is best-effort — never block closing the room */
+    }
     setZoomRoom(null);
+    setZoomLeaveConfirm(false);
     // Scoring already lives inside the Zoom room, so leaving must not pop
     // the standalone Interview form afterwards. On-site interviews never
     // enter this path — their form still opens via Start Interview.
     setEvaluating(null);
   };
+
+  /** Ask before leaving an active Zoom room: `leave()` ends the meeting on the
+   *  host side, which also disconnects the applicant. */
+  const requestCloseZoomRoom = () => {
+    if (!zoomRoom) return;
+    setZoomLeaveConfirm(true);
+  };
+
+  // A browser tab close / reload also leaves the meeting, so warn there too.
+  useEffect(() => {
+    if (!zoomRoom) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "Leaving this page will end the Zoom interview for the applicant too.";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [zoomRoom]);
+
+  /** Keep an OPEN Zoom room pointed at the current interview row. A
+   *  reschedule can mint a brand-new meeting (new join link / meeting id)
+   *  while the room is still mounted; without this the video pane stays in
+   *  the retired meeting and the Invite drawer keeps showing the old link. */
+  useEffect(() => {
+    if (!zoomRoom) return;
+    const fresh = interviews.find((x) => x.id === zoomRoom.interview.id);
+    if (!fresh) return;
+    const changed =
+      fresh.zoomJoinUrl !== zoomRoom.interview.zoomJoinUrl ||
+      fresh.zoomMeetingId !== zoomRoom.interview.zoomMeetingId ||
+      fresh.date !== zoomRoom.interview.date ||
+      fresh.time !== zoomRoom.interview.time ||
+      fresh.mode !== zoomRoom.interview.mode ||
+      fresh.interviewer !== zoomRoom.interview.interviewer ||
+      fresh.status !== zoomRoom.interview.status;
+    if (changed) {
+      setZoomRoom((prev) => (prev ? { ...prev, interview: fresh } : prev));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interviews, zoomRoom?.interview.id]);
 
   const handleSaveZoomNotes = async () => {
     if (!zoomRoom || zoomNotesSaving) return;
@@ -9252,8 +10089,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         // Secondary stage sync — the assessment row is already saved and the
         // backend advances the stage in the same request, so a refusal here
         // must not make the recorded interview look like it was lost.
+        const isFailed = result === "Failed";
+        const nextStage = isFailed ? "Rejected" : "Assessed";
         await applicantsApi
-          .update(evaluating.dbId, { stage: "Assessed" })
+          .update(evaluating.dbId, { stage: nextStage })
           .catch((e) => console.warn("Stage sync deferred for interview assessment:", e));
         // Persist the verdict time on the interview record as well.
         if (completedInterview?.dbId) {
@@ -9288,7 +10127,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       },
       ...prev,
     ]);
-    setStage(evaluating.id, "Assessed");
+    const isFailedEval = result === "Failed";
+    const nextStageEval = isFailedEval ? "Rejected" : "Assessed";
+    setStage(evaluating.id, nextStageEval);
+    if (isFailedEval) {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === evaluating.id
+            ? { ...r, stage: "Rejected", rejectedAt: new Date().toISOString() }
+            : r,
+        ),
+      );
+    }
     setInterviews((prev) =>
       prev.map((i) =>
         i.applicant === evaluating.name
@@ -9312,28 +10162,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const openRefer = (a: Applicant) => {
     if (isActionLocked(a)) return;
     setReferring(a);
-    // Prefill with the strongest resume-screening match against each open job
-    // post's requirement entities; fall back to the NLP "Stronger match" flag.
-    const openPositions = positions.filter(
-      (p) =>
-        normalizeMatchText(p.title) !== normalizeMatchText(a.position) && p.filled < p.headcount,
-    );
-    const best = [...openPositions]
-      .map((p) => ({
-        title: p.title,
-        fit: referralMatch(
-          a,
-          dbJobPosts.find((j) => j.title === p.title),
-        ),
-      }))
-      .sort((x, y) => y.fit.score - x.fit.score)[0];
-    if (best && best.fit.total > 0 && best.fit.score > 0) {
-      setReferTarget(best.title);
+    setShowAllReferrals(false);
+    // Prefill with the strongest resume-screening match among the real open
+    // vacancies; fall back to the NLP "Stronger match" flag when it names one
+    // of those vacancies.
+    const options = referralOptions(a, dbJobPosts);
+    const best = options.find((o) => o.fit.score > 0);
+    if (best) {
+      setReferTarget(best.post.title);
       return;
     }
     const suggested = a.flags.find((f) => f.startsWith("Stronger match:"));
-    setReferTarget(suggested ? suggested.replace("Stronger match:", "").split("(")[0]!.trim() : "");
+    const suggestedTitle = suggested
+      ? suggested.replace("Stronger match:", "").split("(")[0]!.trim()
+      : "";
+    const suggestionIsVacancy = options.some(
+      (o) => normalizeMatchText(o.post.title) === normalizeMatchText(suggestedTitle),
+    );
+    setReferTarget(suggestionIsVacancy ? suggestedTitle : "");
   };
+
+  /** Ranked referral candidates for the open dialog — real open vacancies,
+   *  strongest match first. Vacancies with zero matched requirements are kept
+   *  out unless HR opts into "Show all open vacancies". */
+  const referralCandidates = useMemo(
+    () => (referring ? referralOptions(referring, dbJobPosts) : []),
+    [referring, dbJobPosts],
+  );
+  const matchingReferralCandidates = useMemo(
+    () => referralCandidates.filter((o) => o.fit.score > 0),
+    [referralCandidates],
+  );
+  const visibleReferralCandidates = showAllReferrals
+    ? referralCandidates
+    : matchingReferralCandidates;
 
   /** Opens the Assessment Test runner pre-filled for the candidate's position. */
   const openAssessmentTest = (a: Applicant) => {
@@ -9511,14 +10373,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       // Secondary stage sync — the test row is already saved and the backend
       // advances the stage in the same request, so a refusal here must not
       // make the recorded test look like it was lost.
+      const isFailed = result === "Failed";
+      const nextStage = isFailed ? "Rejected" : "Assessment Test";
       await applicantsApi
-        .update(testingTest.dbId, { stage: "Assessment Test" })
+        .update(testingTest.dbId, { stage: nextStage })
         .catch((e) => console.warn("Stage sync deferred for assessment test:", e));
     }
 
     setAssessmentTests((prev) => [row, ...prev]);
     setTestAnswerMap((prev) => ({ ...prev, [row.id]: { ...testAnswers } }));
-    setStage(testingTest.id, "Assessment Test");
+    const isFailedTest = result === "Failed";
+    const nextStageTest = isFailedTest ? "Rejected" : "Assessment Test";
+    setStage(testingTest.id, nextStageTest);
+    if (isFailedTest) {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === testingTest.id
+            ? { ...r, stage: "Rejected", rejectedAt: new Date().toISOString() }
+            : r,
+        ),
+      );
+    }
     addAudit({
       actionType: "Assessment Test Recorded",
       target: testingTest.name,
@@ -9652,13 +10527,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       // Secondary stage sync — the practical row is already saved and the
       // backend advances the stage in the same request, so a refusal here must
       // not make the recorded assessment look like it was lost.
+      const isFailed = result === "Failed";
+      const nextStage = isFailed ? "Rejected" : "Practical Test";
       await applicantsApi
-        .update(testingPractical.dbId, { stage: "Practical Test" })
+        .update(testingPractical.dbId, { stage: nextStage })
         .catch((e) => console.warn("Stage sync deferred for practical assessment:", e));
     }
 
     setPracticalTests((prev) => [row, ...prev]);
-    setStage(testingPractical.id, "Practical Test");
+    const isFailedPrac = result === "Failed";
+    const nextStagePrac = isFailedPrac ? "Rejected" : "Practical Test";
+    setStage(testingPractical.id, nextStagePrac);
+    if (isFailedPrac) {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === testingPractical.id
+            ? { ...r, stage: "Rejected", rejectedAt: new Date().toISOString() }
+            : r,
+        ),
+      );
+    }
     addAudit({
       actionType: "Practical Assessment Recorded",
       target: testingPractical.name,
@@ -9731,6 +10619,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const saveFinalEvaluation = async (
     recommendation: FinalRecommendation,
     recommendedJobPostId?: string,
+    acknowledgeDiscrepancies?: boolean,
   ) => {
     if (!finalizing) return;
     // Whoever signs off the final decision must be recorded — required.
@@ -9793,6 +10682,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           evaluation_date: finalDate,
           recommendation,
           overall_remarks: finalRemarks || null,
+          acknowledge_discrepancies: Boolean(acknowledgeDiscrepancies),
           ...(recommendation === "For Another Position" && altJobPostId
             ? { recommended_job_post_id: Number(altJobPostId) }
             : {}),
@@ -10283,12 +11173,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             className="border-success/40 text-success hover:bg-success/10 hover:text-success"
             onClick={() => {
               if (!requireAssessor()) return;
-              askConfirm({
-                title: "Mark this candidate as Passed?",
-                description: `${finalizing.name} will be evaluated as "Recommended for Hire" and the offer email will be sent — the applicant has 7 days to respond.`,
-                confirmLabel: "Yes, Passed — send offer",
-                onConfirm: () => void saveFinalEvaluation("Recommended for Hire"),
-              });
+              const hasDiscrepancy = (finalPreview?.blocking_verification_issues ?? 0) > 0;
+              if (hasDiscrepancy) {
+                askConfirm({
+                  title: "Acknowledge Document Discrepancy?",
+                  description: `${finalizing.name} has ${finalPreview?.blocking_verification_issues} unresolved document verification discrepancy(ies). Do you wish to acknowledge the warning and proceed to mark as Passed / send the offer?`,
+                  confirmLabel: "Acknowledge & Send Offer",
+                  onConfirm: () => void saveFinalEvaluation("Recommended for Hire", undefined, true),
+                });
+              } else {
+                askConfirm({
+                  title: "Mark this candidate as Passed?",
+                  description: `${finalizing.name} will be evaluated as "Recommended for Hire" and the offer email will be sent — the applicant has 7 days to respond.`,
+                  confirmLabel: "Yes, Passed — send offer",
+                  onConfirm: () => void saveFinalEvaluation("Recommended for Hire"),
+                });
+              }
             }}
           >
             <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
@@ -10337,12 +11237,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const confirmRefer = async (targetTitle: string) => {
     const applicant = referring;
     if (!applicant) return;
+    /* The target must be a real job post: job_post_id is the only thing the
+       backend can persist a referral against. */
+    const targetPost =
+      referralOptions(applicant, dbJobPosts).find((o) => o.post.title === targetTitle)?.post ??
+      dbJobPosts.find((j) => j.title === targetTitle);
+    if (!targetPost) {
+      toast.error(
+        `"${targetTitle}" has no open job post, so the referral cannot be saved. Pick a vacancy from the list.`,
+      );
+      return;
+    }
+    const jobPostId = targetPost.job_post_id;
     setRows((prev) =>
       prev.map((x) =>
         x.id === applicant.id
           ? {
               ...x,
               position: targetTitle,
+              jobId: String(jobPostId),
               status: "fit",
               stage: "Screened",
             }
@@ -10361,13 +11274,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
     try {
       if (applicant.dbId) {
-        let jobPostId: number | undefined;
-        try {
-          const res = await jobPostsApi.list({ per_page: 100 });
-          jobPostId = res?.data?.find((j) => j.title === targetTitle)?.job_post_id;
-        } catch {
-          // target vacancy lookup failed — still persist stage/status below
-        }
         await applicantsApi.update(applicant.dbId, {
           job_post_id: jobPostId,
           stage: "Screened",
@@ -10661,19 +11567,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           a.stage === "Accepted" &&
           !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled");
         const readyForTest =
-          a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
+          requiresTest && (a.stage === "Assessment Test" || (a.stage === "Assessed" && assessment?.result === "Passed"));
         const readyForPractical =
-          (requiresTest
-            ? a.stage === "Assessment Test" && test?.result === "Passed"
-            : a.stage === "Assessed" && assessment?.result === "Passed") && requiresPrac;
+          requiresPrac &&
+          (a.stage === "Practical Test" ||
+            (requiresTest
+              ? (a.stage === "Assessment Test" || a.stage === "Assessed") && test?.result === "Passed"
+              : a.stage === "Assessed" && assessment?.result === "Passed"));
         const readyForFinal =
           ((requiresTest
-            ? (a.stage === "Practical Test" || a.stage === "Assessment Test") &&
+            ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
               test?.result === "Passed"
-            : a.stage === "Assessed" && assessment?.result === "Passed") &&
+            : (a.stage === "Assessed" || a.stage === "Final Evaluation") && assessment?.result === "Passed") &&
             (!requiresPrac || practical?.result === "Passed")) ||
           (!requiresTest &&
-            a.stage === "Practical Test" &&
+            (a.stage === "Practical Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
             (!requiresPrac || practical?.result === "Passed"));
         return {
           a,
@@ -10692,6 +11600,43 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         };
       })
       .filter(({ a, interview, liveInterview, assessment, test, practical, final }) => {
+        if (showArchivedAndBlocked) {
+          if (pipelineResult === "archived" && !a.isArchived) return false;
+          if ((pipelineResult === "blocked" || pipelineResult === "block") && !a.isActiveBlocked) return false;
+          if (pipelineResult === "all" && !a.isArchived && !a.isActiveBlocked) return false;
+        } else {
+          if (a.isArchived || a.isActiveBlocked) return false;
+
+          if (pipelineResult === "passed") {
+            const ok =
+              assessment?.result === "Passed" ||
+              test?.result === "Passed" ||
+              practical?.result === "Passed" ||
+              (final != null && final.recommendation !== "Not Recommended");
+            if (!ok) return false;
+          }
+          if (pipelineResult === "failed") {
+            const offer = offerStateOf(a);
+            const bad =
+              assessment?.result === "Failed" ||
+              test?.result === "Failed" ||
+              practical?.result === "Failed" ||
+              final?.recommendation === "Not Recommended" ||
+              // A declined offer (or one whose 7-day window lapsed) fails the
+              // applicant even though the final evaluation recommended them.
+              offer?.status === "Declined" ||
+              (offer?.expired ?? false);
+            if (!bad) return false;
+          }
+          if (pipelineResult === "pending") {
+            if (test || practical || final) return false;
+          }
+          if (pipelineResult === "perfect") {
+            // Metric-card quick filter — candidates the screener marked perfect
+            // for the job (status = fit).
+            if (a.status !== "fit") return false;
+          }
+        }
         if (pipelinePosition !== "all" && a.position !== pipelinePosition) return false;
         if (pipelineStage !== "all" && a.stage !== pipelineStage) return false;
         if (
@@ -10708,35 +11653,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             return false;
           }
         }
-        if (pipelineResult === "passed") {
-          const ok =
-            assessment?.result === "Passed" ||
-            test?.result === "Passed" ||
-            practical?.result === "Passed" ||
-            (final != null && final.recommendation !== "Not Recommended");
-          if (!ok) return false;
-        }
-        if (pipelineResult === "failed") {
-          const offer = offerStateOf(a);
-          const bad =
-            assessment?.result === "Failed" ||
-            test?.result === "Failed" ||
-            practical?.result === "Failed" ||
-            final?.recommendation === "Not Recommended" ||
-            // A declined offer (or one whose 7-day window lapsed) fails the
-            // applicant even though the final evaluation recommended them.
-            offer?.status === "Declined" ||
-            (offer?.expired ?? false);
-          if (!bad) return false;
-        }
-        if (pipelineResult === "pending") {
-          if (test || practical || final) return false;
-        }
-        if (pipelineResult === "perfect") {
-          // Metric-card quick filter — candidates the screener marked perfect
-          // for the job (status = fit).
-          if (a.status !== "fit") return false;
-        }
         return true;
       });
   }, [
@@ -10751,6 +11667,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     pipelineSearch,
     pipelineResult,
     pipelineScheduledDate,
+    showArchivedAndBlocked,
   ]);
 
   const pipelineSort = useSort(pipelineRows, {
@@ -10861,42 +11778,45 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         title="Applicant Management"
         description="NER resume screening, candidate ranking, interview scheduling and evaluation."
         actions={
-          <div className="flex items-center gap-2">
-            <ReportMenu
-              size="sm"
-              recordCount={
-                tab === "history"
-                  ? auditSort.sorted.length || auditFiltered.length
-                  : tab === "scheduling"
-                    ? pipelineSort.sorted.length || pipelineRows.length
-                    : applicantSort.sorted.length || filtered.length
-              }
-              report={() => {
-                if (tab === "history") return buildAuditReportData();
-                if (tab === "scheduling")
+          !viewedApplicant ? (
+            <div className="flex items-center gap-2">
+              <ReportMenu
+                size="sm"
+                recordCount={
+                  tab === "history"
+                    ? auditSort.sorted.length || auditFiltered.length
+                    : tab === "scheduling"
+                      ? pipelineSort.sorted.length || pipelineRows.length
+                      : applicantSort.sorted.length || filtered.length
+                }
+                report={() => {
+                  if (tab === "history") return buildAuditReportData();
+                  if (tab === "scheduling")
+                    return buildApplicantReportData(
+                      reportOptions.find((o) => o.id === "interview") ?? reportOptions[0]!,
+                    );
                   return buildApplicantReportData(
-                    reportOptions.find((o) => o.id === "interview") ?? reportOptions[0]!,
+                    reportOptions.find((o) => o.id === "all") ?? reportOptions[0]!,
                   );
-                return buildApplicantReportData(
-                  reportOptions.find((o) => o.id === "all") ?? reportOptions[0]!,
-                );
-              }}
-            />
-            <Button
-              size="icon"
-              variant="outline"
-              aria-label="Re-apply cooldown settings"
-              title="Re-apply cooldown settings"
-              onClick={() => {
-                setCooldownDraft(String(cooldownDays));
-                setCooldownOpen(true);
-              }}
-            >
-              <Settings2 className="h-4 w-4" />
-            </Button>
-          </div>
+                }}
+              />
+              <Button
+                size="icon"
+                variant="outline"
+                aria-label="Re-apply cooldown settings"
+                title="Re-apply cooldown settings"
+                onClick={() => {
+                  setCooldownDraft(String(cooldownDays));
+                  setCooldownOpen(true);
+                }}
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : undefined
         }
       />
+
 
       {/* Re-apply cooldown settings — same gear pattern as Recruitment's Screening setup */}
       <Dialog open={cooldownOpen} onOpenChange={setCooldownOpen}>
@@ -11033,6 +11953,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           historyLoading={viewHistoryLoading}
           onOverrideCooldown={overrideViewingCooldown}
           overrideBusy={overrideBusy}
+          isSuperAdmin={isSuperAdmin}
+          onMoveToStage={(ap) => openMoveToStage(ap)}
+          onReopen={(ap) => openReopen(ap)}
+          onCorrectHiring={(ap) => openCorrectHiring(ap)}
+          onArchive={(ap) => openArchive(ap)}
+          onRestore={(ap) => openRestore(ap)}
+          onBlock={(ap) => openBlock(ap)}
+          onUnblock={(ap) => openUnblock(ap)}
         />
       ) : (
         <>
@@ -11924,7 +12852,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             )}
                           >
                             {cell.date.getDate()}
-                            {count > 1 && (
+                            {count > 0 && (
                               <span
                                 className={cn(
                                   "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
@@ -14229,11 +15157,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <SelectValue placeholder="Any result" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">Any result</SelectItem>
-                          <SelectItem value="passed">Passed</SelectItem>
-                          <SelectItem value="failed">Failed</SelectItem>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="perfect">Perfect for the Job</SelectItem>
+                          {showArchivedAndBlocked ? (
+                            <>
+                              <SelectItem value="all">Any result</SelectItem>
+                              <SelectItem value="blocked">Block</SelectItem>
+                              <SelectItem value="archived">Archived</SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="all">Any result</SelectItem>
+                              <SelectItem value="passed">Passed</SelectItem>
+                              <SelectItem value="failed">Failed</SelectItem>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="perfect">Perfect for the Job</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                       {pipelineScheduledDate && (
@@ -14272,6 +15210,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <X className="mr-1 h-3.5 w-3.5" /> Clear
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant={showArchivedAndBlocked ? "secondary" : "outline"}
+                        className="h-9 gap-1.5 px-3 text-xs"
+                        onClick={() => {
+                          setShowArchivedAndBlocked((v) => !v);
+                          setPipelineResult("all");
+                        }}
+                        title="Toggle between active pipeline and archived/blocked applicants"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        {showArchivedAndBlocked ? "Show Active Pipeline" : "Show Archived & Blocked"}
+                      </Button>
                     </div>
                   </div>
                   <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
@@ -14502,9 +15453,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           </AvatarFallback>
                                         </Avatar>
                                         <div className="min-w-0 flex-1">
-                                          <p className="truncate font-medium" title={a.name}>
-                                            {a.name}
-                                          </p>
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <p className="truncate font-medium" title={a.name}>
+                                              {a.name}
+                                            </p>
+                                            {a.isActiveBlocked && (
+                                              <Badge
+                                                variant="destructive"
+                                                className="h-4 px-1 text-[9px] uppercase font-bold tracking-wider"
+                                              >
+                                                Blocked
+                                              </Badge>
+                                            )}
+                                            {a.isArchived && (
+                                              <Badge
+                                                variant="secondary"
+                                                className="h-4 px-1 text-[9px] uppercase font-medium"
+                                              >
+                                                Archived
+                                              </Badge>
+                                            )}
+                                          </div>
                                           <p
                                             className="truncate text-muted-foreground"
                                             title={`${a.id} · ${a.position}`}
@@ -14741,7 +15710,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         a.stage !== "Rejected" ? (
                                         <>
                                           <p className="truncate text-muted-foreground">
-                                            Ready for test — start from Actions
+                                            Ready for test — copy link from Actions
                                           </p>
                                         </>
                                       ) : a.stage === "Rejected" ? (
@@ -14988,19 +15957,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                               </DropdownMenuItem>
                                             ) : null}
                                             {showStartTest ? (
-                                              <>
-                                                <DropdownMenuItem
-                                                  onClick={() => openAssessmentTest(a)}
-                                                >
-                                                  Start assessment test
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem
-                                                  disabled={inviteBusyId === a.id}
-                                                  onClick={() => void copyApplicantTestLink(a)}
-                                                >
-                                                  Copy applicant test link
-                                                </DropdownMenuItem>
-                                              </>
+                                              <DropdownMenuItem
+                                                disabled={inviteBusyId === a.id}
+                                                onClick={() => void copyApplicantTestLink(a)}
+                                              >
+                                                Copy applicant test link
+                                              </DropdownMenuItem>
                                             ) : null}
                                             {showStartPractical ? (
                                               <DropdownMenuItem onClick={() => openPractical(a)}>
@@ -15080,6 +16042,49 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 scheduled in calendar
                                               </DropdownMenuItem>
                                             ) : null}
+                                            {/* Administrative Actions */}
+                                            <DropdownMenuSeparator />
+                                            {isSuperAdmin && (
+                                              <>
+                                                {a.stage !== "Rejected" ? (
+                                                  <DropdownMenuItem onClick={() => openMoveToStage(a)}>
+                                                    <ArrowRightCircle className="mr-2 h-3.5 w-3.5 text-primary" /> Move to stage...
+                                                  </DropdownMenuItem>
+                                                ) : (
+                                                  <DropdownMenuItem onClick={() => openReopen(a)}>
+                                                    <RotateCcw className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Reopen application
+                                                  </DropdownMenuItem>
+                                                )}
+                                                {(a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") && (
+                                                  <DropdownMenuItem onClick={() => openCorrectHiring(a)}>
+                                                    <ShieldAlert className="mr-2 h-3.5 w-3.5 text-amber-600" /> Correct hiring decision
+                                                  </DropdownMenuItem>
+                                                )}
+                                              </>
+                                            )}
+                                            {!a.isArchived ? (
+                                              <DropdownMenuItem onClick={() => openArchive(a)}>
+                                                <Archive className="mr-2 h-3.5 w-3.5" /> Archive applicant
+                                              </DropdownMenuItem>
+                                            ) : (
+                                              <DropdownMenuItem onClick={() => openRestore(a)}>
+                                                <ArchiveRestore className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Restore applicant
+                                              </DropdownMenuItem>
+                                            )}
+                                            {isSuperAdmin && (
+                                              !a.isActiveBlocked ? (
+                                                <DropdownMenuItem
+                                                  className="text-destructive focus:text-destructive"
+                                                  onClick={() => openBlock(a)}
+                                                >
+                                                  <Ban className="mr-2 h-3.5 w-3.5" /> Block applicant
+                                                </DropdownMenuItem>
+                                              ) : (
+                                                <DropdownMenuItem onClick={() => openUnblock(a)}>
+                                                  <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Lift block restriction
+                                                </DropdownMenuItem>
+                                              )
+                                            )}
                                           </DropdownMenuContent>
                                         </DropdownMenu>
                                         <Button
@@ -15097,7 +16102,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 );
                               },
                             )}
-                          {pipelinePage.pageItems.length === 0 && (
+                          {!loading && pipelinePage.pageItems.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={9} className="py-10 text-center">
                                 <div className="mx-auto max-w-xs space-y-1.5">
@@ -15743,6 +16748,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           )
                         }
                         onReverify={reverifyDocument}
+                        onOverride={(d) => {
+                          setOverrideDocFor(d);
+                          setOverrideDocReason("Manually reviewed and verified by HR.");
+                        }}
                       />
 
                       <ScreeningDetailsAccordion
@@ -15854,9 +16863,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader className="shrink-0">
                 <DialogTitle className="font-display text-2xl">Refer to Other Position</DialogTitle>
                 <DialogDescription>
-                  Ranked by how well {referring.name}&apos;s resume screening entities (skills,
-                  certificates, roles, education, experience) match each vacancy&apos;s job post
-                  requirements — strongest match first.
+                  Open vacancies ranked by how well {referring.name}&apos;s resume screening
+                  entities (skills, certificates, roles, education, experience) match the job post
+                  requirements — strongest match first. Vacancies with no matched requirement are
+                  hidden unless you choose to show all.
                 </DialogDescription>
               </DialogHeader>
 
@@ -15865,35 +16875,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 onValueChange={setReferTarget}
                 className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden py-1 pr-1"
               >
-                {positions
-                  .filter(
-                    (p) =>
-                      normalizeMatchText(p.title) !== normalizeMatchText(referring.position) &&
-                      p.filled < p.headcount,
-                  )
-                  .map((p) => ({
-                    p,
-                    fit: referralMatch(
-                      referring,
-                      dbJobPosts.find((j) => j.title === p.title),
-                    ),
-                  }))
-                  .sort((x, y) => y.fit.score - x.fit.score)
-                  .map(({ p, fit }, idx) => (
+                {visibleReferralCandidates.map(
+                  ({ post, fit, openSeats, department, salaryBand }, idx) => (
                     <label
-                      key={p.id}
+                      key={post.job_post_id}
                       className={cn(
                         "flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors",
-                        referTarget === p.title
+                        referTarget === post.title
                           ? "border-primary bg-primary/5"
                           : "border-border hover:border-primary/40",
                       )}
                     >
-                      <RadioGroupItem value={p.title} className="mt-1" />
+                      <RadioGroupItem value={post.title} className="mt-1" />
                       <span className="flex-1">
                         <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                          {p.title}
-                          {idx === 0 && fit.total > 0 && (
+                          {post.title}
+                          {idx === 0 && fit.score > 0 && (
                             <Badge className="bg-gold text-gold-foreground">Best match</Badge>
                           )}
                           <Badge
@@ -15911,8 +16908,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </Badge>
                         </span>
                         <span className="block text-xs text-muted-foreground">
-                          {p.department} — {p.headcount - p.filled} seat(s) open —{" "}
-                          {p.salaryBand}
+                          {department} — {openSeats} seat(s) open — {salaryBand}
                         </span>
                         <span className="mt-1 block text-[0.7rem] text-muted-foreground">
                           {fit.total > 0
@@ -15923,8 +16919,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </span>
                       </span>
                     </label>
-                  ))}
+                  ),
+                )}
+                {visibleReferralCandidates.length === 0 && (
+                  <p className="rounded-md border border-dashed border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                    {referralCandidates.length === 0
+                      ? "There are no other open vacancies to refer this applicant to."
+                      : `${referring.name}'s screening entities do not match any open vacancy. Tick "Show all open vacancies" below to pick one manually.`}
+                  </p>
+                )}
               </RadioGroup>
+
+              {referralCandidates.length > matchingReferralCandidates.length && (
+                <label className="flex shrink-0 cursor-pointer items-center gap-2 pt-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={showAllReferrals}
+                    onChange={(e) => setShowAllReferrals(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  Show all open vacancies (
+                  {referralCandidates.length - matchingReferralCandidates.length} with no matched
+                  requirements)
+                </label>
+              )}
 
               <DialogFooter className="shrink-0 border-t border-border pt-4">
                 <Button variant="outline" onClick={() => setReferring(null)}>
@@ -16003,7 +17021,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           behind collapsible drawers so nothing competes with the call.
           Opens from "Start Zoom Interview" for Virtual interviews inside
           their slot window. */}
-      <Dialog open={!!zoomRoom} onOpenChange={(o) => !o && closeZoomRoom()}>
+      <Dialog open={!!zoomRoom} onOpenChange={(o) => !o && requestCloseZoomRoom()}>
         <DialogContent
           className="flex max-h-[94vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl lg:h-[var(--zoom-room-h)] lg:max-w-[92vw] xl:max-w-[min(1600px,92vw)]"
           style={
@@ -16038,7 +17056,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </DialogTitle>
                     <DialogDescription className="min-w-0 truncate text-xs">
                       {zoomRoom.applicant.position} · {zoomRoom.interview.time} · Virtual ·{" "}
-                      {zoomRoom.interview.interviewer}
+                      {currentStaffName || zoomRoom.interview.interviewer || "You"}
                     </DialogDescription>
                   </div>
                 </div>
@@ -16082,7 +17100,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </span>
                     )}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={closeZoomRoom}>
+                  <Button size="sm" variant="ghost" onClick={requestCloseZoomRoom}>
                     <PhoneOff className="mr-1.5 h-3.5 w-3.5" /> Leave
                   </Button>
                 </div>
@@ -16101,9 +17119,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <div className="relative aspect-video w-full max-h-full">
                       <ZoomEmbeddedMeeting
                         ref={zoomEmbedRef}
+                        // A reschedule mints a new meeting; remount so the
+                        // previous iframe leaves that room before the new one
+                        // is joined (otherwise two accounts/rooms collide).
+                        key={`${zoomRoom.interview.dbId ?? "draft"}:${
+                          zoomRoom.interview.zoomMeetingId ?? "no-meeting"
+                        }`}
                         interviewDbId={zoomRoom.interview.dbId ?? null}
                         joinUrl={zoomRoom.interview.zoomJoinUrl ?? null}
-                        userName={zoomRoom.interview.interviewer || zoomRoom.applicant.name}
+                        userName={
+                          currentStaffName ||
+                          zoomRoom.interview.interviewer ||
+                          zoomRoom.applicant.name
+                        }
                         onStateChange={handleZoomEmbedState}
                         onChatMessage={handleZoomChatMessage}
                         onChatHistory={handleZoomChatHistory}
@@ -16528,6 +17556,32 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Leaving the Zoom room ends the meeting on the host side — the
+          applicant is disconnected too — so confirm before closing. */}
+      <AlertDialog open={zoomLeaveConfirm} onOpenChange={setZoomLeaveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>End this Zoom interview?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Leaving the meeting will <strong>end the Zoom interview for everyone</strong>,
+              including {zoomRoom?.applicant.name ?? "the applicant"}. Any unsaved interview notes
+              or scores will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay in meeting</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                void closeZoomRoom();
+              }}
+            >
+              Leave &amp; end meeting
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ASSESSMENT TEST RUNNER — candidate-facing quiz (mock data, auto-checked) */}
       <Dialog
@@ -17003,11 +18057,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </p>
                       )}
                       {preview && preview.blocking_verification_issues > 0 && (
-                        <p className="text-xs text-destructive">
-                          ⚠ {preview.blocking_verification_issues} document verification
-                          discrepanc{preview.blocking_verification_issues === 1 ? "y" : "ies"} must
-                          be resolved before “Recommended for Hire”.
-                        </p>
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
+                          <div className="flex items-center gap-1.5 font-semibold">
+                            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                            <span>
+                              {preview.blocking_verification_issues} document verification discrepanc
+                              {preview.blocking_verification_issues === 1 ? "y" : "ies"} detected
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                            You can resolve this in Supporting Documents (via Manual Override) or proceed to recommend for hire by acknowledging the warning.
+                          </p>
+                        </div>
                       )}
                       <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 md:grid-cols-[minmax(0,240px)_minmax(0,170px)_minmax(0,1fr)]">
                         <div className="space-y-1.5">
@@ -17280,6 +18341,65 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <CheckCircle2 className="mr-1.5 h-4 w-4" />
                   )}
                   Record acceptance &amp; send to onboarding
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* RESOLVE DOCUMENT DISCREPANCY (HR OVERRIDE) */}
+      <Dialog open={!!overrideDocFor} onOpenChange={(o) => !o && setOverrideDocFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          {overrideDocFor && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 font-display text-xl">
+                  <ShieldCheck className="h-5 w-5 text-primary" /> Resolve Document Discrepancy
+                </DialogTitle>
+                <DialogDescription>
+                  Override the discrepancy for{" "}
+                  <span className="font-medium text-foreground">
+                    {overrideDocFor.title || overrideDocFor.original_name || `Document #${overrideDocFor.applicant_document_id}`}
+                  </span>
+                  . This changes the status to Verified and removes the blocking issue so the applicant can be hired.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                {overrideDocFor.verification_result?.summary && (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
+                    <span className="font-semibold">Detected Issue: </span>
+                    {overrideDocFor.verification_result.summary}
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label>HR Resolution Note / Justification (optional)</Label>
+                  <Textarea
+                    rows={3}
+                    value={overrideDocReason}
+                    onChange={(e) => setOverrideDocReason(e.target.value)}
+                    placeholder="e.g. Confirmed employment dates directly with previous employer HR."
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setOverrideDocFor(null)}
+                  disabled={overrideDocBusy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={overrideDocBusy}
+                  onClick={() => void overrideDocumentDiscrepancy(overrideDocFor, overrideDocReason)}
+                >
+                  {overrideDocBusy ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                  )}
+                  Confirm &amp; Mark Verified
                 </Button>
               </DialogFooter>
             </>
@@ -17715,6 +18835,567 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </>
               );
             })()}
+        </DialogContent>
+      </Dialog>
+      {/* Function 2: Move to Specific Stage Dialog */}
+      <Dialog open={!!moveToStageFor} onOpenChange={(open) => { if (!open) setMoveToStageFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightCircle className="h-5 w-5 text-primary" />
+              Move to Specific Stage
+            </DialogTitle>
+            <DialogDescription>
+              Administratively adjust {moveToStageFor?.name}&apos;s stage in the recruitment pipeline.
+            </DialogDescription>
+          </DialogHeader>
+
+          {moveToStageFor?.stage === "Rejected" ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <XCircle className="h-4 w-4" /> Applicant is currently Rejected
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  Move to Stage is not permitted for rejected candidates. To reconsider or re-evaluate this candidate, please use &quot;Reopen Application&quot;.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setMoveToStageFor(null)}>
+                  Close
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => {
+                    const applicant = moveToStageFor;
+                    setMoveToStageFor(null);
+                    if (applicant) openReopen(applicant);
+                  }}
+                >
+                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Switch to Reopen Application
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Current Stage:</span>
+                <Badge variant="outline" className="font-semibold text-foreground">
+                  {moveToStageFor?.stage}
+                </Badge>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Target Stage</Label>
+                <Select
+                  value={moveToStageTarget}
+                  onValueChange={(v) => setMoveToStageTarget(v as ReturnTargetStage)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select target stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RETURN_TARGET_STAGES.filter((s) => s.value !== "Offer").map((s) => {
+                      const STAGE_ORDER_MAP: Record<string, number> = {
+                        Screened: 0,
+                        Accepted: 1,
+                        "Interview Scheduled": 2,
+                        Assessed: 3,
+                        "Assessment Test": 4,
+                        "Practical Test": 5,
+                        "Final Evaluation": 6,
+                        Offer: 7,
+                      };
+                      const curIdx = STAGE_ORDER_MAP[moveToStageFor?.stage ?? ""] ?? 0;
+                      const tgtIdx = STAGE_ORDER_MAP[s.value] ?? 0;
+                      const dir = tgtIdx < curIdx ? " (⏪ Rollback)" : tgtIdx > curIdx ? " (⏩ Advance)" : " (Current)";
+                      return (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}{dir}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(() => {
+                const STAGE_ORDER_MAP: Record<string, number> = {
+                  Screened: 0,
+                  Accepted: 1,
+                  "Interview Scheduled": 2,
+                  Assessed: 3,
+                  "Assessment Test": 4,
+                  "Practical Test": 5,
+                  "Final Evaluation": 6,
+                  Offer: 7,
+                };
+                const curIdx = STAGE_ORDER_MAP[moveToStageFor?.stage ?? ""] ?? 0;
+                const tgtIdx = STAGE_ORDER_MAP[moveToStageTarget] ?? 0;
+
+                if (tgtIdx < curIdx) {
+                  return (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
+                      <p className="font-medium flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Rollback Notice:
+                      </p>
+                      <p className="mt-0.5">
+                        Moving backward to <strong>{moveToStageTarget}</strong> will reset downstream test and evaluation records so the applicant can repeat the process cleanly.
+                      </p>
+                    </div>
+                  );
+                } else if (tgtIdx > curIdx) {
+                  return (
+                    <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-2.5 text-xs text-blue-800 dark:text-blue-200">
+                      <p className="font-medium flex items-center gap-1">
+                        <Info className="h-3.5 w-3.5" /> Advance Notice:
+                      </p>
+                      <p className="mt-0.5">
+                        Moving forward to <strong>{moveToStageTarget}</strong> requires that all prior stages (screening, interview, and test assessments) were completed and passed.
+                      </p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="rounded-md border bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                    Candidate is already at {moveToStageTarget}. Choose a different target stage to move.
+                  </div>
+                );
+              })()}
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Reason for moving stage *</Label>
+                <Textarea
+                  rows={3}
+                  placeholder="Explain why this applicant is being administratively moved..."
+                  value={moveToStageReason}
+                  onChange={(e) => setMoveToStageReason(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Minimum 5 characters. Logged in audit trail with Super Admin attribution.
+                </p>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  disabled={moveToStageBusy}
+                  onClick={() => setMoveToStageFor(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={
+                    moveToStageBusy ||
+                    moveToStageReason.trim().length < 5 ||
+                    moveToStageTarget === moveToStageFor?.stage
+                  }
+                  onClick={() => void confirmMoveToStage()}
+                >
+                  {moveToStageBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Confirm Move
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 3: Reopen Application Dialog */}
+      <Dialog open={!!reopenFor} onOpenChange={(open) => { if (!open) setReopenFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-emerald-600" />
+              Reopen Application
+            </DialogTitle>
+            <DialogDescription>
+              Reconsider {reopenFor?.name} ({reopenFor?.id}) by returning them to an eligible pipeline stage.
+            </DialogDescription>
+          </DialogHeader>
+
+          {reopenFor?.isActiveBlocked ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <Ban className="h-4 w-4" /> Applicant is Blocked
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  This applicant has an active recruitment restriction. You must unblock them before reopening their application.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setReopenFor(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-between rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Rejected at:</span>
+                <span className="font-semibold text-destructive flex items-center gap-1">
+                  <XCircle className="h-3.5 w-3.5" />
+                  {reopenFor?.rejectedAtStage || "Screening"}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Resume Application at Stage</Label>
+                <Select
+                  value={reopenTarget}
+                  onValueChange={(v) => setReopenTarget(v as ReturnTargetStage)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select target stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(() => {
+                      const allowed = reopenFor?.allowedReturnStages && reopenFor.allowedReturnStages.length > 0
+                        ? reopenFor.allowedReturnStages
+                        : ["Screened", "Accepted"];
+                      return RETURN_TARGET_STAGES.filter((s) => allowed.includes(s.value)).map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ));
+                    })()}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Upcoming stages the applicant never qualified for are excluded.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Reason for Reopening *</Label>
+                <Textarea
+                  rows={3}
+                  placeholder="Explain the justification for reconsidering this candidate..."
+                  value={reopenReason}
+                  onChange={(e) => setReopenReason(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Minimum 5 characters. Stamped in the audit log and lifts the 30-day cooldown.
+                </p>
+              </div>
+
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-200">
+                <p className="font-medium flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Reopening Effects:
+                </p>
+                <ul className="mt-1 list-disc pl-4 space-y-0.5 text-[11.5px]">
+                  <li>Clears the &quot;Rejected&quot; status and resets the 30-day cooldown.</li>
+                  <li>Wipes failed evaluation data at the target stage for a fresh evaluation.</li>
+                  <li>Restores candidate to the active recruitment list.</li>
+                </ul>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  disabled={reopenBusy}
+                  onClick={() => setReopenFor(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={reopenBusy || reopenReason.trim().length < 5}
+                  onClick={() => void confirmReopen()}
+                >
+                  {reopenBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Confirm Reopen
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 4: Correct Hiring Decision Dialog */}
+      <Dialog open={!!correctHiringFor} onOpenChange={(open) => { if (!open) setCorrectHiringFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-600" />
+              Correct Hiring Decision
+            </DialogTitle>
+            <DialogDescription>
+              Correct hiring outcome for {correctHiringFor?.name} ({correctHiringFor?.id}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Correction Reason Type</Label>
+              <Select
+                value={correctHiringType}
+                onValueChange={(v) => setCorrectHiringType(v as "mistaken_hire" | "no_show" | "reneged")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select reason type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no_show">Candidate No-Show (Didn't attend start date)</SelectItem>
+                  <SelectItem value="reneged">Reneged Offer (Accepted then declined)</SelectItem>
+                  <SelectItem value="mistaken_hire">Mistaken Hire (Erroneously marked as hired)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Detailed Reason & Audit Notes *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Explain the background for correcting this hiring decision..."
+                value={correctHiringReason}
+                onChange={(e) => setCorrectHiringReason(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Minimum 5 characters. Reverts stage to Rejected and releases the job vacancy slot.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2 pt-1">
+              <Checkbox
+                id="apply-cooldown-check"
+                checked={correctHiringCooldown}
+                onCheckedChange={(c) => setCorrectHiringCooldown(!!c)}
+              />
+              <Label htmlFor="apply-cooldown-check" className="text-xs font-normal cursor-pointer">
+                Apply standard 30-day re-apply cooldown waiting period
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={correctHiringBusy}
+              onClick={() => setCorrectHiringFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={correctHiringBusy || correctHiringReason.trim().length < 5}
+              onClick={() => void confirmCorrectHiring()}
+            >
+              {correctHiringBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Correct Decision
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 5: Archive Applicant Dialog */}
+      <Dialog open={!!archiveFor} onOpenChange={(open) => { if (!open) setArchiveFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="h-5 w-5 text-muted-foreground" />
+              Archive Applicant
+            </DialogTitle>
+            <DialogDescription>
+              Archive {archiveFor?.name} ({archiveFor?.id}) to hide from active pipeline views.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Archive Reason / Note (Optional)</Label>
+              <Textarea
+                rows={2}
+                placeholder="Optional notes explaining why this applicant is being archived..."
+                value={archiveReason}
+                onChange={(e) => setArchiveReason(e.target.value)}
+              />
+            </div>
+            <div className="rounded-md border border-muted bg-muted/40 p-2.5 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">Archive Details:</p>
+              <p className="mt-0.5">
+                Archived applicants do not appear in normal list views unless "Show Archived & Blocked" is toggled. No historical evaluations, test results, or documents are deleted.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={archiveBusy}
+              onClick={() => setArchiveFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={archiveBusy}
+              onClick={() => void confirmArchive()}
+            >
+              {archiveBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Archive Applicant
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 6: Restore Applicant Dialog */}
+      <Dialog open={!!restoreFor} onOpenChange={(open) => { if (!open) setRestoreFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArchiveRestore className="h-5 w-5 text-emerald-600" />
+              Restore Applicant
+            </DialogTitle>
+            <DialogDescription>
+              Restore {restoreFor?.name} ({restoreFor?.id}) back to the active recruitment list.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Restore Note (Optional)</Label>
+              <Textarea
+                rows={2}
+                placeholder="Optional notes for un-archiving this applicant..."
+                value={restoreReason}
+                onChange={(e) => setRestoreReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={restoreBusy}
+              onClick={() => setRestoreFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={restoreBusy}
+              onClick={() => void confirmRestore()}
+            >
+              {restoreBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Restore Applicant
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 7: Block Applicant Dialog */}
+      <Dialog open={!!blockFor} onOpenChange={(open) => { if (!open) setBlockFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ban className="h-5 w-5 text-destructive" />
+              Block Applicant (Recruitment Restriction)
+            </DialogTitle>
+            <DialogDescription>
+              Restrict {blockFor?.name} ({blockFor?.email}) from applying or participating in recruitment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Restriction Scope</Label>
+              <Select
+                value={blockScope}
+                onValueChange={(v) => setBlockScope(v as "all_jobs" | "specific_job")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select restriction scope" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all_jobs">All Positions (Universal Restriction)</SelectItem>
+                  <SelectItem value="specific_job">This Position Only ({blockFor?.position})</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Expiration Date (Optional)</Label>
+              <Input
+                type="date"
+                value={blockExpiresAt}
+                onChange={(e) => setBlockExpiresAt(e.target.value)}
+                placeholder="YYYY-MM-DD"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Leave blank for an indefinite restriction until manually lifted.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Reason for Restriction *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Provide a justified reason for blocking this applicant (e.g. misconduct, fraudulent application)..."
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Minimum 5 characters. Rejection alone does not warrant blocking.
+              </p>
+            </div>
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive">
+              <p className="font-semibold">Restriction Policy:</p>
+              <p className="mt-0.5">
+                Future applications matching this candidate (by email, phone, name, or address) will be blocked immediately upon submission.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={blockBusy}
+              onClick={() => setBlockFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={blockBusy || blockReason.trim().length < 5}
+              onClick={() => void confirmBlock()}
+            >
+              {blockBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Block Applicant
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Function 8: Unblock Applicant Dialog */}
+      <Dialog open={!!unblockFor} onOpenChange={(open) => { if (!open) setUnblockFor(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              Lift Recruitment Restriction (Unblock)
+            </DialogTitle>
+            <DialogDescription>
+              Remove recruitment restrictions for {unblockFor?.name} ({unblockFor?.email}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Reason for Lifting Restriction *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Explain why this restriction is being lifted..."
+                value={unblockReason}
+                onChange={(e) => setUnblockReason(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Minimum 5 characters. Restriction history is retained in audit logs.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={unblockBusy}
+              onClick={() => setUnblockFor(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={unblockBusy || unblockReason.trim().length < 5}
+              onClick={() => void confirmUnblock()}
+            >
+              {unblockBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Lift Restriction
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

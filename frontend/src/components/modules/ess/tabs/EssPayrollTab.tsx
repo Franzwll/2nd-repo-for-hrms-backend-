@@ -8,6 +8,8 @@ import {
   EyeOff,
   FileText,
   HeartHandshake,
+  HeartPulse,
+  Info,
   Landmark,
   ShieldCheck,
   Stethoscope,
@@ -15,6 +17,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import {
   Table,
@@ -69,6 +72,7 @@ export function EssPayrollTab() {
   );
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Record<string, boolean>>({});
+  const [hmoCardRevealed, setHmoCardRevealed] = useState(false);
 
   const toggleRevealId = (label: string) =>
     setRevealedIds((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -228,7 +232,8 @@ export function EssPayrollTab() {
     {
       icon: Stethoscope,
       label: "HMO Healthcare",
-      detail: "Maxicare · MX-****014",
+      detail: "iCare",
+      sensitiveValue: "IC-8849-1234",
       amount: 150000,
       unit: "MBL / yr",
       tone: "bg-purple-500/10 dark:bg-purple-400/10 text-purple-600 dark:text-purple-400",
@@ -301,7 +306,12 @@ export function EssPayrollTab() {
                       {row.sensitiveValue ? (
                         <>
                           <span className="font-mono">
-                            {isRevealed ? row.sensitiveValue : maskSensitiveId(row.sensitiveValue)}
+                            {row.detail ? `${row.detail} · ` : ""}
+                            {isRevealed
+                              ? row.sensitiveValue
+                              : row.label === "HMO Healthcare"
+                                ? "IC-****1234"
+                                : maskSensitiveId(row.sensitiveValue)}
                           </span>
                           <button
                             type="button"
@@ -453,7 +463,9 @@ export function EssPayrollTab() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 Per Cut-off Deduction
               </p>
-              <p className="mt-1 text-xl font-extrabold font-display text-rose-600 dark:text-rose-400">-₱450.00</p>
+              <p className="mt-1 text-xl font-extrabold font-display text-rose-600 dark:text-rose-400">
+                -₱450.00
+              </p>
             </div>
             <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -477,6 +489,193 @@ export function EssPayrollTab() {
                 Projected payoff: <strong className="text-foreground">December 15, 2026</strong>
               </span>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* New section: HMO / Health Benefits */}
+      <Card className="border-border/70 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 font-display text-lg font-semibold">
+                <HeartPulse className="h-4 w-4 text-primary" /> HMO / Health Benefits
+              </CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Your health coverage and benefit limits.
+              </p>
+            </div>
+            <div className="flex w-fit shrink-0 items-center gap-1.5">
+              <Badge
+                variant="outline"
+                className="w-fit shrink-0 border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"
+              >
+                Active
+              </Badge>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="HMO benefit information"
+                    title="HMO benefit information"
+                    className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="w-80 max-w-[calc(100vw-2rem)] space-y-2.5 p-3 text-xs leading-relaxed"
+                >
+                  <p>
+                    <span className="font-semibold text-foreground">MBL:</span>{" "}
+                    <span className="text-muted-foreground">
+                      The maximum benefit iCare covers for the benefit year. Amounts above the limit
+                      may be charged to you.
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">LOA:</span>{" "}
+                    <span className="text-muted-foreground">
+                      Request your Letter of Authorization before admission or procedures. Check
+                      that your hospital or clinic is accredited.
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Benefit Used:</span>{" "}
+                    <span className="text-muted-foreground">
+                      Shows your usage against your limit. Figures may be updated periodically.
+                    </span>
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-semibold text-foreground">Need help?</span> File an LOA or
+                    claim under{" "}
+                    <button
+                      type="button"
+                      onClick={() => navigate({ to: "/employee/my-requests" })}
+                      className="font-semibold text-primary underline underline-offset-2 transition-colors hover:text-primary/80"
+                    >
+                      My Request
+                    </button>
+                    , or contact HR.
+                  </p>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Top 3 Stats: Provider, Plan, MBL/Year */}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Provider
+              </p>
+              <p className="mt-1 text-xl font-extrabold font-display text-foreground">iCare</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Insular Health Care</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Plan
+              </p>
+              <p className="mt-1 text-xl font-extrabold font-display text-foreground">Regular</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Comprehensive coverage</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                MBL / Year
+              </p>
+              <p className="mt-1 text-xl font-extrabold font-display text-primary">₱150,000</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Per illness per year</p>
+            </div>
+          </div>
+
+          {/* Middle Card No, Premium Paid By, Validity, Dependents */}
+          <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/10 p-3.5 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4">
+              <span className="text-xs text-muted-foreground">Card no.</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-xs font-semibold text-foreground">
+                  {hmoCardRevealed ? "IC-8849-1234" : "IC-****1234"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHmoCardRevealed((prev) => !prev)}
+                  aria-label={hmoCardRevealed ? "Hide HMO card number" : "Show HMO card number"}
+                  aria-pressed={hmoCardRevealed}
+                  title={hmoCardRevealed ? "Hide card number" : "Show card number"}
+                  className="inline-flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {hmoCardRevealed ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 sm:border-b-0 sm:pb-0">
+              <span className="text-xs text-muted-foreground">Premium paid by:</span>
+              <span className="text-xs font-semibold text-foreground">Employer</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4">
+              <span className="text-xs text-muted-foreground">Validity</span>
+              <span className="font-mono text-xs font-semibold text-foreground">
+                Jan 01 – Dec 31, 2026
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">Dependents:</span>
+              <span className="text-xs font-semibold text-foreground">1</span>
+            </div>
+          </div>
+
+          {/* Utilization Progress Bar */}
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-muted-foreground">
+                Benefit used <strong className="text-foreground">₱32,500</strong> of{" "}
+                <span className="text-muted-foreground">₱150,000</span>
+              </span>
+              <span className="font-mono text-primary">22%</span>
+            </div>
+            <Progress value={22} className="mt-1.5 h-2.5" />
+            <div className="mt-2 flex flex-wrap justify-between gap-2 text-[11px] text-muted-foreground">
+              <span>
+                Remaining balance:{" "}
+                <strong className="text-emerald-600 dark:text-emerald-400">₱117,500</strong>
+              </span>
+              <span>
+                Annual reset: <strong className="text-foreground">Jan 01, 2027</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Footer note: Need an LOA or have a claim? File it under My Request. */}
+          <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-muted-foreground">
+              Need an LOA or have a claim? File it under{" "}
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/employee/my-requests" })}
+                className="font-semibold text-primary underline underline-offset-2 transition-colors hover:text-primary/80"
+              >
+                My Request
+              </button>
+              .
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => navigate({ to: "/employee/my-requests" })}
+              className="h-7 border-primary/30 text-xs font-medium text-primary hover:bg-primary/10"
+            >
+              File Request
+            </Button>
           </div>
         </CardContent>
       </Card>

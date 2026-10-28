@@ -752,8 +752,12 @@ class RecruitmentManagementController extends Controller
     /* indicator: config state, providers, drafts used today, cool-downs.  */
     /* ------------------------------------------------------------------ */
 
-    public function aiUsage(JobContentGenerator $generator): JsonResponse
+    public function aiUsage(Request $request, JobContentGenerator $generator): JsonResponse
     {
+        if ($request->boolean('clear') || $request->has('refresh')) {
+            $generator->clearCooldowns();
+        }
+
         return response()->json([
             'success' => true,
             'data' => $generator->usageSnapshot(),

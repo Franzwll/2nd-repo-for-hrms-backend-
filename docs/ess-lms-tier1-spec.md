@@ -129,7 +129,8 @@ Schema::create('employee_learning_attempts', function (Blueprint $table) {
 });
 ```
 
-**Decided (#4 = A):** included — every attempt is logged (history + retakes).
+**Decided (#4 = A):** included — every attempt is logged (history). A failed attempt is
+final: the employee gets one attempt, and the card reads `quiz_failed` from this table.
 `employee_learning.score` still holds the best/last score used by the course card.
 
 ### 1c. Completion source (decided — included, #3 = A)
@@ -209,6 +210,9 @@ set, lazily **extract via NLP service** and cache into `content_text`.
 - **Hard gate (§1e / §10):** if `employee_learning.reading_completed_at` is null → return
   `409 { "code": "reading_required", "message": "Finish the handbook first." }` **before**
   generating or returning anything.
+- **No-retake gate:** if the employee already has a failed attempt (and is not `Completed`) →
+  return `409 { "code": "retake_not_allowed", "message": "…", "score": 60 }` without serving
+  questions. This is checked before quiz generation.
 - If `quiz_json` is null → generate via `LmsQuizGenerator` (extract text first) → persist
   to `quiz_json` + `quiz_generated_at`.
 - **Response omits the answer key:**
@@ -226,7 +230,8 @@ set, lazily **extract via NLP service** and cache into `content_text`.
 
 ### 2c. `POST /ess/my-learning/{courseCode}/quiz`
 
-Request: `{ "answers": { "1": 2, "2": 0, "3": 3 } }` (questionId → option index)
+Request: `{ "answers": { "1": 2, "2": 0, "3": 3 }, "attempt_seed": 123456 }`
+(questionId → displayed option index; the seed rebuilds the shuffle order).
 
 Behavior: load server-side key from `quiz_json` → grade
 (`score = round(100·correct/total)`) → upsert `employee_learning`:
@@ -235,21 +240,27 @@ Behavior: load server-side key from `quiz_json` → grade
   `already_passed: true`; do **not** insert another `Completed` and never downgrade.
 - **pass (≥80):** `status='Completed'`, `score=max(existing,best)`, `completed_date=today`,
   `completion_source='quiz'`
-- **fail:** keep/set `status='In Progress'`, store best `score`, leave `completed_date` null
-- insert attempts row (if 1b) · `AuditLogger::log(action:'LMS Quiz Submitted', …)`
+- **fail:** keep/set `status='In Progress'`, store best `score`, leave `completed_date` null.
+  The failure is final — subsequent GET/POST calls return `409 retake_not_allowed`.
+- A non-`Completed` row with an existing failed attempt is rejected **before grading** with
+  `409 { "code": "retake_not_allowed", … }`; no extra attempts row is written.
+- insert attempts row · `AuditLogger::log(action:'LMS Quiz Submitted', …)`
 
-Response (answer key returned **only here, after submit**):
+Response (**no answer key — `correct_index` and `explanation` are never sent**, even here):
 
 ```json
 {
   "passed": true, "score": 90, "correct_count": 9, "total_count": 10, "pass_mark": 80,
-  "status": "Completed", "certificate_eligible": true,
+  "status": "Completed", "certificate_eligible": true, "retake_allowed": false,
   "review": [
     { "id": 1, "question": "…", "options": ["A","B","C","D"],
-      "correct_index": 2, "your_index": 2, "is_correct": true, "explanation": "…" }
+      "your_index": 2, "is_correct": true }
   ]
 }
 ```
+
+The review only shows the employee's own selection and whether that question was right;
+the result screen states that correct answers are not disclosed.
 
 > **Rule (#3 = A, confirmed):** the quiz sets `Completed` **immediately** on pass — the employee
 > sees Complete and the certificate right away. The guard at L1577–1581 lives only in
@@ -260,8 +271,9 @@ Response (answer key returned **only here, after submit**):
 > **Terminal:** once `Completed`, the course is finished — the Assessment row shows **View
 > Result** and the quiz does not reopen (matches today's `isDone` branch), *including* when the
 > module is opened from the **Materials** card (§5b). Resubmits are no-ops.
-> Retakes are only available while **not** `Completed` (unlimited in Tier-1; add a cap later
-> if needed).
+> **One attempt only:** a failed attempt is also terminal for the employee. The quiz card shows
+> "Not passed · Retakes locked", and both GET and POST refuse with `409 retake_not_allowed`.
+> HR can still use `verifyLearning` as the override path.
 
 ---
 
@@ -273,6 +285,20 @@ Marks the reading stage done — the write that the hard gate (§1e / §10) chec
   `Assigned → In Progress` (never downgrades an existing `Completed`).
 - Returns `{ "reading_completed_at": "2026-10-18T…", "status": "In Progress" }`.
 - Called by the player's **"Finish reading → Start Assessment"** button (§5b).
+
+### 2e. Admin/testing reset (CLI)
+
+Because a failed attempt is final, the deliberate escape hatch is:
+
+```bash
+php artisan ess:reset-quiz-attempt kevin.delacruz@example.com LMS-103
+# add --force to skip the confirmation prompt
+```
+
+It deletes that employee's attempts for the course and resets `employee_learning` to
+`In Progress`, clearing `score` / `completed_date` / `completion_source` while preserving
+`reading_completed_at` (so the employee can go straight back to the quiz). Use it for
+disputed failures or testing only.
 
 ---
 
@@ -387,13 +413,14 @@ learningQuiz: (courseCode: string) =>
             already_passed: boolean; last_score: number | null }>(
     `/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`),
 
-submitLearningQuiz: (courseCode: string, answers: Record<string, number>) =>
+submitLearningQuiz: (courseCode: string, answers: Record<string, number>, attemptSeed: number) =>
   request<{ passed: boolean; score: number; correct_count: number; total_count: number;
             pass_mark: number; status: string; certificate_eligible: boolean;
-            review: { id:number; question:string; options:string[]; correct_index:number;
-                      your_index:number; is_correct:boolean; explanation:string }[] }>(
+            retake_allowed: boolean;
+            review: { id:number; question:string; options:string[];
+                      your_index:number | null; is_correct:boolean }[] }>(
     `/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`,
-    { method: "POST", body: JSON.stringify({ answers }) }),
+    { method: "POST", body: JSON.stringify({ answers, attempt_seed: attemptSeed }) }),
 
 learningMaterialUrl: (courseCode: string) => {
   const t = getToken();
@@ -405,7 +432,12 @@ learningMaterialUrl: (courseCode: string) => {
 
 Port the mockup's engine, **re-sequenced per §10** — reading must complete **before** the quiz:
 
-`idle → loading → reading → (reading_completed) → quiz(question i) → result(score/review) → certificate`
+`idle → loading → reading → (reading_completed) → confirm → quiz(question i) → result(score/review) → certificate`
+
+The quiz is never started by the click that opens it. The bank is loaded first, then a
+**confirmation panel** shows the item count and time limit and warns that there is
+**one attempt only**. The countdown starts only when the employee presses **Start assessment**.
+The pass mark is not shown before or during the attempt; it appears in the post-submit result.
 
 > ⚠️ The mockup shows **reading and quiz side by side** — that is **not** the decided flow.
 > The decided flow is **read → then quiz** (§10). Do not port the side-by-side layout as-is.
@@ -426,9 +458,18 @@ Port the mockup's engine, **re-sequenced per §10** — reading must complete **
   re-opening the assessment; and if a client reaches Stage 2 anyway (`quiz.already_passed`),
   the quiz is replaced by an "already completed" panel showing the stored `last_score`. No
   re-grading and no stale score presented as a fresh result.
-- Submit → `essApi.submitLearningQuiz` → result panel (score / pass / review) →
+- Submit → `essApi.submitLearningQuiz` → result panel (score / pass / own answers only) →
   **View Certificate** reuses the existing `LmsCertificateModal` via
-  `essApi.learningCertificate(code)` (unchanged).
+  `essApi.learningCertificate(code)` (unchanged). The review never highlights or names the
+  correct option, and a failed result offers **Close** instead of a retake button.
+- If the GET returns `409 retake_not_allowed`, Stage 2 shows a locked panel with the failed
+  score and a **Review handbook** action; no questions are rendered.
+- **Read-aloud (browser TTS):** a **Listen** control reads the handbook text, and a **Listen
+  to this** control in the quiz header reads the full quiz; each quiz question and
+  result-review item also has a compact speaker button (question + options, or the employee's
+  own answer — never the answer key); the locked panel and result summary can also be read.
+  Uses the Web Speech API, is hidden when the browser does not support it, and speech stops
+  when the stage changes, the modal closes, or the player unmounts.
 - Props: `{ open, onOpenChange, course, onCompleted }`.
 
 ### 5c. `EssPerformanceTab.tsx` edits (small, localized)
@@ -477,6 +518,8 @@ Port the mockup's engine, **re-sequenced per §10** — reading must complete **
 | 3 | `LmsActivityPlayer.tsx` (two-stage: reading → quiz) + `EssPerformanceTab` wiring | ✅ `f56fc95` |
 | 4 | Deterministic fallback bank, timer, retake, flag, **per-attempt question/option shuffle**, polish | ✅ `2aba8a1` |
 | 4.1 | Verification pass (real HTTP round-trip) + **completed-course lock** — an already-`Completed` module cannot re-open the assessment or report a stale score | ✅ this commit |
+| 4.2 | **Pre-quiz confirmation**, **no answer key in the post-submit review**, and **no retake after a failed attempt** (`quiz_failed` card state + `409 retake_not_allowed`) | ✅ this commit |
+| 4.3 | **Read-aloud (browser TTS)** for the handbook, quiz questions, result review, and locked panel | ✅ this commit |
 | 5 *(opt)* | HR admin review column (surface `completion_source` + score) | ⬜ |
 
 Rough shape: phases 0–3 = a working version; 4–5 = hardening.
@@ -520,8 +563,9 @@ when `quiz.already_passed` is true. `Completed` remains terminal; no backend gra
    No dedicated `LMS_*` keys for Tier-1.
 3. ✅ **Completion rule — A: quiz sets `Completed` immediately on pass** (§2c). HR keeps
    `verifyLearning` as override; `completion_source` (§1c) distinguishes the two. `Completed`
-   is terminal; retakes only while not completed.
-4. ✅ **Attempts table — A: include** `employee_learning_attempts` (§1b).
+   is terminal, and a failed attempt is final too (no retakes).
+4. ✅ **Attempts table — A: include** `employee_learning_attempts` (§1b). Also the source of
+   truth for the no-retake lock.
 5. ✅ **Card-parity columns — A: include** pages / read-minutes / `mandatory` (§1d).
 
 6. ✅ **Reading gate — hard:** server-enforced via `reading_completed_at` (§1e / §2b).
@@ -534,8 +578,8 @@ when `quiz.already_passed` is true. `Completed` remains terminal; no backend gra
 
 - **`nlp-service` must be running** — keep the deterministic fallback (from
   `content_text` or a hand-authored mini-bank).
-- **Never ship the answer key to the client** — grade server-side; key returned only in
-  the submit response.
+- **Never ship the answer key to the client** — grade server-side; the submit response's
+  review contains only the employee's own answers.
 - **Answer circulation** — `quiz_json` is cached **per course**, so every employee gets the
   same items in the same order. Combined with immediate completion (#3 = A), answers could be
   shared. **Mitigated (Phase 4):** per-attempt question/option shuffle off a random
@@ -545,6 +589,9 @@ when `quiz.already_passed` is true. `Completed` remains terminal; no backend gra
   certificate). Deterministic fallback, `generated_by`, the §1b attempts log, and the HR
   `verifyLearning` override are the safety net; an HR "recent completions" review (Phase 5)
   closes the loop.
+- **One-attempt policy** — a failed attempt is permanently locked in the employee UI, so a
+  mis-keyed AI question cannot be retried by the employee. HR must use the existing
+  `verifyLearning` override (or reset the attempt) to resolve a disputed failure.
 - **AI cost/latency** — cache per course (`quiz_json`); reuse existing quota/cooldown
   tooling for "AI busy, try later".
 - **Extraction quality** — scanned handbooks need OCR (available via Tesseract in the NLP

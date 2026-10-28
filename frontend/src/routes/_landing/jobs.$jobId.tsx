@@ -453,9 +453,6 @@ function JobDetail() {
                           value={name}
                           onChange={(e) => setName(sanitizeName(e.target.value))}
                         />
-                        <p className="text-[11px] text-muted-foreground">
-                          Letters, spaces, hyphen, apostrophe only (≥2 chars).
-                        </p>
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="email">Email Address *</Label>
@@ -479,7 +476,6 @@ function JobDetail() {
                           value={phone}
                           onChange={(e) => setPhone(sanitizePhone(e.target.value))}
                         />
-                        <p className="text-[11px] text-muted-foreground">Digits 7–15, + allowed.</p>
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="location">Location *</Label>

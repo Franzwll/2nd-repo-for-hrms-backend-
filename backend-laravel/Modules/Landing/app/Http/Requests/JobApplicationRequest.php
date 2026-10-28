@@ -19,6 +19,7 @@ class JobApplicationRequest extends FormRequest
             'name' => ['required', 'string', 'max:160'],
             'email' => ['required', 'email', 'max:190'],
             'phone' => ['nullable', 'string', 'max:40'],
+            'address' => ['nullable', 'string', 'max:500'],
             'source' => ['nullable', 'string', 'max:60'],
             'summary' => ['nullable', 'string', 'max:255'],
             // A resume/CV is mandatory for every public application — the NLP

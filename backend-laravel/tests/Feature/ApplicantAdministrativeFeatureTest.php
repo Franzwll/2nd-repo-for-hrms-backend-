@@ -1,0 +1,448 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\SystemUser;
+use Modules\ApplicantManagement\Models\Applicant;
+use Modules\ApplicantManagement\Models\ApplicantBlockHistory;
+use Modules\ApplicantManagement\Models\FinalEvaluation;
+use Modules\RecruitmentManagement\Models\JobPost;
+use Tests\Concerns\RefreshesSeededDatabase;
+use Tests\TestCase;
+
+class ApplicantAdministrativeFeatureTest extends TestCase
+{
+    use RefreshesSeededDatabase;
+
+    private function superAdmin(): SystemUser
+    {
+        return SystemUser::whereHas('role', fn ($q) => $q->where('is_super_admin', true))->firstOrFail();
+    }
+
+    public function test_spam_protection_prevents_duplicate_offer_acceptance(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code'   => Applicant::generateCode(),
+            'job_post_id'      => $jobPost->job_post_id,
+            'name'             => 'Spam Tester',
+            'email'            => 'spam.tester@example.com',
+            'stage'            => 'Offer',
+            'status'           => 'fit',
+            'offer_status'     => 'Pending',
+            'offer_sent_at'    => now(),
+            'offer_expires_at' => now()->addDays(7),
+        ]);
+
+        FinalEvaluation::create([
+            'applicant_id'         => $applicant->applicant_id,
+            'evaluation_date'      => now()->toDateString(),
+            'recommendation'       => 'Recommended for Hire',
+            'overall_score'        => 85,
+            'score_breakdown_json' => ['weights' => ['screening' => 25, 'interview' => 25, 'assessment' => 25, 'practical' => 25], 'breakdown' => []],
+        ]);
+
+        // First call: succeeds
+        $response1 = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/offer/response", [
+            'response'   => 'accepted',
+            'start_date' => now()->addDays(14)->toDateString(),
+            'channel'    => 'Email',
+            'note'       => 'Accepted offer',
+        ]);
+        $response1->assertOk();
+
+        $applicant->refresh();
+        $this->assertEquals('Hired', $applicant->stage);
+        $this->assertEquals('Accepted', $applicant->offer_status);
+
+        // Second call (simulating fast click / spam): rejected with 422
+        $response2 = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/offer/response", [
+            'response'   => 'accepted',
+            'start_date' => now()->addDays(14)->toDateString(),
+            'channel'    => 'Email',
+            'note'       => 'Spam clicked',
+        ]);
+        $response2->assertStatus(422);
+        $response2->assertJsonFragment([
+            'message' => 'This applicant is not awaiting an offer response.',
+        ]);
+    }
+
+    public function test_rejection_auto_records_30_day_cooldown_timestamp(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Cooldown Test Applicant',
+            'email'          => 'cooldown.applicant@example.com',
+            'stage'          => 'Screened',
+            'status'         => 'fit',
+        ]);
+
+        $this->assertNull($applicant->rejected_at);
+
+        // Reject via stage transition
+        $response = $this->actingAs($superAdmin, 'sanctum')->patchJson("/api/v1/applicants/{$applicant->applicant_id}", [
+            'stage'  => 'Rejected',
+            'status' => 'not-fit',
+        ]);
+        $response->assertOk();
+
+        $applicant->refresh();
+        $this->assertNotNull($applicant->rejected_at, 'rejected_at must be stamped when rejected');
+        $this->assertFalse($applicant->is_blocked, 'Rejection alone must NOT block applicant');
+    }
+
+    public function test_move_to_stage_administrative_action(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Stage Mover',
+            'email'          => 'stage.mover@example.com',
+            'stage'          => 'Assessed',
+            'status'         => 'fit',
+        ]);
+
+        $response = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/move-to-stage", [
+            'target_stage' => 'Screened',
+            'reason'       => 'Administrative stage correction due to incomplete resume',
+        ]);
+        $response->assertOk();
+
+        $applicant->refresh();
+        $this->assertEquals('Screened', $applicant->stage);
+    }
+
+    public function test_reopen_application_clears_rejection_and_cooldown(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Reopen Candidate',
+            'email'          => 'reopen.candidate@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'rejected_at'    => now()->subDays(5),
+        ]);
+
+        $response = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/reopen", [
+            'target_stage' => 'Screened',
+            'reason'       => 'New position requirements opened up for this candidate',
+        ]);
+        $response->assertOk();
+
+        $applicant->refresh();
+        $this->assertEquals('Screened', $applicant->stage);
+        $this->assertEquals('fit', $applicant->status);
+        $this->assertNull($applicant->rejected_at, 'Reopening must clear rejected_at cooldown anchor');
+    }
+
+    public function test_correct_hiring_decision_releases_opening(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+        $initialFilled = (int) ($jobPost->filled_positions ?? 0);
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'No Show Candidate',
+            'email'          => 'no.show@example.com',
+            'stage'          => 'Hired',
+            'status'         => 'fit',
+            'offer_status'   => 'Accepted',
+        ]);
+
+        $response = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/correct-hiring", [
+            'correction_type' => 'no_show',
+            'reason'          => 'Candidate failed to report on designated start date',
+            'apply_cooldown'  => true,
+            'release_slot'    => true,
+        ]);
+        $response->assertOk();
+
+        $applicant->refresh();
+        $this->assertEquals('Rejected', $applicant->stage);
+        $this->assertNotNull($applicant->rejected_at);
+    }
+
+    public function test_archive_and_restore_applicant(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Archive Target',
+            'email'          => 'archive.target@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'rejected_at'    => now(),
+        ]);
+
+        // Archive
+        $archiveRes = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/archive", [
+            'reason' => 'Archiving old rejected record',
+        ]);
+        $archiveRes->assertOk();
+
+        $applicant->refresh();
+        $this->assertTrue($applicant->isArchived());
+
+        // Index default excludes archived
+        $indexRes = $this->actingAs($superAdmin, 'sanctum')->getJson('/api/v1/applicants');
+        $indexRes->assertOk();
+        $ids = collect($indexRes->json('data'))->pluck('applicant_id')->all();
+        $this->assertNotContains($applicant->applicant_id, $ids);
+
+        // Index with include_archived includes it
+        $includeRes = $this->actingAs($superAdmin, 'sanctum')->getJson('/api/v1/applicants?include_archived=1');
+        $includeRes->assertOk();
+        $includedIds = collect($includeRes->json('data'))->pluck('applicant_id')->all();
+        $this->assertContains($applicant->applicant_id, $includedIds);
+
+        // Restore
+        $restoreRes = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/restore", [
+            'reason' => 'Restoring back to active list',
+        ]);
+        $restoreRes->assertOk();
+
+        $applicant->refresh();
+        $this->assertFalse($applicant->isArchived());
+    }
+
+    public function test_block_and_unblock_applicant_with_audit_history(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Disruptive Applicant',
+            'email'          => 'disruptive@example.com',
+            'stage'          => 'Screened',
+            'status'         => 'fit',
+        ]);
+
+        // Block
+        $blockRes = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/block", [
+            'reason'     => 'Fabricated credentials and abusive conduct',
+            'scope'      => 'all_jobs',
+            'expires_at' => null,
+        ]);
+        $blockRes->assertOk();
+
+        $applicant->refresh();
+        $this->assertTrue($applicant->is_blocked);
+        $this->assertEquals('Fabricated credentials and abusive conduct', $applicant->blocked_reason);
+
+        // Check audit history
+        $this->assertDatabaseHas('applicant_block_history', [
+            'applicant_id' => $applicant->applicant_id,
+            'action'       => 'blocked',
+            'reason'       => 'Fabricated credentials and abusive conduct',
+        ]);
+
+        // Attempting to apply again via landing or store is blocked
+        $storeRes = $this->actingAs($superAdmin, 'sanctum')->postJson('/api/v1/applicants', [
+            'job_post_id' => $jobPost->job_post_id,
+            'name'        => 'Disruptive Applicant',
+            'email'       => 'disruptive@example.com',
+            'phone'       => '09170001111',
+            'address'     => '123 Fake St',
+            'stage'       => 'Screened',
+            'status'      => 'fit',
+        ]);
+        $storeRes->assertStatus(403);
+        $storeRes->assertJsonFragment([
+            'code' => 'APPLICANT_BLOCKED',
+        ]);
+
+        // Unblock
+        $unblockRes = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/unblock", [
+            'reason' => 'Formal appeal reviewed and restriction lifted',
+        ]);
+        $unblockRes->assertOk();
+
+        $applicant->refresh();
+        $this->assertFalse($applicant->is_blocked);
+
+        // Audit history has unblock event preserved
+        $this->assertDatabaseHas('applicant_block_history', [
+            'applicant_id' => $applicant->applicant_id,
+            'action'       => 'unblocked',
+            'reason'       => 'Formal appeal reviewed and restriction lifted',
+        ]);
+    }
+
+    public function test_move_to_stage_blocks_rejected_applicants(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Rejected Applicant',
+            'email'          => 'rejected.mover@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'rejected_at'    => now(),
+        ]);
+
+        $res = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/move-to-stage", [
+            'target_stage' => 'Interview Scheduled',
+            'reason'       => 'Trying to bypass rejection via move stage',
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJsonFragment([
+            'message' => "{$applicant->name} is currently Rejected. Please use 'Reopen Application' to reconsider this candidate.",
+        ]);
+    }
+
+    public function test_reopen_application_blocks_skipping_to_upcoming_uncompleted_stages(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        // Applicant failed at screening (no interview or tests exist)
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Screening Failed Applicant',
+            'email'          => 'screening.fail@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'rejected_at'    => now(),
+        ]);
+
+        // Attempting to reopen directly to Final Evaluation (which was never reached)
+        $res = $this->actingAs($superAdmin, 'sanctum')->postJson("/api/v1/applicants/{$applicant->applicant_id}/reopen", [
+            'target_stage' => 'Final Evaluation',
+            'reason'       => 'Trying to reopen to upcoming stage',
+        ]);
+
+        $res->assertStatus(422);
+        $this->assertStringContainsString('cannot skip directly to upcoming uncompleted stages', $res->json('message'));
+    }
+
+    public function test_merged_hidden_view_returns_only_archived_and_blocked_applicants(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $activeApplicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Active Normal Applicant',
+            'email'          => 'active.normal@example.com',
+            'stage'          => 'Screened',
+            'status'         => 'fit',
+        ]);
+
+        $archivedApplicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Archived Only Applicant',
+            'email'          => 'archived.only@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'archived_at'    => now(),
+            'archived_reason'=> 'Old cycle',
+        ]);
+
+        $blockedApplicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Blocked Only Applicant',
+            'email'          => 'blocked.only@example.com',
+            'stage'          => 'Rejected',
+            'status'         => 'not-fit',
+            'is_blocked'     => true,
+            'blocked_at'     => now(),
+            'blocked_reason' => 'Violation',
+        ]);
+
+        // 1. Default index: neither archived nor blocked are returned
+        $defaultRes = $this->actingAs($superAdmin, 'sanctum')->getJson('/api/v1/applicants');
+        $defaultRes->assertOk();
+        $defaultIds = collect($defaultRes->json('data'))->pluck('applicant_id')->all();
+        $this->assertContains($activeApplicant->applicant_id, $defaultIds);
+        $this->assertNotContains($archivedApplicant->applicant_id, $defaultIds);
+        $this->assertNotContains($blockedApplicant->applicant_id, $defaultIds);
+
+        // 2. Merged hidden view: ONLY archived and blocked are returned
+        $hiddenRes = $this->actingAs($superAdmin, 'sanctum')->getJson('/api/v1/applicants?only_hidden=1');
+        $hiddenRes->assertOk();
+        $hiddenIds = collect($hiddenRes->json('data'))->pluck('applicant_id')->all();
+        $this->assertNotContains($activeApplicant->applicant_id, $hiddenIds);
+        $this->assertContains($archivedApplicant->applicant_id, $hiddenIds);
+        $this->assertContains($blockedApplicant->applicant_id, $hiddenIds);
+    }
+
+    public function test_assessment_invite_failure_rejects_applicant_and_records_cooldown(): void
+    {
+        $superAdmin = $this->superAdmin();
+        $jobPost = JobPost::query()->firstOrFail();
+
+        $applicant = Applicant::create([
+            'applicant_code' => Applicant::generateCode(),
+            'job_post_id'    => $jobPost->job_post_id,
+            'name'           => 'Assessment Test Taker',
+            'email'          => 'test.taker@example.com',
+            'stage'          => 'Assessment Test',
+            'status'         => 'fit',
+        ]);
+
+        $invite = \Modules\ApplicantManagement\Models\AssessmentInvite::create([
+            'token'              => \Illuminate\Support\Str::random(48),
+            'applicant_id'       => $applicant->applicant_id,
+            'created_by_user_id' => $superAdmin->system_user_id,
+            'test_title'         => 'General Test',
+            'questions_json'     => [
+                [
+                    'title'        => 'Question 1',
+                    'options'      => ['A', 'B', 'C'],
+                    'correctIndex' => 0,
+                    'points'       => 10,
+                ],
+            ],
+            'passing_score'      => 75.00,
+            'status'             => 'Pending',
+            'expires_at'         => now()->addDays(7),
+        ]);
+
+        // Submit failing answer (chose option 1 instead of 0 -> 0% score)
+        $res = $this->postJson("/api/v1/assessment-invites/{$invite->token}/submit", [
+            'answers' => [1],
+        ]);
+
+        $res->assertOk();
+        $res->assertJsonFragment([
+            'result'      => 'Failed',
+            'total_score' => 0,
+        ]);
+
+        $applicant->refresh();
+        $this->assertEquals('Rejected', $applicant->stage);
+        $this->assertEquals('not-fit', $applicant->status);
+        $this->assertNotNull($applicant->rejected_at);
+        $this->assertEquals('Assessment Test', $applicant->rejectedAtStage());
+    }
+}
+
