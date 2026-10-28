@@ -1931,20 +1931,33 @@ function requirementMatches(candidate: string, requirement: string): boolean {
  *  keyword library, and only then the free-text qualifications (so long HR
  *  sentences never inflate or deflate the score). The candidate side comes from
  *  the stored resume screening profile (skills, certifications, job roles,
- *  education and estimated years of experience). */
+ *  education and estimated years of experience), with the persisted screening
+ *  entities as a fallback for applicants whose screening profile was not saved
+ *  — otherwise every vacancy reads 0% and the ranking is meaningless. */
 function referralMatch(
   a: Applicant,
   post: ApiJobPost | undefined,
 ): { score: number; matched: string[]; total: number; notes: string[]; source: string } {
   const profile = a.screening_detail?.profile;
-  const candidatePool = [
-    ...(profile?.skills ?? []),
-    ...(profile?.certifications ?? []),
-    ...(profile?.unrecognized_certifications ?? []),
-    ...(profile?.job_roles?.recognized ?? []),
-    ...(profile?.job_roles?.unrecognized ?? []),
-    ...(profile?.education ?? []),
-  ].filter(Boolean);
+  /* Persisted entities (applicant_screening_entities) hold the same vocabulary
+     the screening pipeline extracted — SKILL / CERT / EDU. ORG rows are company
+     names and would only create noise, so they are left out. */
+  const entityFallback = (a.entities ?? [])
+    .filter((e) => ["SKILL", "CERT", "EDU"].includes(String(e.label ?? "").toUpperCase()))
+    .map((e) => e.value);
+  const candidatePool = Array.from(
+    new Set(
+      [
+        ...(profile?.skills ?? []),
+        ...(profile?.certifications ?? []),
+        ...(profile?.unrecognized_certifications ?? []),
+        ...(profile?.job_roles?.recognized ?? []),
+        ...(profile?.job_roles?.unrecognized ?? []),
+        ...(profile?.education ?? []),
+        ...entityFallback,
+      ].filter(Boolean),
+    ),
+  );
 
   const postSkills = (post?.skills ?? []).filter(Boolean);
   const template = keywordLibrary[post?.title ?? a.position] ?? [];
@@ -1977,6 +1990,71 @@ function referralMatch(
   }
 
   return { score, matched, total: required.length, notes, source };
+}
+
+/** A vacancy HR can actually transfer an applicant into — a real open job post
+ *  with unfilled seats, plus its fit against the applicant's screening data. */
+type ReferralOption = {
+  post: ApiJobPost;
+  fit: ReturnType<typeof referralMatch>;
+  openSeats: number;
+  department: string;
+  salaryBand: string;
+};
+
+const formatPeso = (value: number) => `₱${Math.round(value).toLocaleString("en-PH")}`;
+
+/** Salary band of a job post, formatted the way the referral list shows it. */
+function salaryBandOf(post: ApiJobPost): string {
+  const min = post.salary_min;
+  const max = post.salary_max;
+  if (min && max) return `${formatPeso(min)} – ${formatPeso(max)}`;
+  if (min) return `From ${formatPeso(min)}`;
+  if (max) return `Up to ${formatPeso(max)}`;
+  return "Salary not set";
+}
+
+/** Vacancies offered in "Refer to Other Position".
+ *
+ *  Only REAL open job posts qualify: the previous implementation listed the
+ *  static `positions` demo rows, so HR could refer someone to positions that
+ *  had no vacancy behind them (Senior Line Cook, Pastry Chef 1–4, …) while
+ *  live posts such as Restaurant Server / Spa Therapist never appeared — and
+ *  a referral to a post-less title silently kept the old job_post_id in the
+ *  database. The applicant's current post is excluded both by id and title. */
+function referralOptions(a: Applicant, jobPosts: ApiJobPost[]): ReferralOption[] {
+  const currentTitle = normalizeMatchText(a.position);
+  const currentJobPostId = Number(a.jobId);
+  const seen = new Set<string>();
+  return jobPosts
+    .filter((post) => {
+      const status = String(post.status ?? "");
+      const open = post.active !== false && ["open", "published"].includes(status.toLowerCase());
+      const seats = Number(post.vacancies ?? 0) - Number(post.filled_count ?? 0);
+      return open && seats > 0;
+    })
+    .filter((post) => {
+      if (Number.isFinite(currentJobPostId) && currentJobPostId > 0) {
+        if (Number(post.job_post_id) === currentJobPostId) return false;
+      }
+      if (normalizeMatchText(post.title) === currentTitle) return false;
+      const key = normalizeMatchText(post.title);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((post) => ({
+      post,
+      fit: referralMatch(a, post),
+      openSeats: Number(post.vacancies ?? 0) - Number(post.filled_count ?? 0),
+      department:
+        post.department ||
+        positions.find((p) => normalizeMatchText(p.title) === normalizeMatchText(post.title))
+          ?.department ||
+        "General",
+      salaryBand: salaryBandOf(post),
+    }))
+    .sort((x, y) => y.fit.score - x.fit.score);
 }
 
 /** Reports every unrecognized entity of a screening result in ONE click —
@@ -7234,6 +7312,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [evaluating, setEvaluating] = useState<Applicant | null>(null);
   const [referring, setReferring] = useState<Applicant | null>(null);
   const [referTarget, setReferTarget] = useState("");
+  /** When true the referral dialog also lists vacancies with no matched
+   *  requirement, so HR can still refer manually. */
+  const [showAllReferrals, setShowAllReferrals] = useState(false);
   const [criteria, setCriteria] = useState(screeningCriteria);
   const [passing, setPassing] = useState(75);
   const [keywordPosition, setKeywordPosition] = useState(positions[0]!.title);
@@ -10079,28 +10160,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const openRefer = (a: Applicant) => {
     if (isActionLocked(a)) return;
     setReferring(a);
-    // Prefill with the strongest resume-screening match against each open job
-    // post's requirement entities; fall back to the NLP "Stronger match" flag.
-    const openPositions = positions.filter(
-      (p) =>
-        normalizeMatchText(p.title) !== normalizeMatchText(a.position) && p.filled < p.headcount,
-    );
-    const best = [...openPositions]
-      .map((p) => ({
-        title: p.title,
-        fit: referralMatch(
-          a,
-          dbJobPosts.find((j) => j.title === p.title),
-        ),
-      }))
-      .sort((x, y) => y.fit.score - x.fit.score)[0];
-    if (best && best.fit.total > 0 && best.fit.score > 0) {
-      setReferTarget(best.title);
+    setShowAllReferrals(false);
+    // Prefill with the strongest resume-screening match among the real open
+    // vacancies; fall back to the NLP "Stronger match" flag when it names one
+    // of those vacancies.
+    const options = referralOptions(a, dbJobPosts);
+    const best = options.find((o) => o.fit.score > 0);
+    if (best) {
+      setReferTarget(best.post.title);
       return;
     }
     const suggested = a.flags.find((f) => f.startsWith("Stronger match:"));
-    setReferTarget(suggested ? suggested.replace("Stronger match:", "").split("(")[0]!.trim() : "");
+    const suggestedTitle = suggested
+      ? suggested.replace("Stronger match:", "").split("(")[0]!.trim()
+      : "";
+    const suggestionIsVacancy = options.some(
+      (o) => normalizeMatchText(o.post.title) === normalizeMatchText(suggestedTitle),
+    );
+    setReferTarget(suggestionIsVacancy ? suggestedTitle : "");
   };
+
+  /** Ranked referral candidates for the open dialog — real open vacancies,
+   *  strongest match first. Vacancies with zero matched requirements are kept
+   *  out unless HR opts into "Show all open vacancies". */
+  const referralCandidates = useMemo(
+    () => (referring ? referralOptions(referring, dbJobPosts) : []),
+    [referring, dbJobPosts],
+  );
+  const matchingReferralCandidates = useMemo(
+    () => referralCandidates.filter((o) => o.fit.score > 0),
+    [referralCandidates],
+  );
+  const visibleReferralCandidates = showAllReferrals
+    ? referralCandidates
+    : matchingReferralCandidates;
 
   /** Opens the Assessment Test runner pre-filled for the candidate's position. */
   const openAssessmentTest = (a: Applicant) => {
@@ -11142,12 +11235,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const confirmRefer = async (targetTitle: string) => {
     const applicant = referring;
     if (!applicant) return;
+    /* The target must be a real job post: job_post_id is the only thing the
+       backend can persist a referral against. */
+    const targetPost =
+      referralOptions(applicant, dbJobPosts).find((o) => o.post.title === targetTitle)?.post ??
+      dbJobPosts.find((j) => j.title === targetTitle);
+    if (!targetPost) {
+      toast.error(
+        `"${targetTitle}" has no open job post, so the referral cannot be saved. Pick a vacancy from the list.`,
+      );
+      return;
+    }
+    const jobPostId = targetPost.job_post_id;
     setRows((prev) =>
       prev.map((x) =>
         x.id === applicant.id
           ? {
               ...x,
               position: targetTitle,
+              jobId: String(jobPostId),
               status: "fit",
               stage: "Screened",
             }
@@ -11166,13 +11272,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
     try {
       if (applicant.dbId) {
-        let jobPostId: number | undefined;
-        try {
-          const res = await jobPostsApi.list({ per_page: 100 });
-          jobPostId = res?.data?.find((j) => j.title === targetTitle)?.job_post_id;
-        } catch {
-          // target vacancy lookup failed — still persist stage/status below
-        }
         await applicantsApi.update(applicant.dbId, {
           job_post_id: jobPostId,
           stage: "Screened",
@@ -16761,9 +16860,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader className="shrink-0">
                 <DialogTitle className="font-display text-2xl">Refer to Other Position</DialogTitle>
                 <DialogDescription>
-                  Ranked by how well {referring.name}&apos;s resume screening entities (skills,
-                  certificates, roles, education, experience) match each vacancy&apos;s job post
-                  requirements — strongest match first.
+                  Open vacancies ranked by how well {referring.name}&apos;s resume screening
+                  entities (skills, certificates, roles, education, experience) match the job post
+                  requirements — strongest match first. Vacancies with no matched requirement are
+                  hidden unless you choose to show all.
                 </DialogDescription>
               </DialogHeader>
 
@@ -16772,35 +16872,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 onValueChange={setReferTarget}
                 className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden py-1 pr-1"
               >
-                {positions
-                  .filter(
-                    (p) =>
-                      normalizeMatchText(p.title) !== normalizeMatchText(referring.position) &&
-                      p.filled < p.headcount,
-                  )
-                  .map((p) => ({
-                    p,
-                    fit: referralMatch(
-                      referring,
-                      dbJobPosts.find((j) => j.title === p.title),
-                    ),
-                  }))
-                  .sort((x, y) => y.fit.score - x.fit.score)
-                  .map(({ p, fit }, idx) => (
+                {visibleReferralCandidates.map(
+                  ({ post, fit, openSeats, department, salaryBand }, idx) => (
                     <label
-                      key={p.id}
+                      key={post.job_post_id}
                       className={cn(
                         "flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors",
-                        referTarget === p.title
+                        referTarget === post.title
                           ? "border-primary bg-primary/5"
                           : "border-border hover:border-primary/40",
                       )}
                     >
-                      <RadioGroupItem value={p.title} className="mt-1" />
+                      <RadioGroupItem value={post.title} className="mt-1" />
                       <span className="flex-1">
                         <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                          {p.title}
-                          {idx === 0 && fit.total > 0 && (
+                          {post.title}
+                          {idx === 0 && fit.score > 0 && (
                             <Badge className="bg-gold text-gold-foreground">Best match</Badge>
                           )}
                           <Badge
@@ -16818,8 +16905,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </Badge>
                         </span>
                         <span className="block text-xs text-muted-foreground">
-                          {p.department} — {p.headcount - p.filled} seat(s) open —{" "}
-                          {p.salaryBand}
+                          {department} — {openSeats} seat(s) open — {salaryBand}
                         </span>
                         <span className="mt-1 block text-[0.7rem] text-muted-foreground">
                           {fit.total > 0
@@ -16830,8 +16916,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </span>
                       </span>
                     </label>
-                  ))}
+                  ),
+                )}
+                {visibleReferralCandidates.length === 0 && (
+                  <p className="rounded-md border border-dashed border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                    {referralCandidates.length === 0
+                      ? "There are no other open vacancies to refer this applicant to."
+                      : `${referring.name}'s screening entities do not match any open vacancy. Tick "Show all open vacancies" below to pick one manually.`}
+                  </p>
+                )}
               </RadioGroup>
+
+              {referralCandidates.length > matchingReferralCandidates.length && (
+                <label className="flex shrink-0 cursor-pointer items-center gap-2 pt-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={showAllReferrals}
+                    onChange={(e) => setShowAllReferrals(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  Show all open vacancies (
+                  {referralCandidates.length - matchingReferralCandidates.length} with no matched
+                  requirements)
+                </label>
+              )}
 
               <DialogFooter className="shrink-0 border-t border-border pt-4">
                 <Button variant="outline" onClick={() => setReferring(null)}>

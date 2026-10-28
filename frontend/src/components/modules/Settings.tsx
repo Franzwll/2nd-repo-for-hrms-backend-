@@ -1,25 +1,17 @@
 import { useState, useEffect } from "react";
-import { mySettingsApi, settingsApi, chatbotFaqApi, type ApiChatbotFaq, type ApiChatbotAnalytics } from "@/lib/api";
+import { mySettingsApi, settingsApi } from "@/lib/api";
 import { applyTheme, getStoredTheme, type ThemeChoice } from "@/lib/theme";
 import { myProfile } from "@/data/ess";
 import { getUser } from "@/lib/auth";
-import { isValidEmail, isValidPhone, sanitizeName, sanitizePhone } from "@/lib/validation";
 import {
   ArrowRight,
-  Bot,
-  Building2,
   Database,
   Download,
   Eye,
   EyeOff,
   KeyRound,
-  Pencil,
-  Plus,
   Shield,
   SlidersHorizontal,
-  ThumbsDown,
-  ThumbsUp,
-  Trash2,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -52,7 +44,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -61,7 +52,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -149,299 +139,6 @@ function InfoRow({
   );
 }
 
-/** Compact Chatbot FAQ manager sized for a single settings grid card.
- *  Lives in the slot previously occupied by Notifications. */
-function ChatbotFaqSettingsCard() {
-  const [faqs, setFaqs] = useState<ApiChatbotFaq[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<ApiChatbotFaq | null>(null);
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [keywords, setKeywords] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [analytics, setAnalytics] = useState<ApiChatbotAnalytics | null>(null);
-
-  const load = () => {
-    setLoading(true);
-    chatbotFaqApi
-      .list()
-      .then((res) => setFaqs(res.data ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-    chatbotFaqApi
-      .analytics()
-      .then((res) => setAnalytics(res.data))
-      .catch(() => setAnalytics(null));
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  const activeCount = faqs.filter((f) => f.enabled).length;
-  const aiTotal = (analytics?.gemini_messages_30d ?? 0) + (analytics?.fallback_messages_30d ?? 0);
-  const aiShare = aiTotal > 0 ? Math.round(((analytics?.gemini_messages_30d ?? 0) / aiTotal) * 100) : 0;
-
-  const openCreate = () => {
-    setEditing(null);
-    setQuestion("");
-    setAnswer("");
-    setKeywords("");
-    setDialogOpen(true);
-  };
-
-  const openEdit = (faq: ApiChatbotFaq) => {
-    setEditing(faq);
-    setQuestion(faq.question);
-    setAnswer(faq.answer);
-    setKeywords(faq.keywords ?? "");
-    setDialogOpen(true);
-  };
-
-  const save = async () => {
-    if (!question.trim()) {
-      toast.error("Question is required.");
-      return;
-    }
-    if (!answer.trim()) {
-      toast.error("Answer is required.");
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        question: question.trim(),
-        answer: answer.trim(),
-        keywords: keywords.trim() || null,
-        enabled: editing?.enabled ?? true,
-        sort_order: editing?.sort_order ?? 0,
-      };
-      const res =
-        editing === null
-          ? await chatbotFaqApi.create(payload)
-          : await chatbotFaqApi.update(editing.faq_id, payload);
-      toast.success(res.message);
-      setDialogOpen(false);
-      load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save the FAQ.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggleEnabled = async (faq: ApiChatbotFaq) => {
-    try {
-      const res = await chatbotFaqApi.update(faq.faq_id, { enabled: !faq.enabled });
-      toast.success(res.message);
-      setFaqs((prev) =>
-        prev.map((f) => (f.faq_id === faq.faq_id ? { ...f, enabled: !f.enabled } : f)),
-      );
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not update the FAQ.");
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (deleteId === null) return;
-    try {
-      const res = await chatbotFaqApi.remove(deleteId);
-      toast.success(res.message);
-      setDeleteId(null);
-      load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not delete the FAQ.");
-    }
-  };
-
-  return (
-    <SettingsCard
-      icon={<Bot className="h-5 w-5" />}
-      title="Chatbot FAQ"
-      action={
-        <Button size="sm" variant="outline" onClick={openCreate} title="Add FAQ">
-          <Plus className="mr-1 h-3.5 w-3.5" /> Add
-        </Button>
-      }
-    >
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
-            {faqs.length} total
-          </Badge>
-          <Badge variant="outline" className="border-success/30 bg-success/15 text-success">
-            {activeCount} active
-          </Badge>
-        </div>
-
-        {/* Insights — compact usage summary mirroring the full manager */}
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="rounded-lg border border-border/70 p-2.5">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-              Conversations today
-            </p>
-            <p className="font-display text-xl font-semibold text-primary">
-              {analytics?.conversations_today ?? 0}
-            </p>
-            <p className="text-[0.65rem] text-muted-foreground">
-              {analytics?.messages_today ?? 0} messages
-            </p>
-          </div>
-          <div className="rounded-lg border border-border/70 p-2.5">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-              AI vs fallback (30d)
-            </p>
-            <p className="font-display text-xl font-semibold">{aiShare}%</p>
-            <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-primary" style={{ width: `${aiShare}%` }} />
-              <div className="h-full bg-gold" style={{ width: `${100 - aiShare}%` }} />
-            </div>
-          </div>
-          <div className="rounded-lg border border-border/70 p-2.5">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-              Answer feedback
-            </p>
-            <p className="flex items-center gap-2 font-display text-xl font-semibold">
-              <span className="flex items-center gap-1 text-success">
-                <ThumbsUp className="h-3.5 w-3.5" /> {analytics?.feedback_up ?? 0}
-              </span>
-              <span className="flex items-center gap-1 text-destructive">
-                <ThumbsDown className="h-3.5 w-3.5" /> {analytics?.feedback_down ?? 0}
-              </span>
-            </p>
-          </div>
-          <div className="rounded-lg border border-border/70 p-2.5">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-              Tokens this month
-            </p>
-            <p className="font-display text-xl font-semibold">
-              {(analytics?.gemini_tokens_month ?? 0).toLocaleString()}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-3 max-h-[190px] min-h-0 flex-1 divide-y divide-border/60 overflow-y-auto pr-1">
-          {loading && (
-            <div className="space-y-2 py-2" aria-busy="true" aria-label="Loading FAQs">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
-              <Skeleton className="h-4 w-2/3" />
-            </div>
-          )}
-          {!loading && faqs.length === 0 && (
-            <p className="py-4 text-center text-xs text-muted-foreground">
-              No FAQs yet. Click Add to create one.
-            </p>
-          )}
-          {faqs.map((f) => (
-            <div key={f.faq_id} className="flex items-center justify-between gap-2 py-2">
-              <p className="min-w-0 flex-1 truncate text-sm" title={f.question}>
-                {f.question}
-              </p>
-              <div className="flex shrink-0 items-center gap-1">
-                <Switch
-                  aria-label={`Enable ${f.question}`}
-                  checked={f.enabled}
-                  onCheckedChange={() => toggleEnabled(f)}
-                />
-                <Button size="icon" variant="ghost" title="Edit FAQ" onClick={() => openEdit(f)}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  title="Delete FAQ"
-                  className="hover:text-destructive"
-                  onClick={() => setDeleteId(f.faq_id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">
-              {editing === null ? "Add FAQ" : "Edit FAQ"}
-            </DialogTitle>
-            <DialogDescription>
-              {editing === null
-                ? "Create a new question-and-answer entry for the careers assistant."
-                : "Update this entry. Changes take effect immediately on the landing page."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="settings-faq-question">Question</Label>
-              <Input
-                id="settings-faq-question"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="What should I wear to the interview?"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="settings-faq-answer">Answer</Label>
-              <Textarea
-                id="settings-faq-answer"
-                rows={4}
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder="Write the assistant's reply…"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="settings-faq-keywords">Keywords (comma-separated)</Label>
-              <Input
-                id="settings-faq-keywords"
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-                placeholder="dress code, wear, attire, outfit"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={save} disabled={saving}>
-              {saving ? "Saving…" : editing === null ? "Create FAQ" : "Save changes"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this FAQ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This entry will be removed from the careers assistant immediately.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                confirmDelete();
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </SettingsCard>
-  );
-}
-
 export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employee" }) {
   /** The portal's current user key — resolved from the authenticated session
    *  so every logged-in account manages its OWN preferences /
@@ -505,32 +202,15 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [resetPw, setResetPw] = useState("");
   const [resetPwConfirm, setResetPwConfirm] = useState("");
 
-  // Company info
-  const [company, setCompany] = useState({
-    name: "",
-    email: "",
-    contact: "",
-    businessHours: "",
-    address: "",
-    tin: "",
-  });
-  const [companyOpen, setCompanyOpen] = useState(false);
-  const [companyDraft, setCompanyDraft] = useState(company);
-
   /** Applies a flat key → value settings map from the backend onto local state. */
   const applySettingsMap = (
     map: Partial<{
-      company: typeof company;
       preferences: typeof preferences;
       security: typeof security;
       backups: BackupEntry[];
       backup: { enabled?: boolean; schedule?: string };
     }>,
   ) => {
-    if (map["company"]) {
-      setCompany(map["company"]);
-      setCompanyDraft(map["company"]);
-    }
     if (map["preferences"]) {
       // Theme is deliberately excluded: the live theme lives in localStorage and
       // must only change via the header toggle or Preferences Save — never as a
@@ -762,11 +442,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        {/* Chatbot FAQ — compact manager in the former Notifications slot (admins only) */}
-        {(isSuperAdmin || role === "admin") && (
-          <ChatbotFaqSettingsCard />
-        )}
-
         {/* Preferences — edited inline on the card */}
         <SettingsCard
           icon={<SlidersHorizontal className="h-5 w-5" />}
@@ -1158,124 +833,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   Cancel
                 </Button>
                 <Button onClick={resetDefaultPassword}>Update all users</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
-
-        {/* Company (superadmin only) */}
-        {isSuperAdmin && (
-          <SettingsCard
-            icon={<Building2 className="h-5 w-5" />}
-            title="Company"
-            footer={{
-              label: "Edit company info",
-              onClick: () => {
-                setCompanyDraft(company);
-                setCompanyOpen(true);
-              },
-            }}
-          >
-            <div className="divide-y divide-border/60">
-              <InfoRow label="Company name" value={company.name} />
-              <InfoRow label="Company email" value={company.email} />
-              <InfoRow label="Contact number" value={company.contact} />
-              <InfoRow label="Business hours" value={company.businessHours} />
-              <InfoRow label="Company address" value={company.address} />
-              <InfoRow label="TIN" value={company.tin} />
-            </div>
-          </SettingsCard>
-        )}
-
-        {isSuperAdmin && (
-          <Dialog open={companyOpen} onOpenChange={setCompanyOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="font-display text-2xl">Edit company info</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="co-name">Company name</Label>
-                  <Input
-                    id="co-name"
-                    value={companyDraft.name}
-                    onChange={(e) => setCompanyDraft((p) => ({ ...p, name: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="co-email">Company email</Label>
-                  <Input
-                    id="co-email"
-                    value={companyDraft.email}
-                    onChange={(e) => setCompanyDraft((p) => ({ ...p, email: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="co-contact">Contact number</Label>
-                  <Input
-                    id="co-contact"
-                    placeholder="e.g. +63 2 8999 0000"
-                    value={companyDraft.contact}
-                    onChange={(e) =>
-                      setCompanyDraft((p) => ({ ...p, contact: sanitizePhone(e.target.value) }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="co-hours">Business hours</Label>
-                  <Input
-                    id="co-hours"
-                    value={companyDraft.businessHours}
-                    onChange={(e) =>
-                      setCompanyDraft((p) => ({ ...p, businessHours: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="co-address">Company address</Label>
-                  <Input
-                    id="co-address"
-                    value={companyDraft.address}
-                    onChange={(e) => setCompanyDraft((p) => ({ ...p, address: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="co-tin">TIN</Label>
-                  <Input
-                    id="co-tin"
-                    value={companyDraft.tin}
-                    onChange={(e) => setCompanyDraft((p) => ({ ...p, tin: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setCompanyOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={async () => {
-                    if (companyDraft.email && !isValidEmail(companyDraft.email)) {
-                      toast.error("Please enter a valid company email address.");
-                      return;
-                    }
-                    if (companyDraft.contact && !isValidPhone(companyDraft.contact)) {
-                      toast.error("Please enter a valid contact phone number.");
-                      return;
-                    }
-                    setCompany(companyDraft);
-                    setCompanyOpen(false);
-                    try {
-                      await settingsApi.upsert("company", companyDraft);
-                      toast.success("Company information saved to database");
-                    } catch (e) {
-                      toast.error(
-                        e instanceof Error ? e.message : "Could not save company information",
-                      );
-                    }
-                  }}
-                >
-                  Save changes
-                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

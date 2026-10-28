@@ -8521,16 +8521,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     )}
                   </SelectContent>
                 </Select>
-                {!addPresetJob && (
-                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      Position not listed? Create it first in Core HCM → Departments &amp;
-                      Positions, then create and publish a job post — applicants can only be added
-                      to open postings with remaining slots.
-                    </span>
-                  </p>
-                )}
                 {!addPresetJob &&
                   addForm.position !== "" &&
                   addDept !== "" &&

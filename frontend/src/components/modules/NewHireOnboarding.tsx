@@ -36,7 +36,6 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
-import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { StatCard } from "@/components/portal/StatCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -2158,7 +2157,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                 </div>
 
                 <div className="mt-4 min-h-0 flex-1 overflow-auto overscroll-contain">
-                  <ListBody className="min-w-[720px]">
+                  <div className="min-w-[720px] [&>div]:overflow-visible">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -2352,7 +2351,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         )}
                       </TableBody>
                     </Table>
-                  </ListBody>
+                  </div>
                 </div>
                 <div className="shrink-0 border-t border-border/60 pt-3">
                   <TablePagination
