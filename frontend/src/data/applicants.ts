@@ -86,6 +86,9 @@ export type Applicant = {
   position: string;
   jobId: string;
   appliedAt: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  screenedAt?: string | null;
   score: number;
   status: ApplicantStatus;
   stage:

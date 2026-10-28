@@ -298,8 +298,17 @@
             parent.postMessage({ zoomChatMessage: entry }, "*");
           }
 
-          try {
-            if (typeof client.on === "function") {
+          /* -------- client event bridge --------
+             Component View only dispatches meeting events (chat included) to
+             listeners attached AFTER init() resolves. Registering right after
+             createClient() — before init — looked fine but silently dropped
+             every incoming message, which is why the applicant's chat never
+             appeared in the HR chat drawer. Bind once, before join(). */
+          var clientEventsBound = false;
+          function bindClientEvents() {
+            if (clientEventsBound || typeof client.on !== "function") return;
+            clientEventsBound = true;
+            try {
               client.on("user-added", function (p) {
                 reportVideo(p);
                 postSelfState();
@@ -311,9 +320,9 @@
               client.on("chat-on-message", function (p) {
                 pushChat(normalizeChat(p));
               });
+            } catch (e) {
+              /* older SDK without events — parent simply never gets the hints */
             }
-          } catch (e) {
-            /* older SDK without events — parent simply never gets the hints */
           }
 
           /* -------- join failure watchdog --------
@@ -498,6 +507,10 @@
                 },
               })
               .then(function () {
+                // Events are only delivered once the SDK is initialised —
+                // subscribe here, before joining, so the first chat messages
+                // (and participant camera updates) are not missed.
+                bindClientEvents();
                 return client.join({
                   sdkKey: String(d.sdkKey || ""),
                   signature: String(d.signature || ""),
@@ -507,6 +520,10 @@
                 });
               })
               .then(function () {
+                // Safety net for SDK builds that only expose client.on()
+                // after join() resolves. The guard keeps this a no-op when
+                // the pre-join registration already succeeded.
+                bindClientEvents();
                 // Force speaker view deterministically: defaultViewType is
                 // only a boot hint and the SDK sometimes still lands in the
                 // narrow ribbon filmstrip. Speaker fills the pane; HR can

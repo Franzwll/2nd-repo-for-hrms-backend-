@@ -76,11 +76,8 @@ class NewHireIntakeService
         // Auto-apply matching Active checklist templates to the new hire
         OnboardingChecklistTemplate::applyAllFor($newHire);
 
-        // Create the portal account so the hire can log into the Employee portal
-        $account = self::ensurePortalAccount($newHire);
-
-        // Email the employee their portal credentials (email + password)
-        self::sendCredentialsEmail($newHire, $account);
+        // Send welcome email (no credentials yet — account is created at Probationary promotion)
+        self::sendWelcomeEmail($newHire);
 
         // Pre-onboarding hires are not Core HCM employees yet. The employee
         // record is provisioned when they enter Probationary (see
@@ -263,6 +260,34 @@ class NewHireIntakeService
             Log::warning('Could not send new hire credentials email', [
                 'new_hire_id' => $newHire->new_hire_id,
                 'email' => $newHire->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Sends a welcome email to the new hire after they accept the offer.
+     * No credentials are included — the Employee Portal account is created
+     * and credentials are sent when the hire is promoted to Probationary.
+     */
+    public static function sendWelcomeEmail(NewHire $newHire): void
+    {
+        $email = trim((string) $newHire->email);
+        if ($email === '') {
+            return;
+        }
+
+        try {
+            Mail::to($email)->send(new \App\Mail\NewHireWelcomeMail(
+                recipientEmail: $email,
+                employeeName: $newHire->name,
+                position: $newHire->position?->title,
+                startDate: $newHire->start_date?->format('F j, Y'),
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Could not send new hire welcome email', [
+                'new_hire_id' => $newHire->new_hire_id,
+                'email' => $email,
                 'error' => $e->getMessage(),
             ]);
         }
