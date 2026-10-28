@@ -21,8 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { applicantsApi, dashboardApi, essApi, jobPostsApi, newHiresApi } from "@/lib/api";
-import type { ApiApplicant, ApiDashboardStats, ApiJobPost } from "@/lib/api";
+import { dashboardApi, essApi, newHiresApi } from "@/lib/api";
+import type { ApiDashboardStats } from "@/lib/api";
 import { ListSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 const Skeleton = (p: any) => <div className={"animate-pulse rounded-md bg-primary/10 " + (p.className ?? "")} />;
 
@@ -68,8 +68,6 @@ const statusLabels: Record<string, string> = {
 
 function AdminDashboard() {
   const [stats, setStats] = useState<ApiDashboardStats | null>(null);
-  const [applicants, setApplicants] = useState<ApiApplicant[]>([]);
-  const [openJobs, setOpenJobs] = useState<ApiJobPost[]>([]);
   const [essCounts, setEssCounts] = useState({ pending: 0, under_review: 0 });
   const [nhStats, setNhStats] = useState<{
     total: number;
@@ -86,18 +84,6 @@ function AdminDashboard() {
       .stats()
       .then((s) => {
         if (!cancelled) setStats(s.data);
-      })
-      .catch(() => {});
-    applicantsApi
-      .list({ per_page: 100 })
-      .then((a) => {
-        if (!cancelled) setApplicants(a.data ?? []);
-      })
-      .catch(() => {});
-    jobPostsApi
-      .list({ per_page: 100, status: "Open" })
-      .then((j) => {
-        if (!cancelled) setOpenJobs((j.data ?? []).filter((p) => p.active));
       })
       .catch(() => {});
 
@@ -156,11 +142,6 @@ function AdminDashboard() {
   const funnelActive = funnel.reduce((s, f) => s + f.count, 0);
   const funnelConversion =
     funnelActive > 0 ? Math.round(((funnel[4]?.count ?? 0) / funnelActive) * 100) : 0;
-
-  const topApplicants = [...applicants]
-    .sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0));
-
-  const vacancyJobs = openJobs.filter((j) => j.vacancies > 0);
 
   /** True while the dashboard data requests are in flight. */
   const loading = stats === null;
@@ -410,87 +391,6 @@ function AdminDashboard() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <Card className="border-border/70">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-2xl font-semibold">Top Ranked Applicants</h2>
-              <Button asChild variant="outline" size="sm">
-                <Link to="/admin/applicants" search={{ highlight: undefined, tab: undefined }}>View all</Link>
-              </Button>
-            </div>
-            {loading ? (
-              <ListSkeleton items={5} className="mt-4" />
-            ) : (
-            <ul className="mt-4 max-h-[382px] space-y-3 overflow-y-auto pr-2">
-              {topApplicants.map((a) => (
-                <li
-                  key={a.applicant_id}
-                  className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{a.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {a.job_post?.title ?? "—"} · {a.source ?? "—"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline">{statusLabels[a.status] ?? a.status}</Badge>
-                    <span className="font-display text-xl font-semibold text-primary">
-                      {a.fit_score ?? 0}%
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card className="border-border/70">
-            <CardContent className="p-6">
-              <h2 className="font-display text-2xl font-semibold">Vacancy Fill Rate</h2>
-              {loading ? (
-                <ListSkeleton items={4} className="mt-4" />
-              ) : (
-              <ul className="mt-4 max-h-[382px] space-y-4 overflow-y-auto pr-2">
-                {vacancyJobs.map((j) => {
-                  const pct =
-                    j.vacancies > 0 ? Math.round((j.filled_count / j.vacancies) * 100) : 0;
-                  const filledBlocks = Math.round((pct / 100) * 10);
-                  return (
-                    <li key={j.job_post_id} className="rounded-xl border border-border/70 bg-card p-3 shadow-xs">
-                      <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="truncate font-medium">{j.title}</span>
-                        <span className="shrink-0 font-display text-base font-bold text-primary">
-                          {pct}%
-                        </span>
-                      </div>
-                      <div className="mt-2 flex gap-1" aria-label={`${pct}% filled`}>
-                        {Array.from({ length: 10 }).map((_, b) => (
-                          <span
-                            key={b}
-                            className={
-                              b < filledBlocks
-                                ? "h-2 flex-1 rounded-full bg-success"
-                                : "h-2 flex-1 rounded-full bg-muted"
-                            }
-                          />
-                        ))}
-                      </div>
-                      <p className="mt-1.5 text-xs text-muted-foreground">
-                        {j.filled_count}/{j.vacancies} filled · {j.applicants_count ?? 0} applicants
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
       <div className="mt-6">
         <AnnouncementsCard role="admin" />
       </div>
