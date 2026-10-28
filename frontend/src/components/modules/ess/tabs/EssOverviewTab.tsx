@@ -146,6 +146,11 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
   useEffect(() => {
     // Load the logged-in employee's onboarding progress from the same
     // new-hires / onboarding-items endpoints Admin HR verifies against.
+    // Admin / Super Admin personal ESS has no onboarding card, so don't load it.
+    if (viewerRole !== "employee") {
+      setOnboarding(null);
+      return;
+    }
     const user = getUser();
     newHiresApi
       .list({ per_page: 100 })
@@ -173,7 +178,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
       .catch(() => {
         setOnboarding(null);
       });
-  }, []);
+  }, [viewerRole]);
 
   const filteredActivities = useMemo(() => {
     return activities

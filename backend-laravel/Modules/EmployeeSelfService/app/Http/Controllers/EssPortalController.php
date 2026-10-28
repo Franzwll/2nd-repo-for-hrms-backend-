@@ -45,10 +45,14 @@ class EssPortalController extends Controller
 
     /**
      * Resolve the current authenticated employee.
-     * Returns null when the authenticated user has no linked employee record
-     * so callers respond 403/404 instead of falling back to an arbitrary record.
+     *
+     * Staff accounts (Admin / Super Admin) without a linked employee record
+     * never fall back to another employee's record. By default this throws a
+     * 409 ESS_NOT_LINKED response; pass $requireLink = false (as my-context
+     * does) to receive null instead. Employee (role 3) behavior is unchanged:
+     * null is returned when nothing could be resolved or provisioned.
      */
-    private function resolveEmployee(Request $request): ?Employee
+    private function resolveEmployee(Request $request, bool $requireLink = true): ?Employee
     {
         $user = $request->user();
         $isStaff = $user && in_array((int) $user->role_id, [1, 2], true);
@@ -77,6 +81,15 @@ class EssPortalController extends Controller
         // Staff accounts must be explicitly linked to an employee record.
         // Never guess by name or fall back to an arbitrary employee record.
         if ($isStaff) {
+            if ($requireLink) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                    response()->json([
+                        'code' => 'ESS_NOT_LINKED',
+                        'message' => 'This account is not linked to an employee record.',
+                    ], 409)
+                );
+            }
+
             return null;
         }
 
@@ -188,7 +201,7 @@ class EssPortalController extends Controller
      */
     public function getMyContext(Request $request): JsonResponse
     {
-        $employee = $this->resolveEmployee($request);
+        $employee = $this->resolveEmployee($request, false);
 
         if (! $employee) {
             return response()->json([

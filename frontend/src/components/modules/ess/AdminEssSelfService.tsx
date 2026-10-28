@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowLeft, ShieldCheck } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { AlertTriangle, ArrowLeft, RefreshCw, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,15 +10,15 @@ import { EmployeeEss } from "./EmployeeEss";
 import type { EssBasePath } from "./EssPortalContext";
 
 type LinkState =
-  | { status: "loading" }
-  | { status: "linked" }
-  | { status: "unlinked"; message?: string };
+  { status: "loading" } | { status: "linked" } | { status: "unlinked" } | { status: "error" };
 
 export function AdminEssSelfService({ basePath }: { basePath: EssBasePath }) {
   const [state, setState] = useState<LinkState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setState({ status: "loading" });
 
     essApi
       .myContext()
@@ -26,23 +27,16 @@ export function AdminEssSelfService({ basePath }: { basePath: EssBasePath }) {
           setState(res.linked ? { status: "linked" } : { status: "unlinked" });
         }
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!cancelled) {
-          setState({
-            status: "unlinked",
-            message:
-              error instanceof Error
-                ? error.message
-                : "We could not verify your employee link.",
-          });
+          setState({ status: "error" });
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
-
+  }, [attempt]);
   if (state.status === "loading") {
     return (
       <div className="space-y-6" aria-busy="true" aria-label="Checking employee link">
@@ -57,9 +51,40 @@ export function AdminEssSelfService({ basePath }: { basePath: EssBasePath }) {
     );
   }
 
+  if (state.status === "error") {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="w-full max-w-xl border-destructive/30 bg-destructive/5 shadow-xs">
+          <CardContent className="p-8 text-center">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <AlertTriangle className="h-6 w-6" />
+            </span>
+            <h1 className="mt-4 font-display text-2xl font-semibold text-foreground">
+              Couldn't load your employee link
+            </h1>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+              Something went wrong while checking your account. Please try again.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <Button asChild variant="outline">
+                <Link to={basePath}>
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to dashboard
+                </Link>
+              </Button>
+              <Button onClick={() => setAttempt((n) => n + 1)}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Try again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (state.status === "unlinked") {
-    const userManagementTo =
-      basePath === "/superadmin" ? "/superadmin/users" : null;
+    const userManagementTo = basePath === "/superadmin" ? "/superadmin/users" : null;
 
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -72,25 +97,22 @@ export function AdminEssSelfService({ basePath }: { basePath: EssBasePath }) {
               No linked employee record
             </h1>
             <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-              This admin account is not linked to an employee record, so personal ESS data
-              cannot be shown. Ask a Super Admin to link your account under User Management.
+              This admin account is not linked to an employee record, so personal ESS data cannot be
+              shown. Ask a Super Admin to link your account under User Management.
             </p>
-            {state.message ? (
-              <p className="mt-2 text-xs text-muted-foreground">{state.message}</p>
-            ) : null}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
               <Button asChild variant="outline">
-                <a href={basePath}>
+                <Link to={basePath}>
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Back to dashboard
-                </a>
+                </Link>
               </Button>
               {userManagementTo ? (
                 <Button asChild>
-                  <a href={userManagementTo}>
+                  <Link to={userManagementTo}>
                     <ShieldCheck className="mr-2 h-4 w-4" />
                     Open User Management
-                  </a>
+                  </Link>
                 </Button>
               ) : null}
             </div>
@@ -100,5 +122,10 @@ export function AdminEssSelfService({ basePath }: { basePath: EssBasePath }) {
     );
   }
 
-  return <EmployeeEss basePath={basePath} viewerRole={basePath === "/superadmin" ? "superadmin" : "admin"} />;
+  return (
+    <EmployeeEss
+      basePath={basePath}
+      viewerRole={basePath === "/superadmin" ? "superadmin" : "admin"}
+    />
+  );
 }
