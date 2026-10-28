@@ -13,6 +13,7 @@ use App\Models\Position;
 use App\Models\PromotionRequest;
 use App\Observers\ActivityObserver;
 use App\Services\AuditLogger;
+use App\Services\Hr3MockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,8 @@ use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 class PromotionRequestController extends Controller
 {
     use AppliesTableQuery;
+
+    public function __construct(private readonly Hr3MockService $hr3Mock) {}
 
     /**
      * Keep the employee-visible ESS request in lockstep with the HR promotion
@@ -142,10 +145,24 @@ class PromotionRequestController extends Controller
             'review_notes' => $data['note'] ?? $promo->review_notes,
         ]);
 
+        $autoAccepted = false;
+        if ($this->hr3Mock->enabled()) {
+            $recommendation = $this->hr3Mock->createForPromotionRequest($promo->fresh(['employee']));
+            $promo->update([
+                'status' => 'Pending HR Action',
+                'hr3_recommendation_id' => $recommendation->recommendation_id,
+            ]);
+            $autoAccepted = true;
+        }
+
+        $message = $autoAccepted
+            ? 'Request forwarded to HR3 and auto-accepted by the demo evaluation.'
+            : 'Request forwarded to HR3 for performance evaluation.';
+
         $this->syncEssRequest(
             $promo,
             'Under Review',
-            $data['note'] ?? 'Promotion request forwarded to HR3 for evaluation.',
+            $data['note'] ?? $message,
             $user?->system_user_id,
         );
 
@@ -155,11 +172,13 @@ class PromotionRequestController extends Controller
             'Info',
             'employee',
             (string) $promo->employee->employee_code,
-            "Forwarded promotion request #{$promo->promotion_request_id} to HR3 for evaluation.",
+            "Forwarded promotion request #{$promo->promotion_request_id} to HR3 for evaluation."
+                . ($autoAccepted ? ' Mock HR3 auto-accepted it.' : ''),
         );
 
         return response()->json([
-            'message' => 'Request forwarded to HR3 for performance evaluation.',
+            'message' => $message,
+            'hr3_auto_accepted' => $autoAccepted,
             'data' => $promo->fresh(['employee', 'hr3Recommendation']),
         ]);
     }
@@ -202,7 +221,10 @@ class PromotionRequestController extends Controller
             }
         } else {
             if ($data['evaluation_score'] === null) {
-                return response()->json(['message' => 'Provide either recommendation_id or an evaluation_score.'], 422);
+                if (! $this->hr3Mock->enabled()) {
+                    return response()->json(['message' => 'Provide either recommendation_id or an evaluation_score.'], 422);
+                }
+                $data['evaluation_score'] = config('hr3.default_score', 90);
             }
             $recommendation = Hr3Recommendation::create([
                 'employee_id' => $employee->employee_id,
@@ -287,7 +309,7 @@ class PromotionRequestController extends Controller
         $hr3 = null;
         if ($promo->inHr3Loop()) {
             $hr3 = $promo->hr3Recommendation;
-            if (! $hr3 || $hr3->status !== 'Pending HR Action') {
+            if (! $hr3 || ! in_array($hr3->status, ['Pending HR Action', 'Acknowledged'], true)) {
                 return response()->json(['message' => 'This request is in the HR3 loop — link a pending HR3 evaluation before deciding.'], 422);
             }
             if ((int) $hr3->employee_id !== (int) $employee->employee_id) {
@@ -327,7 +349,7 @@ class PromotionRequestController extends Controller
                     'status' => 'Approved',
                     'reviewed_by' => $user?->system_user_id,
                     'reviewed_at' => now(),
-                    'review_notes' => $data['review_notes'],
+                    'review_notes' => $data['review_notes'] ?? null,
                     'requested_position_id' => $newPositionId,
                     'requested_salary_grade_id' => $newGradeId,
                 ]);
@@ -377,7 +399,7 @@ class PromotionRequestController extends Controller
                     'change_type' => 'Exit',
                     'old_position_id' => $employee->position_id,
                     'new_position_id' => $employee->position_id,
-                    'notes' => $data['review_notes'],
+                    'notes' => $data['review_notes'] ?? null,
                 ]);
 
                 Position::where('position_id', $employee->position_id)->decrement('filled_count');
@@ -391,7 +413,7 @@ class PromotionRequestController extends Controller
                     'status' => 'Terminated',
                     'reviewed_by' => $user?->system_user_id,
                     'reviewed_at' => now(),
-                    'review_notes' => $data['review_notes'],
+                    'review_notes' => $data['review_notes'] ?? null,
                 ]);
 
                 if ($hr3) {
@@ -423,7 +445,7 @@ class PromotionRequestController extends Controller
                 'status' => 'Deferred',
                 'reviewed_by' => $user?->system_user_id,
                 'reviewed_at' => now(),
-                'review_notes' => $data['review_notes'],
+                'review_notes' => $data['review_notes'] ?? null,
             ]);
 
             if ($hr3) {
@@ -453,13 +475,13 @@ class PromotionRequestController extends Controller
             'status' => $data['decision'] === 'reject' ? 'Rejected' : 'Returned',
             'reviewed_by' => $user?->system_user_id,
             'reviewed_at' => now(),
-            'review_notes' => $data['review_notes'],
+            'review_notes' => $data['review_notes'] ?? null,
         ]);
 
         $this->syncEssRequest(
             $promo,
             $data['decision'] === 'reject' ? 'Rejected' : 'Returned for Clarification',
-            $data['review_notes'],
+            $data['review_notes'] ?? null,
             $user?->system_user_id,
         );
 

@@ -27,8 +27,8 @@ interface SessionPolicy {
 }
 
 const FALLBACK_ROLES: Record<string, RolePolicy> = {
-  superadmin: { token_minutes: 240, idle_minutes: 10 },
-  admin: { token_minutes: 480, idle_minutes: 15 },
+  superadmin: { token_minutes: 240, idle_minutes: 30 },
+  admin: { token_minutes: 480, idle_minutes: 30 },
   employee: { token_minutes: 720, idle_minutes: 30 },
 };
 
@@ -61,15 +61,14 @@ export function policyForCurrentUser(policy: SessionPolicy | null): RolePolicy {
   const key = roleKeyFor(getUser()?.role);
   return (
     roles[key] ??
-    FALLBACK_ROLES[key] ?? { token_minutes: 480, idle_minutes: 15 }
+    FALLBACK_ROLES[key] ?? { token_minutes: 480, idle_minutes: 30 }
   );
 }
 
 /**
  * Enforces role-based absolute + idle session timeouts inside the portal.
- * - Super Admin: 4h token / 10m idle
- * - Admin:       8h token / 15m idle
- * - Employee:   12h token / 30m idle
+ * - Token lifetime stays role-based.
+ * - Idle timeout is global (from the Settings security policy).
  */
 export function useSessionTimeout() {
   const navigate = useNavigate();

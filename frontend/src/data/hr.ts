@@ -336,6 +336,7 @@ export type NewHire = {
    *  or null) — persisted on the new hire record so every admin session and
    *  the DOLE auto-regularization rule share the same waiting state. */
   evaluationRequestedAt?: string | null;
+  completedAt?: string | null;
   initials: string;
   checklist: {
     item: string;
@@ -641,6 +642,7 @@ export type Employee = {
     | "Retired"
     | "Terminated"
     | "Inactive";
+  onboardingComplete?: boolean;
   salaryGrade?: string;
   promotionHistory?: Array<{
     date: string;

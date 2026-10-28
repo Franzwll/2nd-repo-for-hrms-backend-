@@ -13,6 +13,11 @@ const BASE_URL =
   (RAW_BASE_URL.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1");
 export const API_BASE_URL = BASE_URL;
 
+function fileApiUrl(path: string): string {
+  const suffix = path.replace(/^\/api\/v1(?=\/|$)/, "");
+  return `${BASE_URL}${suffix.startsWith("/") ? suffix : `/${suffix}`}`;
+}
+
 /**
  * Build a query string while dropping empty values. `new URLSearchParams`
  * stringifies `undefined` as "undefined", which breaks server-side filters and
@@ -669,9 +674,11 @@ export const applicantsApi = {
    *  request authenticates server-side without an Authorization header. */
   resumeDocumentUrl: (applicantId: number | string) => {
     const token = getToken();
-    return `/api/v1/applicants/${applicantId}/resume-document${
-      token ? `?token=${encodeURIComponent(token)}` : ""
-    }`;
+    return fileApiUrl(
+      `/api/v1/applicants/${applicantId}/resume-document${
+        token ? `?token=${encodeURIComponent(token)}` : ""
+      }`,
+    );
   },
   createAssessment: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessment>(`/applicants/${applicantId}/assessments`, {
@@ -1113,7 +1120,7 @@ export const applicantDocumentsApi = {
     if (token) qs.set("token", token);
     if (download) qs.set("download", "1");
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return `/api/v1/applicant-documents/${id}/file${suffix}`;
+    return fileApiUrl(`/api/v1/applicant-documents/${id}/file${suffix}`);
   },
 };
 
@@ -1423,6 +1430,7 @@ export interface ApiNewHire {
   /** When HR requested the probationary performance evaluation (ISO timestamp
    *  or null) — drives the DOLE auto-regularization countdown. */
   evaluation_requested_at?: string | null;
+  completed_at?: string | null;
   completion_percent?: number;
   onboarding_items?: {
     employee_onboarding_item_id: number | null;
@@ -1507,6 +1515,14 @@ export const newHiresApi = {
     request<{ message: string }>(`/new-hires/${id}`, { method: "DELETE" }),
   promoteStage: (id: number | string) =>
     request<ApiNewHire>(`/new-hires/${id}/promote-stage`, { method: "POST" }),
+  complete: (id: number | string, data?: Record<string, any>) =>
+    request<{ message: string; data: ApiNewHire; recommendation?: any }>(
+      `/new-hires/${id}/complete`,
+      {
+        method: "POST",
+        body: JSON.stringify(data ?? {}),
+      },
+    ),
   stats: () => request<any>("/new-hires/stats"),
 };
 
@@ -1617,9 +1633,11 @@ export const onboardingItemsApi = {
    *  request authenticates server-side without an Authorization header. */
   documentUrl: (itemId: number | string) => {
     const token = getToken();
-    return `/api/v1/onboarding-items/${itemId}/document${
-      token ? `?token=${encodeURIComponent(token)}` : ""
-    }`;
+    return fileApiUrl(
+      `/api/v1/onboarding-items/${itemId}/document${
+        token ? `?token=${encodeURIComponent(token)}` : ""
+      }`,
+    );
   },
 };
 
@@ -1695,12 +1713,28 @@ export const settingsApi = {
       { method: "POST" },
     ),
   /** Downloads the .sql dump file for a backup entry. */
-  downloadBackup: (id: string) => {
-    window.open(
+  downloadBackup: async (id: string) => {
+    const token = getToken();
+    const response = await fetch(
       `${BASE_URL}/settings/backups/${encodeURIComponent(id)}/download`,
-      "_blank",
-      "noopener",
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
     );
+
+    if (!response.ok) {
+      throw new Error(`Could not download the backup (HTTP ${response.status})`);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `backup-${id}.sql`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   },
   /** Rolls the database back to the selected snapshot. */
   restoreBackup: (id: string) =>
@@ -1718,7 +1752,6 @@ export interface ApiLoginResponse {
   message: string;
   login_token: string;
   expires_in: number;
-  debug_otp: string;
   /** True when the user's role still requires OTP verification at /otp. */
   otp_required?: boolean;
   /** Which second factor the /otp step expects. */
@@ -1789,7 +1822,7 @@ export const authApi = {
       body: JSON.stringify({ login_token, otp, captcha_token }),
     }),
   resendOtp: (login_token: string, captcha_token?: string) =>
-    request<{ message: string; expires_in: number; debug_otp: string }>("/auth/otp/resend", {
+    request<{ message: string; expires_in: number }>("/auth/otp/resend", {
       method: "POST",
       body: JSON.stringify({ login_token, captcha_token }),
     }),
@@ -2143,6 +2176,16 @@ export const hcmApi = {
     acknowledge: (id: number) =>
       request<{ message: string }>(`/hr3-recommendations/${id}/acknowledge`, {
         method: "POST",
+      }),
+    mock: (data: {
+      employee_id: number;
+      recommendation_type: "Regularization" | "Promotion" | "Performance Review";
+      evaluation_score?: number;
+      comments?: string;
+    }) =>
+      request<{ message: string; data: ApiHR3Recommendation }>("/hr3-recommendations/mock", {
+        method: "POST",
+        body: JSON.stringify(data),
       }),
   },
   promotions: {
@@ -2917,7 +2960,7 @@ export const essApi = {
   learningMaterialUrl: (courseCode: string) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/my-learning/${encodeURIComponent(courseCode)}/file${qs}`;
+    return fileApiUrl(`/api/v1/ess/my-learning/${encodeURIComponent(courseCode)}/file${qs}`);
   },
   adminLearning: () =>
     request<{
@@ -3118,7 +3161,7 @@ export const essApi = {
   requestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+    return fileApiUrl(`/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`);
   },
   /** HR view of an attachment on any employee request (ESS Management access). */
   adminRequestAttachmentUrl: (
@@ -3127,13 +3170,15 @@ export const essApi = {
   ) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/admin/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+    return fileApiUrl(
+      `/api/v1/ess/admin/requests/${requestId}/attachments/${attachmentId}/file${qs}`,
+    );
   },
   /** Same-origin URL to stream the employee's own document file with ?token= auth. */
   documentFileUrl: (documentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/my-documents/${documentId}/file${qs}`;
+    return fileApiUrl(`/api/v1/ess/my-documents/${documentId}/file${qs}`);
   },
   clock: (action: "clock_in" | "clock_out") =>
     request<{ message: string; record: any }>("/ess/clock", {
@@ -3234,7 +3279,9 @@ export const ermApi = {
   attachmentFileUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/erm/document-requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+    return fileApiUrl(
+      `/api/v1/erm/document-requests/${requestId}/attachments/${attachmentId}/file${qs}`,
+    );
   },
 
   /** The ERM-owned 201 dossier (employment master + personal/gov data). */
@@ -3313,7 +3360,7 @@ export const ermApi = {
     documentFileUrl: (id: number | string, documentId: number | string) => {
       const token = getToken();
       const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-      return `/api/v1/erm/employees/${id}/documents/${documentId}/file${qs}`;
+      return fileApiUrl(`/api/v1/erm/employees/${id}/documents/${documentId}/file${qs}`);
     },
     updateExitRecord: (id: number | string, data: Record<string, any>) =>
       request<{ message: string; exit_record: ApiExitRecord }>(`/erm/employees/${id}/exit-record`, {

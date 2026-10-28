@@ -157,6 +157,56 @@ export function usePasswordGate() {
   return { gateSensitive, gateDialog };
 }
 
+export function useSecuredPrint() {
+  const [pending, setPending] = useState<ReportData | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const requestPrint = (report: ReportData) => {
+    if (report.rows.length === 0) {
+      toast.error(emptyExportMessage(report.title));
+      return;
+    }
+    setPending(report);
+  };
+
+  const confirmPrint = async (password: string) => {
+    if (!pending) return;
+    setBusy(true);
+    try {
+      const result = printReport(pending, { password });
+      const { innerName } = describeExport(pending, "pdf");
+      toast.success(
+        result === "downloaded"
+          ? `Password-protected PDF downloaded (${innerName}). Enter the password to open and print it.`
+          : `Password-protected PDF opened (${innerName}). Enter the password to print or save it.`,
+      );
+      setPending(null);
+    } catch (e) {
+      console.error("Protected print failed:", e);
+      toast.error(e instanceof Error ? e.message : "Protected print failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const printDialog = (
+    <SecureExportDialog
+      open={pending !== null}
+      onOpenChange={(o) => {
+        if (!busy && !o) setPending(null);
+      }}
+      reportTitle={pending?.title ?? "Report"}
+      formatLabel="PDF"
+      fileHint={pending ? describeExport(pending, "pdf").innerName : undefined}
+      busy={busy}
+      mode="print"
+      onConfirm={confirmPrint}
+    />
+  );
+
+  return { requestPrint, printDialog };
+}
+
 /**
  * Standard "Generate Report" control for every module.
  *
@@ -203,6 +253,7 @@ export function ReportMenu({
   requirePasswordForPrint?: boolean;
 }) {
   const { gateSensitive, gateDialog } = usePasswordGate();
+  const { requestPrint: openPrintDialog, printDialog } = useSecuredPrint();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
@@ -250,10 +301,7 @@ export function ReportMenu({
       toast.error(emptyExportMessage(data.title));
       return;
     }
-    const run = () => {
-      printReport(data);
-      toast.success(`${data.title} sent to printer.`);
-    };
+    const run = () => openPrintDialog(data);
     if (requirePasswordForPrint) {
       gateSensitive({ sensitive: true }, run);
     } else {
@@ -287,6 +335,7 @@ export function ReportMenu({
   return (
     <>
       {gateDialog}
+      {printDialog}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -426,6 +475,7 @@ export function MultiReportMenu({
   requirePasswordForPrint?: boolean;
 }) {
   const { gateSensitive, gateDialog } = usePasswordGate();
+  const { requestPrint: openPrintDialog, printDialog } = useSecuredPrint();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<{ data: ReportData; format: ReportFormat } | null>(null);
@@ -466,6 +516,7 @@ export function MultiReportMenu({
   return (
     <>
       {gateDialog}
+      {printDialog}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size={size} className={cn("gap-2", buttonClassName)}>
@@ -495,10 +546,7 @@ export function MultiReportMenu({
                     toast.error(emptyExportMessage(data.title));
                     return;
                   }
-                  const run = () => {
-                    printReport(data);
-                    toast.success(`${data.title} sent to printer.`);
-                  };
+                  const run = () => openPrintDialog(data);
                   if (requirePasswordForPrint) {
                     gateSensitive({ sensitive: true }, run);
                   } else {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   Award,
@@ -465,6 +465,7 @@ function toUiEmployee(
     phone: e.phone || "",
     supervisor: supervisor?.full_name ?? "",
     status,
+    onboardingComplete: e.onboarding_complete,
     salaryGrade: sg?.code ?? "SG-08",
   };
 }
@@ -1172,23 +1173,23 @@ function EmployeeListManager({
   const [recommendations, setRecommendations] = useState<HR3Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    hcmApi.hr3Recommendations
-      .list()
-      .then((res) => {
-        if (!cancelled) setRecommendations(res.data.map(toUiRecommendation));
-      })
-      .catch(() => {
-        if (!cancelled) setRecommendations([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+  const refreshRecommendations = useCallback(async () => {
+    try {
+      const res = await hcmApi.hr3Recommendations.list();
+      setRecommendations(res.data.map(toUiRecommendation));
+    } catch {
+      setRecommendations([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshRecommendations();
+    return onHcmChanged(() => {
+      void refreshRecommendations();
+    });
+  }, [refreshRecommendations]);
 
   const [recStatusFilter, setRecStatusFilter] = useState("all");
   const [recTypeFilter, setRecTypeFilter] = useState("all");
@@ -1281,25 +1282,64 @@ function EmployeeListManager({
   const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{
     target: "promote" | "exit" | "regularize";
   } | null>(null);
-
-  const hasPendingRec = (empId: string) =>
-    recommendations.some((r) => r.employeeId === empId && r.status === "Pending HR Action");
-
-  const isAcknowledged = (empId: string) => acknowledgedIds.has(empId);
-
-  const canActOnEmployee = (empId: string) => isAcknowledged(empId) || !hasPendingRec(empId);
+  const [mockRecLoading, setMockRecLoading] = useState<"regularize" | "promote" | null>(null);
 
   /** Pending performance evaluations (HR3 recommendations) usable for an action. */
   const recommendationsFor = (empId: string, type: "Regularization" | "Promotion") =>
     recommendations.filter(
       (r) =>
         r.employeeId === empId &&
-        r.status === "Pending HR Action" &&
+        (r.status === "Pending HR Action" || r.status === "Acknowledged") &&
         (r.recommendationType === type || r.recommendationType === "Performance Review"),
     );
 
   const regularizeOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Regularization") : [];
   const promotionOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Promotion") : [];
+
+  const createMockRecommendation = async (
+    emp: Employee,
+    type: "Regularization" | "Promotion",
+  ) => {
+    const dbId = employeeIdByCode.get(emp.id);
+    if (!dbId) {
+      toast.error(`Could not resolve ${emp.id} in Core HCM.`);
+      return;
+    }
+
+    setMockRecLoading(type === "Regularization" ? "regularize" : "promote");
+    try {
+      await hcmApi.hr3Recommendations.mock({
+        employee_id: dbId,
+        recommendation_type: type,
+      });
+      const res = await hcmApi.hr3Recommendations.list();
+      const mapped = res.data.map(toUiRecommendation);
+      setRecommendations(mapped);
+
+      const created = mapped.find(
+        (r) =>
+          r.employeeId === emp.id &&
+          (r.recommendationType === type || r.recommendationType === "Performance Review") &&
+          (r.status === "Pending HR Action" || r.status === "Acknowledged"),
+      );
+
+      if (!created) {
+        toast.error("Mock evaluation was created but could not be loaded.");
+        return;
+      }
+
+      if (type === "Regularization") {
+        setRegularizeRecId(created.id);
+      } else {
+        setPromotionRecId(created.id);
+      }
+      toast.success("Mock HR3 evaluation is ready.");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not create a mock HR3 evaluation.");
+    } finally {
+      setMockRecLoading(null);
+    }
+  };
 
   const filteredEmployees = empList.filter((e) => {
     const q = empSearch.trim().toLowerCase();
@@ -2009,9 +2049,7 @@ function EmployeeListManager({
                           <Pencil className="mr-1 h-3 w-3" /> Edit
                         </Button>
 
-                        {e.employmentType === "Probationary" &&
-                          e.status === "Active" &&
-                          canActOnEmployee(e.id) && (
+                        {e.employmentType === "Probationary" && e.status === "Active" && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -2029,19 +2067,11 @@ function EmployeeListManager({
                             </Button>
                           )}
 
-                        {e.status === "Active" &&
-                          e.employmentType !== "Probationary" &&
-                          canActOnEmployee(e.id) && (
+                        {e.status === "Active" && e.employmentType !== "Probationary" && (
                             <Button
                               size="sm"
                               variant="outline"
                               className="h-8 px-2 text-xs"
-                              disabled={recommendationsFor(e.id, "Promotion").length === 0}
-                              title={
-                                recommendationsFor(e.id, "Promotion").length === 0
-                                  ? "No performance evaluation on file — required before promoting."
-                                  : undefined
-                              }
                               onClick={() => {
                                 setSelectedEmp(e);
                                 setNewPosition(e.position);
@@ -2055,12 +2085,6 @@ function EmployeeListManager({
                               <TrendingUp className="mr-1 h-3.5 w-3.5 text-primary" /> Promote
                             </Button>
                           )}
-
-                        {e.status === "Active" && hasPendingRec(e.id) && !isAcknowledged(e.id) && (
-                          <span className="text-[10px] text-muted-foreground italic pr-1">
-                            Acknowledge first
-                          </span>
-                        )}
 
                         {e.status === "Active" && (
                           <Button
@@ -2638,9 +2662,22 @@ function EmployeeListManager({
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
-                  No pending performance evaluation on file. A completed HR3 evaluation is required
-                  before promoting.
+                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
+                  <p>
+                    No pending performance evaluation on file. Generate a mock HR3 evaluation to
+                    continue the promotion demo.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={mockRecLoading === "promote"}
+                    onClick={() => selectedEmp && createMockRecommendation(selectedEmp, "Promotion")}
+                  >
+                    {mockRecLoading === "promote"
+                      ? "Creating evaluation..."
+                      : "Auto-create mock HR3 evaluation"}
+                  </Button>
                 </div>
               )}
             </div>
@@ -2722,9 +2759,22 @@ function EmployeeListManager({
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
-                  No pending performance evaluation on file. A completed HR3 evaluation is required
-                  before regularization.
+                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 dark:border-amber-400/20 dark:bg-amber-400/10">
+                  <p>
+                    No pending performance evaluation on file. Generate a mock HR3 evaluation to
+                    continue the regularization demo.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={mockRecLoading === "regularize"}
+                    onClick={() => selectedEmp && createMockRecommendation(selectedEmp, "Regularization")}
+                  >
+                    {mockRecLoading === "regularize"
+                      ? "Creating evaluation..."
+                      : "Auto-create mock HR3 evaluation"}
+                  </Button>
                 </div>
               )}
             </div>
@@ -3127,8 +3177,12 @@ function PromotionRequestsManager() {
                               className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
                               onClick={async () => {
                                 try {
-                                  await hcmApi.promotions.forwardToHr3(r.promotion_request_id);
-                                  toast.success("Forwarded to HR3 for evaluation.");
+                                  const res = await hcmApi.promotions.forwardToHr3(
+                                    r.promotion_request_id,
+                                  );
+                                  toast.success(
+                                    res.message || "Forwarded to HR3 for evaluation.",
+                                  );
                                   load();
                                   notifyHcmChanged();
                                 } catch (e: any) {
@@ -3217,10 +3271,13 @@ function PromotionRequestsManager() {
               className="border-primary/40 text-primary hover:bg-primary/10"
               onClick={async () => {
                 try {
-                  await hcmApi.promotions.forwardToHr3(reviewFor.promotion_request_id, {
-                    note: notes || undefined,
-                  });
-                  toast.success("Forwarded to HR3 for evaluation.");
+                  const res = await hcmApi.promotions.forwardToHr3(
+                    reviewFor.promotion_request_id,
+                    {
+                      note: notes || undefined,
+                    },
+                  );
+                  toast.success(res.message || "Forwarded to HR3 for evaluation.");
                   setReviewFor(null);
                   load();
                   notifyHcmChanged();

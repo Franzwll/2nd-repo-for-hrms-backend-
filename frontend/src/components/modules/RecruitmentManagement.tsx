@@ -54,6 +54,7 @@ import {
 import { toast } from "sonner";
 import { useBlocker } from "@tanstack/react-router";
 
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
 import { Badge } from "@/components/ui/badge";
@@ -3052,6 +3053,7 @@ export function RequirementTemplateManager({
 }
 
 export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }) {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [jobList, setJobList] = useState<Job[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
 
@@ -4650,13 +4652,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const deleteJob = async (job: Job) => {
     if (!job.dbId) return;
     const applicantCount = Number(job.applicants) || 0;
-    const prompt =
-      applicantCount > 0
-        ? `Archive the “${job.title}” job posting?\n\nIt has ${applicantCount} applicant${
-            applicantCount === 1 ? "" : "s"
-          }. The posting will be removed from the list, but candidate, interview and offer records will be kept.`
-        : `Delete the “${job.title}” job posting?\n\nJob posts with linked hiring records are archived instead of being permanently deleted.`;
-    if (!window.confirm(prompt)) return;
+    const confirmed = await confirm({
+      title: applicantCount > 0 ? "Archive job posting?" : "Delete job posting?",
+      description:
+        applicantCount > 0
+          ? `Archive the “${job.title}” job posting? It has ${applicantCount} applicant${
+              applicantCount === 1 ? "" : "s"
+            }. The posting will be removed from the list, but candidate, interview and offer records will be kept.`
+          : `Delete the “${job.title}” job posting? Job posts with linked hiring records are archived instead of being permanently deleted.`,
+      confirmLabel: applicantCount > 0 ? "Archive" : "Delete",
+      destructive: applicantCount === 0,
+    });
+    if (!confirmed) return;
     try {
       const result = await jobPostsApi.delete(job.dbId);
       setJobList((prev) => prev.filter((item) => item.id !== job.id));
@@ -6518,6 +6525,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         title="Recruitment Management"
         description="Job post builder with website preview, vacancy status and posting list."

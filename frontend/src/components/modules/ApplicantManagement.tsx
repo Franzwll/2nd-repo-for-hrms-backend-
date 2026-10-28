@@ -222,12 +222,11 @@ import {
 import {
   describeExport,
   exportReport,
-  printReport,
   type ReportData,
   type ReportFormat,
 } from "@/lib/report-export";
 import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
-import { ReportMenu, usePasswordGate } from "@/components/ui/report-menu";
+import { ReportMenu, usePasswordGate, useSecuredPrint } from "@/components/ui/report-menu";
 import {
   ZoomEmbeddedMeeting,
   type ZoomChatEntry,
@@ -6623,6 +6622,7 @@ const TOP_FIVE_VISIBLE_CARDS = 3;
 
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
   const { gateSensitive, gateDialog } = usePasswordGate();
+  const { requestPrint, printDialog } = useSecuredPrint();
   const navigate = useNavigate();
   const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
@@ -10856,6 +10856,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   return (
     <div>
       {gateDialog}
+      {printDialog}
       <PageHeader
         title="Applicant Management"
         description="NER resume screening, candidate ranking, interview scheduling and evaluation."
@@ -15234,10 +15235,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <DropdownMenuItem
                             onClick={() => {
                               const data = buildAuditReportData();
-                              gateSensitive({ sensitive: true }, () => {
-                                printReport(data);
-                                toast.success(`${data.title} sent to printer.`);
-                              });
+                              gateSensitive({ sensitive: true }, () => requestPrint(data));
                             }}
                           >
                             <Printer className="mr-2 h-4 w-4" /> Print…

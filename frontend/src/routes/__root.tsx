@@ -36,12 +36,35 @@ function NotFoundComponent() {
   );
 }
 
+const CHUNK_RELOAD_KEY = "osm-chunk-reload-at";
+const CHUNK_RELOAD_WINDOW_MS = 60_000;
+
+function isChunkLoadError(error: Error): boolean {
+  const message = `${error.name} ${error.message}`;
+  return /ChunkLoadError|Loading chunk|dynamically imported module|Importing a module script failed|Unable to preload CSS|error loading dynamically imported module/i.test(
+    message,
+  );
+}
+
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const chunkError = isChunkLoadError(error);
+
   useEffect(() => {
     reportError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+    if (!chunkError) return;
+
+    try {
+      const lastReload = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+      if (Date.now() - lastReload < CHUNK_RELOAD_WINDOW_MS) return;
+      sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+    } catch {
+      return;
+    }
+
+    window.location.reload();
+  }, [error, chunkError]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -55,6 +78,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              if (chunkError) {
+                window.location.reload();
+                return;
+              }
               router.invalidate();
               reset();
             }}

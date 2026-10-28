@@ -35,6 +35,7 @@ import { PageHeader } from "@/components/portal/PageHeader";
 import { ReportMenu } from "@/components/ui/report-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { usePagination } from "@/hooks/usePagination";
 import { StatCard } from "@/components/portal/StatCard";
 import { Badge } from "@/components/ui/badge";
@@ -161,6 +162,7 @@ export function EssManagement({ role }: { role: "employee" | "admin" | "superadm
 }
 
 export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
+  const { confirm, prompt, dialog: confirmDialog } = useConfirmDialog();
   const [rows, setRows] = useState<Row[]>(seed);
   const [countsData, setCountsData] = useState<{
     total: number;
@@ -663,7 +665,12 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
   /** Manual release: the only action that makes module output visible. */
   const releaseRow = async (row: Row) => {
-    if (!window.confirm(`Release ${row.id} to ${row.employee}?`)) return;
+    const release = await confirm({
+      title: "Release this request?",
+      description: `Release ${row.id} to ${row.employee}? This makes the module output visible to the employee.`,
+      confirmLabel: "Release",
+    });
+    if (!release) return;
 
     try {
       const res = await essApi.releaseRequest(row.id);
@@ -677,10 +684,14 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
   /** Send the request to another module; applied results are reversed. */
   const rerouteRow = async (row: Row) => {
-    const module = window.prompt(
-      "Send to module (erm, attendance, payroll, performance):",
-      row.module || "erm",
-    );
+    const module = await prompt({
+      title: "Send to another module",
+      description: "Choose erm, attendance, payroll, or performance.",
+      inputLabel: "Module",
+      placeholder: "erm, attendance, payroll, performance",
+      defaultValue: row.module || "erm",
+      confirmLabel: "Send",
+    });
 
     if (!module) return;
 
@@ -745,6 +756,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         title="ESS Management"
         description="Monitor, process and configure employee self-service requests."

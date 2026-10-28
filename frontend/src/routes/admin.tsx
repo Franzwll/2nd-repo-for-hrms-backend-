@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { PortalShell } from "@/components/portal/PortalShell";
+import { PreferencesProvider } from "@/lib/preferences";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -13,8 +14,8 @@ export const Route = createFileRoute("/admin")({
     ],
   }),
   component: () => (
-    <PortalShell role="admin">
+    <PreferencesProvider><PortalShell role="admin">
       <Outlet />
-    </PortalShell>
+    </PortalShell></PreferencesProvider>
   ),
 });

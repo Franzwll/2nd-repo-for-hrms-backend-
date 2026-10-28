@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Mail\SendOtpMail;
 use App\Models\AuditLog;
 use App\Models\SystemUser;
 use App\Models\UserLoginActivity;
+use Illuminate\Support\Facades\Mail;
 use Tests\Concerns\RefreshesSeededDatabase;
 use Tests\TestCase;
 
@@ -22,18 +24,28 @@ class AuthFlowTest extends TestCase
 
     public function test_login_issues_otp_and_verify_returns_token(): void
     {
+        Mail::fake();
+
         $login = $this->postJson('/api/v1/auth/login', [
             'email' => 'bullseur@oxfordsuites.com.ph',
             'password' => 'Oxford@2026',
         ])->assertOk()->json();
 
         $this->assertArrayHasKey('login_token', $login);
-        $this->assertArrayHasKey('debug_otp', $login);
+        $this->assertArrayNotHasKey('debug_otp', $login);
         $this->assertEquals(120, $login['expires_in']);
+
+        $otp = null;
+        Mail::assertSent(SendOtpMail::class, function (SendOtpMail $mail) use (&$otp): bool {
+            $otp = $mail->code;
+
+            return true;
+        });
+        $this->assertNotNull($otp);
 
         $verify = $this->postJson('/api/v1/auth/otp/verify', [
             'login_token' => $login['login_token'],
-            'otp' => $login['debug_otp'],
+            'otp' => $otp,
         ])->assertOk()->json();
 
         $this->assertArrayHasKey('token', $verify);

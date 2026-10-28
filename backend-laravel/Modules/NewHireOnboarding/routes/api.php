@@ -83,6 +83,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
           Route::post('new-hires/{new_hire}/promote-stage', [NewHireController::class, 'promoteStage'])
                ->name('new-hire.promote-stage');
 
+          Route::post('new-hires/{new_hire}/complete', [NewHireController::class, 'complete'])
+               ->name('new-hire.complete');
+
            /* ------------------------------------------------------------------ */
            /* Checklist Templates                                                  */
            /* ------------------------------------------------------------------ */

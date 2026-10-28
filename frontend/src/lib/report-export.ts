@@ -636,12 +636,22 @@ function buildPdfBlob(
   preparedBy: string,
   preparedByTitle: string,
   preparedByDept: string,
+  password?: string,
 ): Blob {
   const landscape = report.columns.length > 6;
   const doc = new jsPDF({
     orientation: landscape ? "landscape" : "portrait",
     unit: "mm",
     format: "a4",
+    ...(password
+      ? {
+          encryption: {
+            userPassword: password,
+            ownerPassword: password,
+            userPermissions: ["print"] as ("print" | "modify" | "copy" | "annot-forms")[],
+          },
+        }
+      : {}),
   });
   const MAROON: [number, number, number] = [82, 12, 25];
   const GOLD_DARK: [number, number, number] = [133, 77, 14];
@@ -1106,7 +1116,9 @@ function printHtmlDocument(html: string): void {
   setTimeout(doPrint, 300);
 }
 
-export function printReport(report: ReportData): void {
+export type PrintResult = "opened" | "downloaded" | "printed";
+
+export function printReport(report: ReportData, opts?: { password?: string }): PrintResult {
   const now = new Date();
   const generatedAt = `${formalDate(now)}, ${formalTime(now)}`;
   const refNo = buildReference(report);
@@ -1115,10 +1127,33 @@ export function printReport(report: ReportData): void {
   const preparedByTitle = (user?.role as string | undefined) || "Human Resources";
   const preparedByDept =
     (user?.department_name as string | undefined) || "Human Resources Department";
+  const password = opts?.password?.trim();
+
+  if (password) {
+    const pdf = buildPdfBlob(
+      report,
+      generatedAt,
+      refNo,
+      preparedBy,
+      preparedByTitle,
+      preparedByDept,
+      password,
+    );
+    const { innerName } = describeExport(report, "pdf");
+    const url = URL.createObjectURL(pdf);
+    const win = window.open(url, "_blank");
+    if (!win) {
+      triggerDownload(pdf, innerName);
+      return "downloaded";
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return "opened";
+  }
 
   printHtmlDocument(
     buildPrintableHtml(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept),
   );
+  return "printed";
 }
 
 /* ------------------------------------------------------------------ */

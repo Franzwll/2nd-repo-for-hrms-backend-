@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsConfigPaths from "vite-tsconfig-paths";
@@ -7,6 +7,20 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 // NOTE: Do NOT add TanStackRouterVite here — tanstackStart already includes it
 // internally. Adding it twice causes concurrent EPERM rename errors on Windows
 // when both instances try to atomically overwrite src/routeTree.gen.ts.
+const apiProxyTarget = "http://127.0.0.1:8000/";
+
+const apiProxy: Record<string, ProxyOptions> = {
+  "/api": {
+    target: apiProxyTarget,
+    changeOrigin: true,
+    configure: (proxy) => {
+      proxy.on("proxyReq", (proxyReq) => {
+        proxyReq.removeHeader("expect");
+      });
+    },
+  },
+};
+
 export default defineConfig({
   plugins: [
     tsConfigPaths(),
@@ -27,29 +41,15 @@ export default defineConfig({
       "testhrms1.oxfordsuitesmakati.io",
       "localhost",
     ],
-    proxy: {
-      "/api": {
-        target: "http://127.0.0.1:8000/",
-        changeOrigin: true,
-        // PHP's built-in dev server never answers 100 Continue, so
-        // Chromium file uploads (>~1KB, sent with Expect: 100-continue)
-        // hang forever. Strip the header at the proxy so the body streams
-        // straight through to Laravel.
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.removeHeader("expect");
-          });
-        },
-      },
-    },
+    proxy: apiProxy,
   },
   preview: {
     host: "0.0.0.0",
     port: 3000,
-    allowedHosts:
-    [
+    allowedHosts: [
       "hrms1.oxfordsuitesmakati.io",
       "testhrms1.oxfordsuitesmakati.io",
     ],
+    proxy: apiProxy,
   },
 });

@@ -82,6 +82,7 @@ function transformApiNewHire(h: ApiNewHire): NewHire {
     stage: h.stage as "Pre-onboarding" | "Probationary",
     startDate: h.start_date || new Date().toISOString().slice(0, 10),
     evaluationRequestedAt: h.evaluation_requested_at ?? null,
+    completedAt: h.completed_at ?? null,
     checklist: (h.onboarding_items || []).map((i) => ({
       item: i.item_text,
       done: i.done,
@@ -513,10 +514,14 @@ export const hireStore = {
     const target = hires.find((h) => h.id === id);
     if (!target?.dbId) return;
     const at = new Date().toISOString();
-    hires = hires.map((h) => (h.id === id ? { ...h, evaluationRequestedAt: at } : h));
+    hires = hires.map((h) =>
+      h.id === id ? { ...h, evaluationRequestedAt: at, completedAt: at } : h,
+    );
     emit();
     try {
-      await newHiresApi.update(target.dbId, { evaluation_requested_at: at });
+      await newHiresApi.complete(target.dbId, { force: true });
+      await syncFromApi();
+      notifyHcmChanged();
     } catch (e) {
       console.warn("API evaluation request error:", e);
       toast.error(`The evaluation request for "${target.name}" could not be saved.`);

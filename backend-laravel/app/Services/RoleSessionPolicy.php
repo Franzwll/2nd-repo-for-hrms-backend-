@@ -3,11 +3,7 @@
 namespace App\Services;
 
 /**
- * Role-based session lifetimes.
- *
- * - Super Admin:  4h token / 10m idle (highest blast radius)
- * - Admin:        8h token / 15m idle (sensitive PII/payroll, often shared PCs)
- * - Employee:    12h token / 30m idle (ESS convenience, lowest privilege)
+ * Role-based token lifetimes with a system-wide idle timeout.
  *
  * Sanctum's global `sanctum.expiration` acts as a ceiling on top of the
  * per-token `expires_at`, so the global value must be >= the longest role
@@ -33,18 +29,20 @@ class RoleSessionPolicy
      */
     public static function forRole(?string $role): array
     {
+        $idle = SecurityPolicy::idleMinutes();
+
         return match (self::keyFor($role)) {
             'superadmin' => [
                 'token_minutes' => (int) env('SESSION_MINUTES_SUPERADMIN', 240),
-                'idle_minutes' => (int) env('SESSION_IDLE_SUPERADMIN', 10),
+                'idle_minutes' => $idle,
             ],
             'admin' => [
                 'token_minutes' => (int) env('SESSION_MINUTES_ADMIN', 480),
-                'idle_minutes' => (int) env('SESSION_IDLE_ADMIN', 15),
+                'idle_minutes' => $idle,
             ],
             default => [
                 'token_minutes' => (int) env('SESSION_MINUTES_EMPLOYEE', 720),
-                'idle_minutes' => (int) env('SESSION_IDLE_EMPLOYEE', 30),
+                'idle_minutes' => $idle,
             ],
         };
     }

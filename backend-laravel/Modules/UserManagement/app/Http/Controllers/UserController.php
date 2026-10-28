@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SystemRole;
 use App\Models\SystemUser;
 use App\Services\AuditLogger;
+use App\Services\SecurityPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -184,7 +185,7 @@ class UserController extends Controller
     public function resetPassword(Request $request, SystemUser $user): JsonResponse
     {
         $request->validate([
-            'password' => ['required', 'string', 'min:8', 'max:72'],
+            'password' => SecurityPolicy::passwordRules(),
         ]);
 
         if ($user->isSuperAdmin() && ! $request->user()->isSuperAdmin()) {
