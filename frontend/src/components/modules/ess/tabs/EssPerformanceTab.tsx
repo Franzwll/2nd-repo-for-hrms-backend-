@@ -53,10 +53,7 @@ function categoryId(category: unknown): string {
     .trim()
     .toLowerCase();
   if (!key) return "gen101";
-  return (
-    CATEGORY_IDS[key] ??
-    `${key.replace(/[^a-z0-9]/g, "").slice(0, 3) || "gen"}101`
-  );
+  return CATEGORY_IDS[key] ?? `${key.replace(/[^a-z0-9]/g, "").slice(0, 3) || "gen"}101`;
 }
 
 function courseProgress(c: any): number {
@@ -150,7 +147,10 @@ export function EssPerformanceTab() {
       .toLowerCase();
     if (!category) return courses;
     return courses.filter(
-      (c) => String(c.category ?? "").trim().toLowerCase() === category,
+      (c) =>
+        String(c.category ?? "")
+          .trim()
+          .toLowerCase() === category,
     );
   }, [courses, detailCourse]);
 
@@ -172,6 +172,8 @@ export function EssPerformanceTab() {
       estimated_reading_minutes: c.estimated_reading_minutes ?? null,
       estimated_pages: c.estimated_pages ?? null,
       mandatory: Boolean(c.mandatory),
+      // A failed quiz is final: the card must stop advertising "Ready to take".
+      quiz_failed: Boolean(c.quiz_failed),
     }));
 
   const applyPerformance = (res: any) => {
@@ -323,8 +325,7 @@ export function EssPerformanceTab() {
             <button
               type="button"
               onClick={closeModuleDetail}
-              className="inline-flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400 hover:underline"
-              className="inline-flex cursor-pointer items-center gap-1.5 font-semibold text-amber-600 hover:underline"
+              className="inline-flex cursor-pointer items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400 hover:underline"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Learning Materials
             </button>
@@ -351,6 +352,7 @@ export function EssPerformanceTab() {
                   .toLowerCase()
                   .includes("complet");
                 const read = Boolean(course.reading_completed_at);
+                const quizFailed = Boolean(course.quiz_failed) && !done;
 
                 return (
                   <div key={course.id}>
@@ -413,7 +415,9 @@ export function EssPerformanceTab() {
                                   </span>
                                 )}
                                 {course.mandatory && (
-                                  <span className="font-semibold text-red-600 dark:text-red-400">Mandatory</span>
+                                  <span className="font-semibold text-red-600 dark:text-red-400">
+                                    Mandatory
+                                  </span>
                                 )}
                                 {read && (
                                   <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
@@ -444,15 +448,21 @@ export function EssPerformanceTab() {
                               <p className="mt-1 text-xs italic text-muted-foreground">
                                 {done
                                   ? "Assessment completed. Open your result and certificate."
-                                  : read
-                                    ? "Answer the assessment to complete this module."
-                                    : "Locked — read the handbook first to unlock the quiz."}
+                                  : quizFailed
+                                    ? "Assessment not passed. Retakes are not allowed — the handbook stays available for review."
+                                    : read
+                                      ? "Answer the assessment to complete this module."
+                                      : "Locked — read the handbook first to unlock the quiz."}
                               </p>
                               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                                 {done ? (
                                   <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
                                     <CheckCircle2 className="h-3 w-3" /> Passed
                                     {course.score !== "—" ? ` · ${course.score}` : ""}
+                                  </span>
+                                ) : quizFailed ? (
+                                  <span className="inline-flex items-center gap-1 font-semibold text-amber-600">
+                                    <Lock className="h-3 w-3" /> Not passed · Retakes locked
                                   </span>
                                 ) : read ? (
                                   <span className="inline-flex items-center gap-1 font-semibold text-primary">
@@ -542,19 +552,11 @@ export function EssPerformanceTab() {
                 {filteredCourses.map((c) => {
                   const i = courses.indexOf(c);
                   const pct = courseProgress(c);
-                  const urgent = urgentReason(c);
                   return (
                     <div
                       key={c.id}
-                      className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl border bg-gradient-to-br ${courseTheme(i)} p-5 text-foreground shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md dark:text-white ${urgent ? "ring-2 ring-red-500/80" : ""}`}
+                      className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl border bg-gradient-to-br ${courseTheme(i)} p-5 text-foreground shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md dark:text-white`}
                     >
-                      {urgent && (
-                        <span
-                          title={urgent}
-                          aria-label={`Urgent: ${urgent}`}
-                          className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-background bg-red-600 shadow-sm dark:border-white/90"
-                        />
-                      )}
                       {/* geometric overlay */}
                       <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-50 dark:opacity-25">
                         <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[10px] border-foreground/10 dark:border-white/15" />
@@ -577,8 +579,7 @@ export function EssPerformanceTab() {
                           {c.category || "General"}
                         </p>
                         <p className="mt-1 text-xs font-medium text-muted-foreground dark:text-white/75">
-                          Category ID:{" "}
-                          <span className="font-mono">{categoryId(c.category)}</span>
+                          Category ID: <span className="font-mono">{categoryId(c.category)}</span>
                         </p>
                       </div>
                       <div className="relative space-y-1.5">

@@ -679,14 +679,12 @@ export const applicantsApi = {
       body: JSON.stringify(data),
     }),
   /** Same-email past applications + cooldown countdown for the HR profile strip. */
-  history: (id: number | string) =>
-    request<ApiApplicantHistory>(`/applicants/${id}/history`),
+  history: (id: number | string) => request<ApiApplicantHistory>(`/applicants/${id}/history`),
   /** HR allows early re-application (lifts the waiting period, audited). */
   overrideCooldown: (id: number | string) =>
-    request<{ message: string; data: ApiApplicant }>(
-      `/applicants/${id}/cooldown/override`,
-      { method: "POST" },
-    ),
+    request<{ message: string; data: ApiApplicant }>(`/applicants/${id}/cooldown/override`, {
+      method: "POST",
+    }),
 };
 
 export interface ApiApplicantHistoryRow {
@@ -2829,6 +2827,8 @@ export const essApi = {
         estimated_reading_minutes?: number | null;
         estimated_pages?: number | null;
         mandatory?: boolean;
+        /** A failed attempt is final — the quiz stays locked. */
+        quiz_failed?: boolean;
       }[];
     }>("/ess/my-performance"),
   updateLearningProgress: (data: { course_code: string }) =>
@@ -2899,14 +2899,15 @@ export const essApi = {
       status: string;
       certificate_eligible: boolean;
       already_completed?: boolean;
+      /** Failed attempts are final, so this is always false in the current policy. */
+      retake_allowed?: boolean;
       review: {
         id: number;
         question: string;
         options: string[];
-        correct_index: number;
+        // The answer key (correct_index / explanation) is never sent.
         your_index: number | null;
         is_correct: boolean;
-        explanation: string;
       }[];
     }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`, {
       method: "POST",
@@ -3039,25 +3040,22 @@ export const essApi = {
   },
   /** ESS Management releases a module result to the employee. */
   releaseRequest: (id: string | number, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/release`,
-      { method: "POST", body: JSON.stringify({ ...(note ? { note } : {}) }) },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/release`, {
+      method: "POST",
+      body: JSON.stringify({ ...(note ? { note } : {}) }),
+    }),
   /** ESS Management sends an already-reviewed request to a module. */
   dispatchRequest: (id: string | number, module?: string, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/dispatch`,
-      {
-        method: "POST",
-        body: JSON.stringify({ ...(module ? { module } : {}), ...(note ? { note } : {}) }),
-      },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/dispatch`, {
+      method: "POST",
+      body: JSON.stringify({ ...(module ? { module } : {}), ...(note ? { note } : {}) }),
+    }),
   /** ESS Management reroutes a request; any applied module result is reversed. */
   rerouteRequest: (id: string | number, module: string, note?: string) =>
-    request<{ message: string; request: ApiEssRequestItem }>(
-      `/ess/admin/requests/${id}/reroute`,
-      { method: "POST", body: JSON.stringify({ module, ...(note ? { note } : {}) }) },
-    ),
+    request<{ message: string; request: ApiEssRequestItem }>(`/ess/admin/requests/${id}/reroute`, {
+      method: "POST",
+      body: JSON.stringify({ module, ...(note ? { note } : {}) }),
+    }),
   /** Routing ledger for one request (dispatch/accept/complete/release legs). */
   requestRoutings: (id: string | number) =>
     request<{ routings: any[] }>(`/ess/admin/requests/${id}/routings`),
@@ -3088,11 +3086,7 @@ export const essApi = {
       `/ess/modules/${module}/requests/${id}/decline`,
       { method: "POST", body: JSON.stringify({ reason }) },
     ),
-  completeModuleRequest: (
-    module: string,
-    id: string | number,
-    data: Record<string, any> = {},
-  ) => {
+  completeModuleRequest: (module: string, id: string | number, data: Record<string, any> = {}) => {
     const isForm = Object.values(data).some((v) => v instanceof File);
     if (!isForm) {
       return request<{ message: string; request: ApiEssRequestItem }>(
@@ -3121,10 +3115,7 @@ export const essApi = {
     return `/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
   },
   /** HR view of an attachment on any employee request (ESS Management access). */
-  adminRequestAttachmentUrl: (
-    requestId: string | number,
-    attachmentId: string | number,
-  ) => {
+  adminRequestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
     return `/api/v1/ess/admin/requests/${requestId}/attachments/${attachmentId}/file${qs}`;

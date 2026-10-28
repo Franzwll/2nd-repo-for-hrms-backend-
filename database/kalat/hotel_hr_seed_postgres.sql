@@ -658,12 +658,12 @@ INSERT INTO "employee_benefits" ("employee_id", "benefit_name", "reference_value
 (5, 'PhilHealth',   '12-345678901-2',   'Active',                            '2026-04-15', NULL,          'Active'),
 (5, 'Pag-IBIG',     '1234-5678-9012',   'Active + MP2',                      '2026-04-15', NULL,          'Active'),
 (5, 'BIR Tax Status', 'S — Single',     'TIN 123-456-789',                   '2026-04-15', NULL,          'Active'),
-(5, 'HMO',          'Maxicare Platinum','Effective after regularization',     '2026-08-15', NULL,          'Inactive'),
+(5, 'HMO',          'iCare Platinum','Effective after regularization',     '2026-08-15', NULL,          'Inactive'),
 (5, 'Insurance',    'Group Life',       'PHP 500,000 coverage',              '2026-04-15', NULL,          'Active'),
 (1, 'SSS',          '34-2233445-6',     'Active contributions',              '2019-02-11', NULL,          'Active'),
-(1, 'HMO',          'Maxicare Gold',    'Executive plan',                    '2019-03-01', NULL,          'Active'),
+(1, 'HMO',          'iCare Gold',    'Executive plan',                    '2019-03-01', NULL,          'Active'),
 (6, 'SSS',          '34-5566778-9',     'Active contributions',              '2025-09-16', NULL,          'Active'),
-(6, 'HMO',          'Maxicare Silver',  'Effective after regularization',    '2026-03-15', NULL,          'Active'),
+(6, 'HMO',          'iCare Silver',  'Effective after regularization',    '2026-03-15', NULL,          'Active'),
 (8, 'SSS',          '34-7788990-1',     'Active contributions',              '2021-05-03', NULL,          'Active'),
 (8, 'Insurance',    'Group Life',       'PHP 300,000 coverage',              '2021-05-03', NULL,          'Active');
 

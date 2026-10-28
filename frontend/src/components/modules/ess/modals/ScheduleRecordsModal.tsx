@@ -49,7 +49,7 @@ const STATUS_LABEL: Record<DayStatus, string> = {
   late: "Late",
   absent: "Absent",
   leave: "Leave",
-  rest: "Rest Day",
+  rest: "Off",
 };
 
 function statusOf(h: any): DayStatus | null {
@@ -166,12 +166,12 @@ function StatusDayButton({
   );
 }
 
-const LEGEND: { status: DayStatus; label: string; short: string }[] = [
-  { status: "present", label: "Present", short: "PRE" },
-  { status: "late", label: "Late", short: "LAT" },
-  { status: "absent", label: "Absent", short: "ABS" },
-  { status: "leave", label: "Leave", short: "LVE" },
-  { status: "rest", label: "Rest Day", short: "RST" },
+const LEGEND: { status: DayStatus; label: string }[] = [
+  { status: "present", label: "Present" },
+  { status: "late", label: "Late" },
+  { status: "absent", label: "Absent" },
+  { status: "leave", label: "Leave" },
+  { status: "rest", label: "Off" },
 ];
 
 const NAV_BUTTON_CLASS =
@@ -418,12 +418,10 @@ export function ScheduleRecordsModal({
               {LEGEND.map((l) => (
                 <span
                   key={l.status}
-                  title={l.label}
-                  aria-label={l.label}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-2 py-0.5 font-semibold tracking-wide"
                 >
                   <span className={cn("h-2 w-2 rounded-full", DOT_CLASS[l.status])} />
-                  {l.short}
+                  {l.label}
                 </span>
               ))}
             </div>
@@ -434,169 +432,165 @@ export function ScheduleRecordsModal({
           <>
             <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
               <div className="rounded-xl border border-border/60 bg-card p-4 shadow-xs">
-              <div className="w-full">
-                {yearView && (
-                  <div className="mb-3 flex items-center justify-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setMonth(new Date(month.getFullYear() - 1, 0, 1))
+                <div className="w-full">
+                  {yearView && (
+                    <div className="mb-3 flex items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMonth(new Date(month.getFullYear() - 1, 0, 1))}
+                        aria-label="Previous year"
+                        className={NAV_BUTTON_CLASS}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={collapseYearView}
+                        title="Collapse to month view"
+                        aria-label={`Collapse ${month.getFullYear()} to month view`}
+                        className="min-w-16 cursor-pointer rounded-md px-2 py-1 text-center font-display text-base font-bold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {month.getFullYear()}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMonth(new Date(month.getFullYear() + 1, 0, 1))}
+                        aria-label="Next year"
+                        className={NAV_BUTTON_CLASS}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <Calendar
+                    mode="single"
+                    month={month}
+                    onMonthChange={setMonth}
+                    startMonth={rangeStart}
+                    endMonth={rangeEnd}
+                    numberOfMonths={yearView ? 12 : 1}
+                    showOutsideDays={!yearView}
+                    hideNavigation={yearView}
+                    selected={selectedDate ?? undefined}
+                    onSelect={(_, selectedDay) => {
+                      if (selectedDay) {
+                        setSelectedKey(dayKey(selectedDay));
+                        setMonth(new Date(selectedDay.getFullYear(), selectedDay.getMonth(), 1));
+                        if (yearView) setYearView(false);
                       }
-                      aria-label="Previous year"
-                      className={NAV_BUTTON_CLASS}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={collapseYearView}
-                      title="Collapse to month view"
-                      aria-label={`Collapse ${month.getFullYear()} to month view`}
-                      className="min-w-16 cursor-pointer rounded-md px-2 py-1 text-center font-display text-base font-bold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {month.getFullYear()}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setMonth(new Date(month.getFullYear() + 1, 0, 1))
-                      }
-                      aria-label="Next year"
-                      className={NAV_BUTTON_CLASS}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-                <Calendar
-                  mode="single"
-                  month={month}
-                  onMonthChange={setMonth}
-                  startMonth={rangeStart}
-                  endMonth={rangeEnd}
-                  numberOfMonths={yearView ? 12 : 1}
-                  showOutsideDays={!yearView}
-                  hideNavigation={yearView}
-                  selected={selectedDate ?? undefined}
-                  onSelect={(_, selectedDay) => {
-                    if (selectedDay) {
-                      setSelectedKey(dayKey(selectedDay));
-                      setMonth(new Date(selectedDay.getFullYear(), selectedDay.getMonth(), 1));
-                      if (yearView) setYearView(false);
-                    }
-                  }}
-                  formatters={{
-                    formatWeekdayName: (date) =>
-                      date.toLocaleDateString("en-US", { weekday: "short" }),
-                  }}
-                  modifiers={modifiers}
-                  components={{
-                    DayButton: (buttonProps) => (
-                      <StatusDayButton {...buttonProps} compact={yearView} />
-                    ),
-                    MonthCaption: ({
-                      calendarMonth,
-                      displayIndex: _displayIndex,
-                      children: _children,
-                      className,
-                      ...props
-                    }) => {
-                      const label = calendarMonth.date.toLocaleDateString(
-                        "en-US",
-                        yearView ? { month: "short" } : { month: "short", year: "numeric" },
-                      );
-                      return (
-                        <div
+                    }}
+                    formatters={{
+                      formatWeekdayName: (date) =>
+                        date.toLocaleDateString("en-US", { weekday: "short" }),
+                    }}
+                    modifiers={modifiers}
+                    components={{
+                      DayButton: (buttonProps) => (
+                        <StatusDayButton {...buttonProps} compact={yearView} />
+                      ),
+                      MonthCaption: ({
+                        calendarMonth,
+                        displayIndex: _displayIndex,
+                        children: _children,
+                        className,
+                        ...props
+                      }) => {
+                        const label = calendarMonth.date.toLocaleDateString(
+                          "en-US",
+                          yearView ? { month: "short" } : { month: "short", year: "numeric" },
+                        );
+                        return (
+                          <div
+                            className={cn(
+                              "relative flex w-full items-center justify-center",
+                              yearView ? "h-9" : "h-10 px-10",
+                              className,
+                            )}
+                            {...props}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleCaptionClick(calendarMonth.date)}
+                              aria-expanded={yearView}
+                              title={
+                                yearView
+                                  ? `Show ${calendarMonth.date.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`
+                                  : `Show all months in ${calendarMonth.date.getFullYear()}`
+                              }
+                              aria-label={
+                                yearView
+                                  ? `Show ${calendarMonth.date.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`
+                                  : `Show all months in ${calendarMonth.date.getFullYear()}`
+                              }
+                              className="inline-flex cursor-pointer items-center rounded-md px-2 py-1 font-display text-base font-bold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {label}
+                            </button>
+                          </div>
+                        );
+                      },
+                      Nav: ({
+                        className,
+                        onPreviousClick: _onPreviousClick,
+                        onNextClick: _onNextClick,
+                        previousMonth,
+                        nextMonth,
+                        ...props
+                      }) => (
+                        <nav
                           className={cn(
-                            "relative flex w-full items-center justify-center",
-                            yearView ? "h-9" : "h-10 px-10",
+                            "pointer-events-none absolute inset-x-0 top-0 z-10 flex w-full items-center justify-between gap-1 px-1",
                             className,
                           )}
                           {...props}
                         >
                           <button
                             type="button"
-                            onClick={() => handleCaptionClick(calendarMonth.date)}
-                            aria-expanded={yearView}
-                            title={
-                              yearView
-                                ? `Show ${calendarMonth.date.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`
-                                : `Show all months in ${calendarMonth.date.getFullYear()}`
-                            }
-                            aria-label={
-                              yearView
-                                ? `Show ${calendarMonth.date.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`
-                                : `Show all months in ${calendarMonth.date.getFullYear()}`
-                            }
-                            className="inline-flex cursor-pointer items-center rounded-md px-2 py-1 font-display text-base font-bold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={() => previousMonth && setMonth(previousMonth)}
+                            disabled={!previousMonth}
+                            aria-label="Previous month"
+                            className={NAV_BUTTON_CLASS}
                           >
-                            {label}
+                            <ChevronLeft className="h-4 w-4" />
                           </button>
-                        </div>
-                      );
-                    },
-                    Nav: ({
-                      className,
-                      onPreviousClick: _onPreviousClick,
-                      onNextClick: _onNextClick,
-                      previousMonth,
-                      nextMonth,
-                      ...props
-                    }) => (
-                      <nav
-                        className={cn(
-                          "pointer-events-none absolute inset-x-0 top-0 z-10 flex w-full items-center justify-between gap-1 px-1",
-                          className,
-                        )}
-                        {...props}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => previousMonth && setMonth(previousMonth)}
-                          disabled={!previousMonth}
-                          aria-label="Previous month"
-                          className={NAV_BUTTON_CLASS}
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => nextMonth && setMonth(nextMonth)}
-                          disabled={!nextMonth}
-                          aria-label="Next month"
-                          className={NAV_BUTTON_CLASS}
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
-                      </nav>
-                    ),
-                  }}
-                  classNames={{
-                    months: yearView
-                      ? "grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-                      : "relative flex w-full flex-col",
-                    month: yearView
-                      ? "w-full rounded-xl border border-border/60 bg-background/60 p-2"
-                      : "w-full",
-                    month_grid: "w-full table-fixed border-separate border-spacing-1",
-                    month_caption: yearView
-                      ? "relative flex h-9 w-full items-center justify-center"
-                      : "relative flex h-10 w-full items-center justify-center px-10",
-                    caption_label: "text-base font-display font-bold",
-                    weekdays: "",
-                    weekday: yearView
-                      ? "p-0.5 text-center text-[9px] font-bold uppercase tracking-wider text-muted-foreground"
-                      : "p-1 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground",
-                    week: "",
-                    day: "p-0 text-center align-top",
-                    today: "bg-transparent",
-                  }}
-                  className="w-full [--cell-size:2.5rem]"
-                />
+                          <button
+                            type="button"
+                            onClick={() => nextMonth && setMonth(nextMonth)}
+                            disabled={!nextMonth}
+                            aria-label="Next month"
+                            className={NAV_BUTTON_CLASS}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </nav>
+                      ),
+                    }}
+                    classNames={{
+                      months: yearView
+                        ? "grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                        : "relative flex w-full flex-col",
+                      month: yearView
+                        ? "w-full rounded-xl border border-border/60 bg-background/60 p-2"
+                        : "w-full",
+                      month_grid: "w-full table-fixed border-separate border-spacing-1",
+                      month_caption: yearView
+                        ? "relative flex h-9 w-full items-center justify-center"
+                        : "relative flex h-10 w-full items-center justify-center px-10",
+                      caption_label: "text-base font-display font-bold",
+                      weekdays: "",
+                      weekday: yearView
+                        ? "p-0.5 text-center text-[9px] font-bold uppercase tracking-wider text-muted-foreground"
+                        : "p-1 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground",
+                      week: "",
+                      day: "p-0 text-center align-top",
+                      today: "bg-transparent",
+                    }}
+                    className="w-full [--cell-size:2.5rem]"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-          <div className="sticky bottom-0 z-20 mt-3 w-full shrink-0 rounded-xl border border-border/70 bg-gradient-to-r from-primary/[0.07] via-card to-card p-3 text-xs shadow-xs backdrop-blur supports-[backdrop-filter]:bg-card/95">
+            <div className="sticky bottom-0 z-20 mt-3 w-full shrink-0 rounded-xl border border-border/70 bg-gradient-to-r from-primary/[0.07] via-card to-card p-3 text-xs shadow-xs backdrop-blur supports-[backdrop-filter]:bg-card/95">
               {selected ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -642,7 +636,7 @@ export function ScheduleRecordsModal({
                   )}
                 </p>
               )}
-          </div>
+            </div>
           </>
         ) : (
           <>
