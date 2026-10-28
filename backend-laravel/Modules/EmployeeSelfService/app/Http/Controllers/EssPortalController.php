@@ -51,6 +51,8 @@ class EssPortalController extends Controller
     private function resolveEmployee(Request $request): ?Employee
     {
         $user = $request->user();
+        $isStaff = $user && in_array((int) $user->role_id, [1, 2], true);
+
         if ($user?->employee_id) {
             $emp = Employee::with(['department', 'position', 'supervisor'])->find($user->employee_id);
             if ($emp) {
@@ -70,6 +72,12 @@ class EssPortalController extends Controller
                 }
                 return $emp;
             }
+        }
+
+        // Staff accounts must be explicitly linked to an employee record.
+        // Never guess by name or fall back to an arbitrary employee record.
+        if ($isStaff) {
+            return null;
         }
 
         if ($user?->full_name) {
@@ -168,12 +176,38 @@ class EssPortalController extends Controller
             return $emp->load(['department', 'position', 'supervisor']);
         }
 
-        // For demo superadmin/admin accounts (roles 1, 2) fallback to first employee
-        if ($user && in_array((int) $user->role_id, [1, 2])) {
-            return Employee::with(['department', 'position', 'supervisor'])->first();
+        return null;
+    }
+
+    /**
+     * GET /api/v1/ess/my-context
+     *
+     * Tells the portal whether the signed-in account is linked to an employee
+     * record. Admin and Super Admin accounts must never fall back to another
+     * employee's record.
+     */
+    public function getMyContext(Request $request): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+
+        if (! $employee) {
+            return response()->json([
+                'linked' => false,
+                'employee' => null,
+            ]);
         }
 
-        return null;
+        return response()->json([
+            'linked' => true,
+            'employee' => [
+                'id' => $employee->employee_id,
+                'code' => $employee->employee_code,
+                'name' => trim($employee->first_name . ' ' . $employee->last_name),
+                'email' => $employee->email,
+                'department' => $employee->department?->name,
+                'position' => $employee->position?->title,
+            ],
+        ]);
     }
 
     /**

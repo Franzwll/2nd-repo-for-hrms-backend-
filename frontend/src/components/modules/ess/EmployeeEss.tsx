@@ -6,6 +6,13 @@ import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
 import { myPayroll } from "@/data/ess";
+import {
+  EssPortalProvider,
+  essPortalPath,
+  myRequestModulePath,
+  type EssBasePath,
+  type EssViewerRole,
+} from "./EssPortalContext";
 
 // Lazy-loaded tab components — shows skeleton while loading
 const EssOverviewTab = lazy(() =>
@@ -83,7 +90,13 @@ function EssPageSkeleton() {
   );
 }
 
-export function EmployeeEss() {
+export function EmployeeEss({
+  basePath = "/employee",
+  viewerRole = "employee",
+}: {
+  basePath?: EssBasePath;
+  viewerRole?: EssViewerRole;
+}) {
   const navigate = useNavigate();
   // Global Quick Action Modals
   const [clockModalOpen, setClockModalOpen] = useState(false);
@@ -162,9 +175,12 @@ export function EmployeeEss() {
   const attendanceInitialTab = categoryParam === "Schedule" ? "roster" : "clocking";
 
   const isDocumentsPage = categoryParam === "Documents" || categoryParam === "RequestDoc";
+  const essTo = essPortalPath(basePath);
+  const myRequestModuleTo = myRequestModulePath(basePath);
 
   return (
-    <div className="space-y-6">
+    <EssPortalProvider basePath={basePath} viewerRole={viewerRole}>
+      <div className="space-y-6">
       <PageHeader
         title={getPageTitle()}
         description={getPageDescription()}
@@ -207,22 +223,23 @@ export function EmployeeEss() {
           if (cat.startsWith("MyRequest:")) {
             const module = cat.split(":")[1];
             if (module === "attendance" || module === "documents" || module === "payroll" || module === "promotion") {
-              navigate({ to: "/employee/my-requests/$module", params: { module } });
+              navigate({ to: myRequestModuleTo, params: { module } });
             }
             return;
           }
           if (cat === "Schedule" || cat === "Clocking" || cat === "Attendance" || cat === "Leave") {
-            navigate({ to: "/employee/ess", search: { category: cat } });
+            navigate({ to: essTo, search: { category: cat } });
           } else if (cat === "Payroll") {
-            navigate({ to: "/employee/ess", search: { category: "Payroll" } });
+            navigate({ to: essTo, search: { category: "Payroll" } });
           } else if (cat === "Documents") {
-            navigate({ to: "/employee/ess", search: { category: "Documents" } });
+            navigate({ to: essTo, search: { category: "Documents" } });
           } else if (cat === "Recognition") {
-            navigate({ to: "/employee/ess", search: { category: "Recognition" } });
+            navigate({ to: essTo, search: { category: "Recognition" } });
           }
         }}
       />
-    </div>
+      </div>
+    </EssPortalProvider>
   );
 }
 

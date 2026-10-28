@@ -38,6 +38,11 @@ import { myPayroll } from "@/data/ess";
 import { essApi, type ApiPayrollData } from "@/lib/api";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { maskSensitiveId } from "@/components/modules/ess/shared/OfficialPayslipDocument";
+import {
+  myRequestModulePath,
+  myRequestsPath,
+  useEssPortal,
+} from "@/components/modules/ess/EssPortalContext";
 
 const money = (value: number) => `₱${value.toLocaleString()}`;
 
@@ -61,6 +66,9 @@ interface StatutoryRow {
 
 export function EssPayrollTab() {
   const navigate = useNavigate();
+  const { basePath } = useEssPortal();
+  const myRequestsTo = myRequestsPath(basePath);
+  const payrollRequestTo = myRequestModulePath(basePath);
 
   const [payrollData, setPayrollData] = useState<ApiPayrollData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -552,7 +560,7 @@ export function EssPayrollTab() {
                     claim under{" "}
                     <button
                       type="button"
-                      onClick={() => navigate({ to: "/employee/my-requests" })}
+                      onClick={() => navigate({ to: myRequestsTo })}
                       className="font-semibold text-primary underline underline-offset-2 transition-colors hover:text-primary/80"
                     >
                       My Request
@@ -660,7 +668,7 @@ export function EssPayrollTab() {
               Need an LOA or have a claim? File it under{" "}
               <button
                 type="button"
-                onClick={() => navigate({ to: "/employee/my-requests" })}
+                onClick={() => navigate({ to: myRequestsTo })}
                 className="font-semibold text-primary underline underline-offset-2 transition-colors hover:text-primary/80"
               >
                 My Request
@@ -671,7 +679,7 @@ export function EssPayrollTab() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => navigate({ to: "/employee/my-requests" })}
+              onClick={() => navigate({ to: myRequestsTo })}
               className="h-7 border-primary/30 text-xs font-medium text-primary hover:bg-primary/10"
             >
               File Request
@@ -800,7 +808,7 @@ export function EssPayrollTab() {
         netPay={selectedPayslipNet}
         payslip={selectedPayslip}
         onInquiryClick={() =>
-          navigate({ to: "/employee/my-requests/$module", params: { module: "payroll" } })
+          navigate({ to: payrollRequestTo, params: { module: "payroll" } })
         }
       />
     </div>

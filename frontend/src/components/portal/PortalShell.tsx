@@ -248,7 +248,7 @@ function notificationTarget(
 
     case "hr3 recommendation":
 
-      return role === "employee" ? `${base}/ess` : `${base}/ess`;
+      return role === "employee" ? `${base}/ess` : `${base}/my-ess?category=Performance`;
 
     case "faq":
 

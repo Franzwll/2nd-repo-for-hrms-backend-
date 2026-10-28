@@ -407,8 +407,8 @@ function OTPPage() {
                     Enter it below to continue.
                   </>
                 )}
-              </p>
-            </div>
+              </div>
+            )}
 
             {/* Verify Button - matching Sign In CTA */}
             <Button

@@ -8,13 +8,22 @@ import { DocumentRequestModal } from "./modals/DocumentRequestModal";
 import { PayrollRequestModal } from "./modals/PayrollRequestModal";
 import { PromotionRequestModal } from "./modals/PromotionRequestModal";
 import { MY_REQUEST_MODULES, type MyRequestModuleId } from "./myRequestModules";
+import {
+  myRequestsPath,
+  type EssBasePath,
+} from "@/components/modules/ess/EssPortalContext";
 
 interface MyRequestModulePageProps {
   moduleId: MyRequestModuleId;
+  basePath?: EssBasePath;
 }
 
-export function MyRequestModulePage({ moduleId }: MyRequestModulePageProps) {
+export function MyRequestModulePage({
+  moduleId,
+  basePath = "/employee",
+}: MyRequestModulePageProps) {
   const config = MY_REQUEST_MODULES[moduleId];
+  const myRequestsTo = myRequestsPath(basePath);
   const [modalOpen, setModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -23,7 +32,7 @@ export function MyRequestModulePage({ moduleId }: MyRequestModulePageProps) {
   return (
     <div className="space-y-6">
       <Link
-        to="/employee/my-requests"
+        to={myRequestsTo}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
