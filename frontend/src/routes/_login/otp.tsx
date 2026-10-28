@@ -267,21 +267,6 @@ function OTPPage() {
           )}
         </p>
 
-        {import.meta.env.DEV && loginCtx?.debug_otp && (
-          <div
-            className="mt-4 p-3 bg-primary/5 border border-primary/20 rounded-md text-center"
-            title="Click to copy"
-          >
-            <div className="font-medium text-primary text-xs">Dev debug OTP:</div>
-            <div className="mt-1 font-mono text-lg font-semibold text-primary">
-              {loginCtx.debug_otp}
-            </div>
-            <div className="text-xs text-primary/80 mt-1">
-              Copy to auto-fill or enter manually
-            </div>
-          </div>
-        )}
-
         {isTotp && recoveryMode ? (
           <form
             className="mt-7 space-y-4"

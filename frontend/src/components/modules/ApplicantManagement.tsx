@@ -250,7 +250,8 @@ import {
 } from "@/lib/validation";
 
 function transformApiApplicant(raw: ApiApplicant): Applicant {
-  const a = (raw as any)?.data && (raw as any).data.applicant_id ? (raw as any).data : raw;
+  const wrapped = (raw as { data?: ApiApplicant } | null | undefined)?.data;
+  const a: ApiApplicant = wrapped && wrapped.applicant_id ? wrapped : raw;
   const position = a.job_post?.title || "Front Desk Receptionist";
   return {
     id: a.applicant_code || `APP-${a.applicant_id}`,
@@ -6118,7 +6119,7 @@ function ApplicantViewScreen({
                               {history?.data?.length ?? 0} attempt{(history?.data?.length ?? 0) !== 1 ? "s" : ""}
                             </Badge>
                           )}
-                          {onOverrideCooldown && (history?.cooldown?.active || history?.blocked) && (
+                          {onOverrideCooldown && (history?.cooldown || history?.block?.is_blocked) && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -6138,7 +6139,7 @@ function ApplicantViewScreen({
                       </div>
 
                       {/* Block alert */}
-                      {history?.blocked && (
+                      {history?.block?.is_blocked && (
                         <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
                           <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                           <div className="min-w-0 flex-1">
@@ -6162,17 +6163,19 @@ function ApplicantViewScreen({
 
                       {/* Cooldown / eligible status card */}
                       {!historyLoading && history && (
-                        history.cooldown?.active ? (
+                        Boolean(history.cooldown) ? (
                           <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
                             <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Cooling-down period active</p>
                               <p className="mt-0.5 text-xs text-muted-foreground">
-                                {history.cooldown.message ?? "This applicant must wait before re-applying."}
+                                {history.cooldown
+                                  ? `This applicant may re-apply after ${history.cooldown.eligible_after_label} (${history.cooldown.days_left} day${history.cooldown.days_left === 1 ? "" : "s"} left).`
+                                  : "This applicant must wait before re-applying."}
                               </p>
                             </div>
                           </div>
-                        ) : !history.blocked ? (
+                        ) : !history.block?.is_blocked ? (
                           <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4">
                             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                             <div>
@@ -6193,10 +6196,10 @@ function ApplicantViewScreen({
                       ) : history?.data && history.data.length > 0 ? (
                         <div className="space-y-3">
                           {history.data.map((row, idx) => {
-                            const isCurrent = row.id === a.id;
+                            const isCurrent = row.is_current;
                             return (
                               <div
-                                key={row.id ?? idx}
+                                key={row.applicant_id}
                                 className={cn(
                                   "rounded-xl border p-4 transition-colors",
                                   isCurrent
@@ -6208,7 +6211,7 @@ function ApplicantViewScreen({
                                   <div className="min-w-0 flex-1 space-y-1">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <span className="font-mono text-[11px] font-bold text-muted-foreground">
-                                        {row.applicantCode ?? `#${idx + 1}`}
+                                        {row.applicant_code ?? `#${idx + 1}`}
                                       </span>
                                       {isCurrent && (
                                         <Badge variant="outline" className="text-[10px] gap-1 border-primary/40 text-primary">
@@ -6218,7 +6221,7 @@ function ApplicantViewScreen({
                                     </div>
                                     <p className="text-sm font-semibold text-foreground">{row.position ?? a.position}</p>
                                     <p className="text-xs text-muted-foreground">
-                                      Applied: {row.appliedAt ? displayAppliedAt(row.appliedAt) : "—"}
+                                      Applied: {row.applied_at ? displayAppliedAt(row.applied_at) : "—"}
                                     </p>
                                   </div>
                                   <div className="flex flex-col items-end gap-1.5">
