@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { mySettingsApi, settingsApi, chatbotFaqApi, type ApiChatbotFaq, type ApiChatbotAnalytics } from "@/lib/api";
 import { applyTheme, getStoredTheme, type ThemeChoice } from "@/lib/theme";
-import { myProfile } from "@/data/ess";
 import { getUser } from "@/lib/auth";
 import { isValidEmail, isValidPhone, sanitizeName, sanitizePhone } from "@/lib/validation";
 import {
@@ -446,13 +445,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   /** The portal's current user key — resolved from the authenticated session
    *  so every logged-in account manages its OWN preferences /
    *  password / OTP values in the database. */
-  const currentUser =
-    getUser()?.email ??
-    (role === "employee"
-      ? myProfile.email
-      : role === "admin"
-        ? "juan.delacruz@oxfordsuites.com.ph"
-        : "bullseur@oxfordsuites.com.ph");
+  const currentUser = getUser()?.email ?? "";
 
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [backupSchedule, setBackupSchedule] = useState("daily");

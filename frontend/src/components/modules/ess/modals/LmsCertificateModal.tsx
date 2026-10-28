@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Award, Download, Printer, CheckCircle2, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { myProfile } from "@/data/ess";
+import { useEssProfile } from "@/hooks/useEssProfile";
 import { getUser } from "@/lib/auth";
 import { essApi } from "@/lib/api";
 import { downloadCertificatePdf } from "@/lib/downloadCertificatePdf";
@@ -33,19 +33,20 @@ export function LmsCertificateModal({
   onOpenChange,
   courseId,
   courseTitle,
-  category = "Hospitality & Compliance",
-  completedDate = "Jul 10, 2026",
-  score = "95%",
+  category = "General",
+  completedDate = "—",
+  score = "—",
 }: LmsCertificateModalProps) {
   // getUser() reads browser storage (absent during server render) — resolve
   // identity after mount so server and client HTML match on first paint.
   const [authUser, setAuthUser] = useState<ReturnType<typeof getUser>>(null);
+  const { employee: profile } = useEssProfile();
   useEffect(() => {
     setAuthUser(getUser());
   }, []);
-  const recipientName = authUser?.full_name || myProfile.name;
-  const recipientRole = authUser?.department_name ? `${authUser.department_name} Staff` : myProfile.position;
-  const recipientDept = authUser?.department_name || myProfile.department;
+  const recipientName = authUser?.full_name || profile?.name || "";
+  const recipientRole = profile?.position || (authUser?.department_name ? `${authUser.department_name} Staff` : "");
+  const recipientDept = profile?.department || authUser?.department_name || "";
   const [downloading, setDownloading] = useState(false);
 
   // Server-verified credential: eligibility + deterministic verification code

@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/table";
 import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/modules/ess/shared/EssStatusBadge";
 import { CardSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
-import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
 import { DocumentViewerModal } from "@/components/modules/ess/modals/DocumentViewerModal";
 import { ReportMenu } from "@/components/ui/report-menu";
@@ -51,7 +50,7 @@ function toDocRequestItem(raw: any) {
 }
 
 export function EssDocumentsTab() {
-  const [documents, setDocuments] = useState(myEmployeeDocuments);
+  const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Live Database Fetch
@@ -59,28 +58,26 @@ export function EssDocumentsTab() {
     essApi
       .myDocuments()
       .then((res) => {
-        if (res?.documents?.length) {
-          setDocuments(
-            res.documents.map((d) => ({
-              id: d.code || `DOC-${d.id}`,
-              dbId: d.id,
-              title: d.title,
-              category: d.category,
-              status: d.status,
-              date: d.issuedDate,
-              size: d.fileSize,
-              expiry: (d as any).expiryDate ?? null,
-              downloadUrl: d.downloadUrl,
-            }))
-          );
-        }
+        setDocuments(
+          (res?.documents ?? []).map((d) => ({
+            id: d.code || `DOC-${d.id}`,
+            dbId: d.id,
+            title: d.title,
+            category: d.category,
+            status: d.status,
+            date: d.issuedDate,
+            size: d.fileSize,
+            expiry: (d as any).expiryDate ?? null,
+            downloadUrl: d.downloadUrl,
+          })),
+        );
       })
-      .catch(() => {})
+      .catch(() => setDocuments([]))
       .finally(() => setLoading(false));
   }, []);
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [uploadTargetTitle, setUploadTargetTitle] = useState("Updated NBI Clearance (2026)");
+  const [uploadTargetTitle, setUploadTargetTitle] = useState("");
   // TRY: card-grid view — remove block to revert to table-only
   const [docViewMode, setDocViewMode] = useState<"grid" | "list">("grid");
   const [docStatusFilter, setDocStatusFilter] = useState("all");
@@ -89,10 +86,17 @@ export function EssDocumentsTab() {
   const [viewerOpen, setViewerOpen] = useState(false);
 
   const handleUploadSuccess = (uploadedDoc: any) => {
-    // Replace or add document
-    setDocuments((prev) =>
-      prev.map((d) => (d.title === uploadedDoc.title ? { ...d, status: "Submitted", size: uploadedDoc.size } : d))
-    );
+    setDocuments((prev) => {
+      const exists = prev.some((d) => d.title === uploadedDoc.title);
+      if (exists) {
+        return prev.map((d) =>
+          d.title === uploadedDoc.title
+            ? { ...d, status: "Submitted", size: uploadedDoc.size, downloadUrl: uploadedDoc.downloadUrl }
+            : d,
+        );
+      }
+      return [...prev, uploadedDoc];
+    });
   };
 
   const openUploadForDoc = (title: string) => {
@@ -104,19 +108,9 @@ export function EssDocumentsTab() {
     if (doc.downloadUrl && doc.downloadUrl !== "#") {
       window.open(doc.downloadUrl, "_blank");
       toast.success(`Opening ${doc.title}...`);
-    } else {
-      const content = `OXFORD SUITES MAKATI\nOfficial Employment Record\n\nDocument: ${doc.title}\nCategory: ${doc.category}\nStatus: Verified\nDate on File: ${doc.date}\nSystem Verification ID: ${doc.id}\n`;
-      const blob = new Blob([content], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${doc.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success(`Downloaded ${doc.title}`);
+      return;
     }
+    toast.error("No file is available for this document yet.");
   };
 
   const missingDocs = documents.filter((d) => d.status === "Missing");

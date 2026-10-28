@@ -25,8 +25,8 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ListSkeleton } from "@/components/ui/loading-skeletons";
 import { toast } from "sonner";
-import { myLeaveBalances, myProfile } from "@/data/ess";
 import { essApi, type ApiLeaveBalance } from "@/lib/api";
+import { useEssProfile } from "@/hooks/useEssProfile";
 
 export function EssLeaveTab() {
   const [leaveType, setLeaveType] = useState("Vacation Leave");
@@ -39,6 +39,7 @@ export function EssLeaveTab() {
 
   const [balances, setBalances] = useState<ApiLeaveBalance[]>([]);
   const [loading, setLoading] = useState(true);
+  const { employee } = useEssProfile();
 
   const loadLeaves = async () => {
     try {
@@ -69,15 +70,7 @@ export function EssLeaveTab() {
         available: foundApi.available,
       };
     }
-    const foundStatic = myLeaveBalances.find((b) => b.type === leaveType);
-    if (foundStatic) {
-      return {
-        total: foundStatic.total,
-        used: foundStatic.used,
-        available: Math.max(0, foundStatic.total - foundStatic.used),
-      };
-    }
-    return { total: 15, used: 0, available: 15 };
+    return { total: 0, used: 0, available: 0 };
   }, [leaveType, balances]);
 
   // Calculate requested days
@@ -295,7 +288,7 @@ export function EssLeaveTab() {
                 <div className="rounded-md bg-muted/40 border border-border/70 p-3 text-xs text-muted-foreground flex items-center gap-2.5">
                   <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                   <span>
-                    <strong>Approval Chain:</strong> {myProfile.supervisor} (Supervisor) → Juan Dela Cruz (HR Administration)
+                    <strong>Approval Chain:</strong> {employee?.supervisor || "Your supervisor"} (Supervisor) → HR Administration
                   </span>
                 </div>
 
@@ -332,7 +325,7 @@ export function EssLeaveTab() {
               {loading ? (
                 <ListSkeleton items={4} />
               ) : (
-                (balances.length > 0 ? balances.slice(0, 4) : myLeaveBalances).map((b: any) => {
+                (balances.length > 0 ? balances.slice(0, 4) : []).map((b: any) => {
                 const available = b.available ?? Math.max(0, b.total - b.used);
                 const percent = b.total > 0 ? Math.round((available / b.total) * 100) : 0;
                 return (

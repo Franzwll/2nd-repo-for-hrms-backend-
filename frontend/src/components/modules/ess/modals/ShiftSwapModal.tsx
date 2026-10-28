@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,9 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeftRight, Send, CheckCircle2, UserCheck } from "lucide-react";
 import { toast } from "sonner";
-import { employees } from "@/data/hr";
-import { myProfile } from "@/data/ess";
-import { essApi } from "@/lib/api";
+import { essApi, type ApiEssColleague } from "@/lib/api";
+import { useEssProfile } from "@/hooks/useEssProfile";
 
 interface ShiftSwapModalProps {
   open: boolean;
@@ -26,12 +25,33 @@ interface ShiftSwapModalProps {
 
 export function ShiftSwapModal({ open, onOpenChange, onSubmitSwap }: ShiftSwapModalProps) {
   const [shiftDate, setShiftDate] = useState("");
-  const [targetPeer, setTargetPeer] = useState("EMP-0005");
+  const [targetPeer, setTargetPeer] = useState("");
   const [peerShiftDate, setPeerShiftDate] = useState("");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [colleagues, setColleagues] = useState<ApiEssColleague[]>([]);
+  const { employee: profile } = useEssProfile();
 
-  const peers = employees.filter((e) => e.department === myProfile.department && e.name !== myProfile.name);
+  useEffect(() => {
+    if (!open) return;
+    essApi
+      .colleagues()
+      .then((res) => {
+        const list = res?.colleagues ?? [];
+        setColleagues(
+          profile?.department
+            ? list.filter((c) => c.department === profile.department)
+            : list,
+        );
+      })
+      .catch(() => setColleagues([]));
+  }, [open, profile?.department]);
+
+  const peers = colleagues.filter((c) => String(c.id) !== String(profile?.id ?? ""));
+
+  useEffect(() => {
+    if (!targetPeer && peers[0]) setTargetPeer(String(peers[0].id));
+  }, [peers, targetPeer]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +60,7 @@ export function ShiftSwapModal({ open, onOpenChange, onSubmitSwap }: ShiftSwapMo
       return;
     }
 
-    const peerObj = employees.find((e) => e.id === targetPeer);
+    const peerObj = peers.find((e) => String(e.id) === targetPeer);
 
     try {
       setSubmitting(true);
@@ -76,7 +96,7 @@ export function ShiftSwapModal({ open, onOpenChange, onSubmitSwap }: ShiftSwapMo
             </div>
             <div>
               <DialogTitle className="text-xl font-display">Request Shift Swap</DialogTitle>
-              <DialogDescription>Trade scheduled shifts with a colleague in {myProfile.department}.</DialogDescription>
+              <DialogDescription>Trade scheduled shifts with a colleague in {profile?.department || "your department"}.</DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -90,10 +110,15 @@ export function ShiftSwapModal({ open, onOpenChange, onSubmitSwap }: ShiftSwapMo
               </SelectTrigger>
               <SelectContent>
                 {peers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
+                  <SelectItem key={p.id} value={String(p.id)}>
                     {p.name} ({p.position})
                   </SelectItem>
                 ))}
+                {peers.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    No colleagues available in your department.
+                  </div>
+                )}
               </SelectContent>
             </Select>
           </div>

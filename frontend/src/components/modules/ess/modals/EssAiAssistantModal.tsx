@@ -31,7 +31,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { getUser } from "@/lib/auth";
-import { myProfile, myPayroll, myAttendance } from "@/data/ess";
 import { essApi, type ApiEssOverview } from "@/lib/api";
 
 interface Message {
@@ -62,15 +61,15 @@ export function EssAiAssistantModal({
   onNavigateCategory,
 }: EssAiAssistantModalProps) {
   const user = getUser();
-  const userName = user?.full_name || myProfile.name;
-  const firstName = userName.split(" ")[0];
-  const userDept = user?.department_name || myProfile.department;
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [mounted, setMounted] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
+  const userName = overview?.employee?.name || user?.full_name || "";
+  const firstName = userName.split(" ")[0] || "there";
+  const userDept = overview?.employee?.department || user?.department_name || "";
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -126,7 +125,7 @@ export function EssAiAssistantModal({
     if (q.includes("leave") || q.includes("vacation") || q.includes("sick") || q.includes("vl") || q.includes("sl") || q.includes("credit")) {
       const balances = overview?.leave_balances?.length
         ? overview.leave_balances.map((b) => `• **${b.type}**: ${b.available} days remaining (out of ${b.total} days)`).join("\n")
-        : `• **Vacation Leave (VL)**: 12 days remaining\n• **Sick Leave (SL)**: 10 days remaining\n• **Emergency Leave**: 3 days remaining`;
+        : `No leave balances have been assigned to your employee record yet. Please contact HR Administration.`;
 
       return {
         id: `bot-${Date.now()}`,
@@ -146,7 +145,7 @@ export function EssAiAssistantModal({
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
-        text: `**Oxford Suites Makati Payroll Schedule & Guidelines:**\n\n• **Payout Dates**: 15th and 30th/31st of each month.\n• **Cut-off Periods**:\n  - 1st–15th: Paid on the 30th.\n  - 16th–end of month: Paid on the 15th of the following month.\n• **Next Upcoming Payout**: **${myPayroll.nextPayout || "August 30, 2026"}**.\n• **Night Differential**: 10% premium for hotel shifts rendered between 10:00 PM and 6:00 AM.\n• **13th Month Pay**: Disbursed on or before December 15 annually.`,
+        text: `**Oxford Suites Makati Payroll Schedule & Guidelines:**\n\n• **Payout Dates**: 15th and 30th/31st of each month.\n• **Cut-off Periods**:\n  - 1st–15th: Paid on the 30th.\n  - 16th–end of month: Paid on the 15th of the following month.\n• **Next Upcoming Payout**: **${overview?.payroll_summary?.next_payout || "not available yet"}**.\n• **Night Differential**: 10% premium for hotel shifts rendered between 10:00 PM and 6:00 AM.\n• **13th Month Pay**: Disbursed on or before December 15 annually.`,
         timestamp: timeStr,
         actionCard: {
           title: "View Payslips & Breakdown",

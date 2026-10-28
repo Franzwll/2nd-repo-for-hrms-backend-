@@ -2515,7 +2515,7 @@ export const landingApi = {
 /* ========================================================================= */
 
 export interface ApiEssEmployee {
-  id: number;
+  id: number | null;
   code: string;
   name: string;
   email: string;
@@ -2524,6 +2524,34 @@ export interface ApiEssEmployee {
   supervisor: string;
   employment_type?: string;
   date_hired?: string;
+  salary_grade?: string | null;
+  salary_step?: string | null;
+  phone?: string;
+  personal_email?: string;
+  address?: string;
+  birth_date?: string | null;
+  gender?: string;
+  civil_status?: string;
+  nationality?: string;
+  status?: string;
+  sss_number?: string;
+  philhealth_number?: string;
+  pagibig_number?: string;
+  tin_number?: string;
+  emergency_contacts?: {
+    name: string;
+    relationship: string;
+    phone: string;
+    address: string;
+  }[];
+}
+
+export interface ApiEssColleague {
+  id: number;
+  code: string;
+  name: string;
+  position: string;
+  department: string;
 }
 
 export interface ApiLeaveBalance {
@@ -2570,6 +2598,12 @@ export interface ApiPayrollData {
   employee_name: string;
   position: string;
   department: string;
+  statutory?: {
+    sss: string;
+    philhealth: string;
+    pagibig: string;
+    tin: string;
+  };
   baseSalary: number;
   allowances: number;
   gross: number;
@@ -2631,6 +2665,15 @@ export interface ApiEssOverview {
   leave_balances: ApiLeaveBalance[];
   pending_requests_count: number;
   recent_requests: any[];
+  documents_summary?: {
+    total: number;
+    verified: number;
+  };
+  recognition_summary?: {
+    received: number;
+    given: number;
+    top_pillar: string;
+  };
 }
 
 export interface ApiEssBenefit {
@@ -2730,6 +2773,7 @@ export interface ApiEssCategory {
 export const essApi = {
   // Employee Portal
   overview: () => request<ApiEssOverview>("/ess/my-overview"),
+  colleagues: () => request<{ colleagues: ApiEssColleague[] }>("/ess/colleagues"),
   schedule: () =>
     request<{ employee: ApiEssEmployee; weekly_roster: ApiScheduleDay[] }>("/ess/my-schedule"),
   myAttendance: () =>
@@ -2785,6 +2829,8 @@ export const essApi = {
         department: string;
         overall_rating: number | null;
         competency_level: string | null;
+        salary_grade?: string | null;
+        salary_step?: string | null;
       };
       stats: {
         completed_courses: number;

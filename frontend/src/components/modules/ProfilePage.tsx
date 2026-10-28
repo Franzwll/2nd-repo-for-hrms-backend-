@@ -189,150 +189,48 @@ const departmentOptions = [
 
 const civilStatusOptions = ["Single", "Married", "Widowed", "Separated", "Divorced"];
 
-const seedByRole: Record<Role, ProfileState> = {
-  superadmin: {
-    fullName: "Bullseur Santiago",
-    email: "superadmin@oxfordsuites.com.ph",
-    phone: "+63 917 100 1000",
-    position: "Super Administrator",
-    department: "Human Resources",
-    employeeId: "SA-00001",
-    dateCreated: "January 12, 2024",
-    lastLogin: "August 1, 2026 09:24 AM",
-    status: "Active",
-    gender: "Male",
-
-    personalEmail: "bullseur.santiago@outlook.com",
-    telephone: "+63 2 8899 0001",
-    currentAddress: "Tower 1, Residences at Greenbelt, Makati City",
-    permanentAddress: "128 Acacia Ave, Ayala Alabang, Muntinlupa City",
-
-    civilStatus: "Married",
-    spouseName: "Victoria Santiago",
-    spouseOccupation: "Hospitality Consultant",
-    spouseEmployer: "Self-Employed",
-    fatherName: "Eduardo Santiago",
-    motherMaidenName: "Corazon Bullseur",
-    dependents: [
-      { name: "Gabriel Santiago", relationship: "Son", birthDate: "2015-08-20" },
-      { name: "Chloe Santiago", relationship: "Daughter", birthDate: "2018-11-04" },
-    ],
-
-    emergencyName: "Victoria Santiago",
-    emergencyRelationship: "Spouse",
-    emergencyPhone: "+63 917 100 2000",
-    emergencyAddress: "Residences at Greenbelt, Makati City",
-    emergencySecondaryName: "Eduardo Santiago",
-    emergencySecondaryRelationship: "Father",
-    emergencySecondaryPhone: "+63 917 100 3000",
-
-    employmentType: "Regular",
-    dateHired: "January 12, 2024",
-    supervisor: "Board of Directors",
-    workLocation: "Oxford Suites Makati (Executive Office)",
-    workShift: "Flexible Executive Hours",
-    salaryGrade: "Executive Grade",
-    salaryStep: "Step 5",
-    sssNumber: "03-9988112-4",
-    philHealthNumber: "12-009988776-1",
-    pagIbigNumber: "1210-4499-8811",
-    tinNumber: "109-876-543-000",
-  },
-  admin: {
-    fullName: "Juan Dela Cruz",
-    email: "admin@oxfordsuites.com.ph",
-    phone: "+63 917 123 4567",
-    position: "HR Administrator",
-    department: "Human Resources",
-    employeeId: "AD-00023",
-    dateCreated: "February 5, 2024",
-    lastLogin: "August 1, 2026 10:10 AM",
-    status: "Active",
-    gender: "Male",
-
-    personalEmail: "juan.delacruz.ph@gmail.com",
-    telephone: "+63 2 8765 4321",
-    currentAddress: "Unit 12B, San Lorenzo Tower, Makati City",
-    permanentAddress: "45 Magsaysay St, Malolos, Bulacan",
-
-    civilStatus: "Married",
-    spouseName: "Maria Dela Cruz",
-    spouseOccupation: "Certified Public Accountant",
-    spouseEmployer: "SG&V Co.",
-    fatherName: "Antonio Dela Cruz",
-    motherMaidenName: "Rosa Santos",
-    dependents: [
-      { name: "Joaquin Dela Cruz", relationship: "Son", birthDate: "2019-03-14" },
-    ],
-
-    emergencyName: "Maria Dela Cruz",
-    emergencyRelationship: "Spouse",
-    emergencyPhone: "+63 918 555 8899",
-    emergencyAddress: "Unit 12B, San Lorenzo Tower, Makati City",
-    emergencySecondaryName: "Antonio Dela Cruz",
-    emergencySecondaryRelationship: "Father",
-    emergencySecondaryPhone: "+63 917 222 3344",
-
-    employmentType: "Regular",
-    dateHired: "February 5, 2024",
-    supervisor: "Bullseur Santiago",
-    workLocation: "Oxford Suites Makati (HR Office)",
-    workShift: "Standard Office (08:30 AM – 05:30 PM)",
-    salaryGrade: "Grade 7",
-    salaryStep: "Step 3",
-    sssNumber: "33-7654321-9",
-    philHealthNumber: "14-554433221-0",
-    pagIbigNumber: "1210-7766-5544",
-    tinNumber: "223-456-789-000",
-  },
-  employee: {
-    fullName: "Kevin Dela Cruz",
-    email: "kevin.delacruz@oxfordsuites.com.ph",
-    phone: "+63 921 774 9903",
-    position: "Line Cook",
-    department: "Kitchen / Culinary",
-    employeeId: "EMP-0005",
-    dateCreated: "April 15, 2026",
-    lastLogin: "August 1, 2026 07:52 AM",
-    status: "Active",
-    gender: "Male",
-
-    personalEmail: "kevin.delacruz92@gmail.com",
-    telephone: "+63 2 8123 4567",
-    currentAddress: "14 Kalayaan Ave, Brgy. Bel-Air, Makati City",
-    permanentAddress: "Block 12 Lot 4, San Jose, Batangas",
-
-    civilStatus: "Married",
-    spouseName: "Liza Santos-Dela Cruz",
-    spouseOccupation: "Operations Specialist",
-    spouseEmployer: "BPO Solutions Inc.",
-    fatherName: "Roberto Dela Cruz",
-    motherMaidenName: "Elena Bautista",
-    dependents: [
-      { name: "Mateo Dela Cruz", relationship: "Son", birthDate: "2021-05-12" },
-      { name: "Sofia Dela Cruz", relationship: "Daughter", birthDate: "2023-09-18" },
-    ],
-
-    emergencyName: "Liza Santos-Dela Cruz",
-    emergencyRelationship: "Spouse",
-    emergencyPhone: "+63 918 222 4410",
-    emergencyAddress: "14 Kalayaan Ave, Brgy. Bel-Air, Makati City",
-    emergencySecondaryName: "Roberto Dela Cruz",
-    emergencySecondaryRelationship: "Father",
-    emergencySecondaryPhone: "+63 917 888 1234",
-
-    employmentType: "Probationary",
-    dateHired: "April 15, 2026",
-    supervisor: "Executive Chef Marco",
-    workLocation: "Oxford Suites Makati (Main Kitchen)",
-    workShift: "Morning Shift (07:00 AM – 04:00 PM)",
-    salaryGrade: "Grade 4",
-    salaryStep: "Step 2",
-    sssNumber: "34-5829104-1",
-    philHealthNumber: "12-092847192-3",
-    pagIbigNumber: "1210-9847-2291",
-    tinNumber: "452-918-301-000",
-  },
+/** Profiles are never populated from demo rows — only from the authenticated
+ *  account and, when linked, the employee record returned by the ESS API. */
+const emptyProfile: ProfileState = {
+  fullName: "",
+  email: "",
+  phone: "",
+  position: "",
+  department: "",
+  employeeId: "",
+  dateCreated: "",
+  lastLogin: "",
+  status: "",
+  gender: undefined,
+  personalEmail: "",
+  telephone: "",
+  currentAddress: "",
+  permanentAddress: "",
+  civilStatus: "",
+  spouseName: "",
+  spouseOccupation: "",
+  spouseEmployer: "",
+  fatherName: "",
+  motherMaidenName: "",
+  dependents: [],
+  emergencyName: "",
+  emergencyRelationship: "",
+  emergencyPhone: "",
+  emergencyAddress: "",
+  emergencySecondaryName: "",
+  emergencySecondaryRelationship: "",
+  emergencySecondaryPhone: "",
+  employmentType: "",
+  dateHired: "",
+  supervisor: "",
+  workLocation: "",
+  workShift: "",
+  salaryGrade: "",
+  salaryStep: "",
+  sssNumber: "",
+  philHealthNumber: "",
+  pagIbigNumber: "",
+  tinNumber: "",
 };
 
 function initialsOf(name: string) {
@@ -344,18 +242,27 @@ function initialsOf(name: string) {
     .join("");
 }
 
+function formatProfileDate(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+}
+
 export function ProfilePage({ role }: { role: Role }) {
   const user = getUser();
-  const seed = seedByRole[role];
 
   const initialProfile: ProfileState = {
-    fullName: user?.full_name || seed.fullName,
-    email: user?.email || seed.email,
-    phone: seed.phone,
-    position: (user?.department_name ? `${user.department_name} Staff` : "") || seed.position,
-    department: user?.department_name || seed.department,
-    employeeId: user?.employee_id ? `EMP-000${user.employee_id}` : seed.employeeId,
-    dateCreated: seed.dateCreated,
+    ...emptyProfile,
+    fullName: user?.full_name || "",
+    email: user?.email || "",
+    position:
+      role === "superadmin"
+        ? "Super Administrator"
+        : role === "admin"
+          ? "Administrator"
+          : "",
+    department: user?.department_name || "",
     lastLogin: user?.last_login_at
       ? new Date(user.last_login_at).toLocaleString("en-US", {
           month: "short",
@@ -364,42 +271,9 @@ export function ProfilePage({ role }: { role: Role }) {
           hour: "2-digit",
           minute: "2-digit",
         })
-      : seed.lastLogin,
-    status: user?.status || seed.status,
-    gender: user?.gender || seed.gender,
-
-    personalEmail: seed.personalEmail,
-    telephone: seed.telephone,
-    currentAddress: seed.currentAddress,
-    permanentAddress: seed.permanentAddress,
-
-    civilStatus: seed.civilStatus,
-    spouseName: seed.spouseName,
-    spouseOccupation: seed.spouseOccupation,
-    spouseEmployer: seed.spouseEmployer,
-    fatherName: seed.fatherName,
-    motherMaidenName: seed.motherMaidenName,
-    dependents: seed.dependents,
-
-    emergencyName: seed.emergencyName,
-    emergencyRelationship: seed.emergencyRelationship,
-    emergencyPhone: seed.emergencyPhone,
-    emergencyAddress: seed.emergencyAddress,
-    emergencySecondaryName: seed.emergencySecondaryName,
-    emergencySecondaryRelationship: seed.emergencySecondaryRelationship,
-    emergencySecondaryPhone: seed.emergencySecondaryPhone,
-
-    employmentType: seed.employmentType,
-    dateHired: seed.dateHired,
-    supervisor: seed.supervisor,
-    workLocation: seed.workLocation,
-    workShift: seed.workShift,
-    salaryGrade: seed.salaryGrade,
-    salaryStep: seed.salaryStep,
-    sssNumber: seed.sssNumber,
-    philHealthNumber: seed.philHealthNumber,
-    pagIbigNumber: seed.pagIbigNumber,
-    tinNumber: seed.tinNumber,
+      : "",
+    status: user?.status || "",
+    gender: user?.gender || undefined,
   };
 
   const [profile, setProfile] = useState<ProfileState>(initialProfile);
@@ -462,42 +336,72 @@ export function ProfilePage({ role }: { role: Role }) {
     } catch {
       /* ignore */
     }
-    if (role === "employee") {
-      essApi
-        .overview()
+    essApi
+      .overview()
         .then((ov) => {
-          if (ov?.employee) {
-            setProfile((prev) => ({
-              ...prev,
-              fullName: user?.full_name || ov.employee.name || prev.fullName,
-              email: user?.email || ov.employee.email || prev.email,
-              position: ov.employee.position || prev.position,
-              department: user?.department_name || ov.employee.department || prev.department,
-              employeeId: ov.employee.code || prev.employeeId,
-              dateCreated: ov.employee.date_hired || prev.dateCreated,
-              status: user?.status || prev.status,
-              employmentType: ov.employee.employment_type || prev.employmentType,
-              supervisor: ov.employee.supervisor || prev.supervisor,
-              dateHired: ov.employee.date_hired || prev.dateHired,
-            }));
-            setDraft((prev) => ({
-              ...prev,
-              fullName: user?.full_name || ov.employee.name || prev.fullName,
-              email: user?.email || ov.employee.email || prev.email,
-              position: ov.employee.position || prev.position,
-              department: user?.department_name || ov.employee.department || prev.department,
-              employeeId: ov.employee.code || prev.employeeId,
-              dateCreated: ov.employee.date_hired || prev.dateCreated,
-              status: user?.status || prev.status,
-              employmentType: ov.employee.employment_type || prev.employmentType,
-              supervisor: ov.employee.supervisor || prev.supervisor,
-              dateHired: ov.employee.date_hired || prev.dateHired,
-            }));
-          }
+          if (!ov?.employee) return;
+          const employee = ov.employee;
+          const emergency = employee.emergency_contacts ?? [];
+          const primary = emergency[0];
+          const secondary = emergency[1];
+          const lastLogin = user?.last_login_at
+            ? new Date(user.last_login_at).toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "";
+
+          const applyLiveProfile = (prev: ProfileState): ProfileState => ({
+            ...prev,
+            fullName: employee.name || user?.full_name || "",
+            email: employee.email || user?.email || "",
+            phone: employee.phone || "",
+            personalEmail: employee.personal_email || "",
+            position: employee.position || "",
+            department: employee.department || user?.department_name || "",
+            employeeId: employee.code || "",
+            dateCreated: formatProfileDate(employee.date_hired),
+            dateHired: formatProfileDate(employee.date_hired),
+            lastLogin,
+            status: employee.status || user?.status || "",
+            gender: (employee.gender as ProfileState["gender"]) || undefined,
+            currentAddress: employee.address || "",
+            permanentAddress: "",
+            civilStatus: employee.civil_status || "",
+            // Family details are not part of the employee master record yet.
+            spouseName: "",
+            spouseOccupation: "",
+            spouseEmployer: "",
+            fatherName: "",
+            motherMaidenName: "",
+            dependents: [],
+            emergencyName: primary?.name || "",
+            emergencyRelationship: primary?.relationship || "",
+            emergencyPhone: primary?.phone || "",
+            emergencyAddress: primary?.address || "",
+            emergencySecondaryName: secondary?.name || "",
+            emergencySecondaryRelationship: secondary?.relationship || "",
+            emergencySecondaryPhone: secondary?.phone || "",
+            employmentType: employee.employment_type || "",
+            supervisor: employee.supervisor || "",
+            workLocation: "",
+            workShift: "",
+            salaryGrade: employee.salary_grade || "",
+            salaryStep: employee.salary_step || "",
+            sssNumber: employee.sss_number || "",
+            philHealthNumber: employee.philhealth_number || "",
+            pagIbigNumber: employee.pagibig_number || "",
+            tinNumber: employee.tin_number || "",
+          });
+
+          setProfile(applyLiveProfile);
+          setDraft(applyLiveProfile);
         })
         .catch(() => {});
-    }
-  }, [role, user?.full_name, user?.email, user?.department_name]);
+  }, [role, user?.full_name, user?.email, user?.department_name, user?.last_login_at, user?.status]);
 
   function set<K extends keyof ProfileState>(key: K, v: ProfileState[K]) {
     setDraft((d) => ({ ...d, [key]: v }));

@@ -32,7 +32,6 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
-import { myAttendance } from "@/data/ess";
 import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
 import { essApi, type ApiScheduleDay, type ApiEssEmployee } from "@/lib/api";
 
@@ -40,45 +39,14 @@ interface EssAttendanceTabProps {
   initialTab?: "clocking" | "roster" | "schedule";
 }
 
-const DEFAULT_ROSTER: ApiScheduleDay[] = [
-  {
-    day: "Monday",
-    shift: "Morning Shift",
-    time: "07:00 AM – 04:00 PM",
-    hours: "8.0h (1h break)",
-    location: "Main Kitchen · Line 1",
-  },
-  {
-    day: "Tuesday",
-    shift: "Morning Shift",
-    time: "07:00 AM – 04:00 PM",
-    hours: "8.0h (1h break)",
-    location: "Main Kitchen · Line 1",
-  },
-  {
-    day: "Wednesday",
-    shift: "Morning Shift",
-    time: "07:00 AM – 04:00 PM",
-    hours: "8.0h (1h break)",
-    location: "Main Kitchen · Line 1",
-  },
-  {
-    day: "Thursday",
-    shift: "Mid Shift",
-    time: "02:00 PM – 11:00 PM",
-    hours: "8.0h (1h break)",
-    location: "Main Kitchen · Pastry Prep",
-  },
-  {
-    day: "Friday",
-    shift: "Night Shift",
-    time: "11:00 PM – 07:00 AM",
-    hours: "8.0h (1h break)",
-    location: "Main Kitchen · Night Prep",
-  },
-  { day: "Saturday", shift: "Rest Day", time: "Off Duty", hours: "0h", location: "Off Duty" },
-  { day: "Sunday", shift: "Rest Day", time: "Off Duty", hours: "0h", location: "Off Duty" },
-];
+const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const EMPTY_ROSTER: ApiScheduleDay[] = WEEK_DAYS.map((day) => ({
+  day,
+  shift: "No schedule assigned",
+  time: "—",
+  hours: "0h",
+  location: "—",
+}));
 
 /**
  * Returns visual metadata (Sun, Moon, Sunset, or Bed) based on shift name and time
@@ -236,19 +204,19 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [currentDutyStatus, setCurrentDutyStatus] = useState<
     "clocked_in" | "on_break" | "clocked_out"
-  >("clocked_in");
+  >("clocked_out");
   const [punchLog, setPunchLog] = useState({
-    timeIn: myAttendance.today.timeIn || "07:52 AM",
-    breakIn: myAttendance.today.breakIn || "12:00 PM",
-    breakOut: myAttendance.today.breakOut || "12:58 PM",
-    timeOut: myAttendance.today.timeOut !== "—" ? myAttendance.today.timeOut : "—",
+    timeIn: "—",
+    breakIn: "—",
+    breakOut: "—",
+    timeOut: "—",
   });
 
   // Attendance summary & history
   const [attSummary, setAttSummary] = useState({
-    present_days: 18,
+    present_days: 0,
     leave_days: 0,
-    average_hours: 8.0,
+    average_hours: 0,
   });
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
@@ -256,7 +224,13 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
   // Schedule state
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
-  const [roster, setRoster] = useState<ApiScheduleDay[]>(DEFAULT_ROSTER);
+  const [roster, setRoster] = useState<ApiScheduleDay[]>(EMPTY_ROSTER);
+  const todayRoster = useMemo(() => {
+    const dayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][
+      new Date().getDay()
+    ];
+    return roster.find((r) => r.day === dayName);
+  }, [roster]);
 
   // TRY: top-right records modal — remove state if not applicable
   const [recordsModalOpen, setRecordsModalOpen] = useState(false);
@@ -282,6 +256,14 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
               timeIn: rec.timeIn || prev.timeIn,
               timeOut: rec.timeOut || prev.timeOut,
             }));
+            const today = new Date().toLocaleDateString("en-CA");
+            if (rec.rawDate === today) {
+              setCurrentDutyStatus(
+                rec.timeIn && rec.timeIn !== "—" && (!rec.timeOut || rec.timeOut === "—")
+                  ? "clocked_in"
+                  : "clocked_out",
+              );
+            }
           }
         }
         if (res?.summary) {
@@ -332,21 +314,8 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
     ? currentTime.toLocaleDateString("en-US", { weekday: "long" })
     : "";
 
-  // DTR history — admin-consistent searchable + paginated table
-  const dtrRecords = useMemo(() => {
-    if (attendanceLogs.length > 0) return attendanceLogs;
-    return myAttendance.history.map((h) => ({
-      date: h.date,
-      timeIn: h.in,
-      timeOut: h.out,
-      workedHours: h.hours,
-      status: h.remark.includes("Present")
-        ? "Present"
-        : h.remark.includes("Late")
-          ? "Late"
-          : h.remark,
-    }));
-  }, [attendanceLogs]);
+  // DTR history — live biometric / web clock records only.
+  const dtrRecords = useMemo(() => attendanceLogs, [attendanceLogs]);
 
   return (
     <div className="space-y-6">
@@ -511,29 +480,31 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                     <div className="space-y-2.5 pt-3.5 text-xs">
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Assigned Shift:</span>
-                        <span className="font-semibold text-foreground">
-                          AM Shift (07:00 AM – 04:00 PM)
+                        <span className="font-semibold text-foreground text-right">
+                          {todayRoster && todayRoster.shift !== "No schedule assigned"
+                            ? `${todayRoster.shift} (${todayRoster.time})`
+                            : "No schedule assigned"}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
-                        <span className="text-muted-foreground font-medium">Geolocation:</span>
-                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                          Oxford Suites Makati (Main Kitchen) ✓
+                        <span className="text-muted-foreground font-medium">Location:</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">
+                          {todayRoster?.location || "—"}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Supervisor:</span>
                         <span className="font-semibold text-foreground">
-                          {employeeInfo?.supervisor || "Chef Marco D. Santos"}
+                          {employeeInfo?.supervisor || "—"}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Department:</span>
                         <span className="font-semibold text-foreground">
-                          {employeeInfo?.department || "Kitchen / Culinary"}
+                          {employeeInfo?.department || "—"}
                         </span>
                       </div>
                     </div>

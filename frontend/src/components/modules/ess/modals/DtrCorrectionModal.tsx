@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Clock, Send, Upload, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { myProfile } from "@/data/ess";
+import { useEssProfile } from "@/hooks/useEssProfile";
 
 interface DtrCorrectionModalProps {
   open: boolean;
@@ -23,6 +23,7 @@ interface DtrCorrectionModalProps {
 }
 
 export function DtrCorrectionModal({ open, onOpenChange, onSubmitCorrection }: DtrCorrectionModalProps) {
+  const { employee } = useEssProfile();
   const [type, setType] = useState("Time In Correction");
   const [date, setDate] = useState("");
   const [correctedTime, setCorrectedTime] = useState("08:00");
@@ -46,7 +47,7 @@ export function DtrCorrectionModal({ open, onOpenChange, onSubmitCorrection }: D
     };
 
     onSubmitCorrection?.(newCorrection);
-    toast.success(`${type} request submitted to ${myProfile.supervisor} for verification.`);
+    toast.success(`${type} request submitted to ${employee?.supervisor || "your supervisor"} for verification.`);
     onOpenChange(false);
     setDate("");
     setReason("");

@@ -11,9 +11,8 @@ import {
 } from "@/components/ui/select";
 import { Briefcase, Send, Building2, Paperclip, UploadCloud, FileText, X } from "lucide-react";
 import { toast } from "sonner";
-import { myProfile, myPerformance } from "@/data/ess";
-import { positions as fallbackPositions } from "@/data/hr";
 import { essApi } from "@/lib/api";
+import { useEssProfile } from "@/hooks/useEssProfile";
 
 interface PromotionRequestFormProps {
   onSubmitSuccess?: (requestData: any) => void;
@@ -65,6 +64,7 @@ export function PromotionRequestForm({
   const [keyAchievements, setKeyAchievements] = useState("");
   const [positionsList, setPositionsList] = useState<PositionOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const { employee } = useEssProfile();
 
   // Supporting media files state
   const [attachedFiles, setAttachedFiles] = useState<AttachedMediaItem[]>([]);
@@ -72,68 +72,38 @@ export function PromotionRequestForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // 1. Filter fallback positions exclusively to employee's department and exclude current role.
-    // Pastry Chef 2/3/4 are hidden from the promotion dropdown (hotel uses the
-    // hot-kitchen ladder + Pastry Chef 1 / Lead / CDP Pastry instead).
-    const HIDDEN_PROMOTION_TITLES = new Set(["pastry chef 2", "pastry chef 3", "pastry chef 4"]);
-    const isPromotionVisible = (title: string) =>
-      !HIDDEN_PROMOTION_TITLES.has(title.toLowerCase().trim());
+    const currentDept = employee?.department || "";
+    const currentTitle = employee?.position || "";
 
-    const fallbackDeptPositions: PositionOption[] = fallbackPositions
-      .filter(
-        (p) =>
-          matchesDepartment(p.department, myProfile.department) &&
-          p.title !== myProfile.position &&
-          isPromotionVisible(p.title),
-      )
-      .map((p) => ({
-        id: p.id,
-        title: p.title,
-        dept: p.department,
-        level: p.level,
-        salaryBand: p.salaryBand,
-      }));
+    // Promotion choices are scoped to the employee's real department and
+    // exclude their current position.
+    if (!currentDept) {
+      setPositionsList([]);
+      return;
+    }
 
-    // 2. Fetch positions via the ESS-safe endpoint (employees have Core HCM=None
-    // so /positions 403s). Falls back to the ladder when the API is unreachable.
+    // Fetch positions via the ESS-safe endpoint (employees have Core HCM=None
+    // so /positions 403s). No hardcoded ladder is used.
     essApi
       .promotionPositions()
       .then((res) => {
-        if (res?.data?.length) {
-          const apiPositions: PositionOption[] = res.data
-            .filter((p) => {
-              const deptName = p.department || "";
-              return (
-                matchesDepartment(deptName, myProfile.department) &&
-                p.title !== myProfile.position &&
-                isPromotionVisible(p.title)
-              );
-            })
-            .map((p) => ({
-              id: p.position_id,
-              title: p.title,
-              dept: p.department || undefined,
-            }));
-
-          // Merge fallback ladder positions and API positions, deduplicating by title
-          const seen = new Set<string>();
-          const merged: PositionOption[] = [];
-          for (const item of [...fallbackDeptPositions, ...apiPositions]) {
-            const key = item.title.toLowerCase().trim();
-            if (!seen.has(key)) {
-              seen.add(key);
-              merged.push(item);
-            }
-          }
-          setPositionsList(merged);
-        } else {
-          setPositionsList(fallbackDeptPositions);
-        }
+        const apiPositions: PositionOption[] = (res?.data ?? [])
+          .filter((p) => {
+            const deptName = p.department || "";
+            return (
+              matchesDepartment(deptName, currentDept) &&
+              p.title !== currentTitle
+            );
+          })
+          .map((p) => ({
+            id: p.position_id,
+            title: p.title,
+            dept: p.department || undefined,
+          }));
+        setPositionsList(apiPositions);
       })
-      .catch(() => {
-        setPositionsList(fallbackDeptPositions);
-      });
-  }, []);
+      .catch(() => setPositionsList([]));
+  }, [employee?.department, employee?.position]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -225,11 +195,11 @@ export function PromotionRequestForm({
     try {
       setSubmitting(true);
       const detailsPayload = [
-        `Applicant: ${myProfile.name} (${myProfile.employeeId})`,
+        `Applicant: ${employee?.name ?? ""} (${employee?.code ?? ""})`,
         `Target Position: ${targetPosition}`,
-        `Department Career Track: ${myProfile.department}`,
-        `Current Role: ${myProfile.position} (${myProfile.department})`,
-        `Current Salary Grade: ${myPerformance.salaryGrade}`,
+        `Department Career Track: ${employee?.department ?? ""}`,
+        `Current Role: ${employee?.position ?? ""} (${employee?.department ?? ""})`,
+        `Current Salary Grade: ${employee?.salary_grade ?? "—"}`,
         competencyScore ? `Competency Score: ${competencyScore}` : "",
         lmsCompletedCount != null ? `LMS Training Completed: ${lmsCompletedCount} module(s)` : "",
         `Justification: ${justification.trim()}`,
@@ -270,27 +240,27 @@ export function PromotionRequestForm({
         <div className="grid grid-cols-2 gap-2.5 text-xs sm:grid-cols-3">
           <div>
             <span className="text-muted-foreground">Employee Name:</span>{" "}
-            <strong className="text-foreground">{myProfile.name}</strong>
+            <strong className="text-foreground">{employee?.name || "—"}</strong>
           </div>
           <div>
             <span className="text-muted-foreground">Employee ID:</span>{" "}
-            <strong className="text-foreground">{myProfile.employeeId}</strong>
+            <strong className="text-foreground">{employee?.code || "—"}</strong>
           </div>
           <div>
             <span className="text-muted-foreground">Current Title:</span>{" "}
-            <strong className="text-foreground">{myProfile.position}</strong>
+            <strong className="text-foreground">{employee?.position || "—"}</strong>
           </div>
           <div>
             <span className="text-muted-foreground">Department:</span>{" "}
-            <strong className="text-foreground">{myProfile.department}</strong>
+            <strong className="text-foreground">{employee?.department || "—"}</strong>
           </div>
           <div>
             <span className="text-muted-foreground">Salary Grade:</span>{" "}
-            <strong className="text-foreground">{myPerformance.salaryGrade}</strong>
+            <strong className="text-foreground">{employee?.salary_grade || "—"}</strong>
           </div>
           <div>
             <span className="text-muted-foreground">Tenure / Service:</span>{" "}
-            <strong className="text-foreground">Regular Full-Time</strong>
+            <strong className="text-foreground">{employee?.employment_type || "—"}</strong>
           </div>
         </div>
       </div>
@@ -302,12 +272,12 @@ export function PromotionRequestForm({
             Target Position / Desired Rank <span className="text-destructive">*</span>
           </Label>
           <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
-            <Building2 className="h-3 w-3" /> {myProfile.department} Only
+            <Building2 className="h-3 w-3" /> {employee?.department || "Department"} Only
           </span>
         </div>
         <Select value={targetPosition} onValueChange={setTargetPosition}>
           <SelectTrigger id="target-position">
-            <SelectValue placeholder={`Select promotion rank in ${myProfile.department}...`} />
+            <SelectValue placeholder={`Select promotion rank in ${employee?.department || "your department"}...`} />
           </SelectTrigger>
           <SelectContent className="max-h-[240px]">
             {positionsList.map((p) => (

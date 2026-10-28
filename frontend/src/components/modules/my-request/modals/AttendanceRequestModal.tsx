@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, Calendar, CheckCircle2, CalendarClock, Send, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { myLeaveBalances, myProfile } from "@/data/ess";
-import { employees } from "@/data/hr";
-import { essApi } from "@/lib/api";
+import { essApi, type ApiEssColleague, type ApiLeaveBalance } from "@/lib/api";
+import { useEssProfile } from "@/hooks/useEssProfile";
 import { RequestModalShell } from "../RequestModalShell";
 
 interface AttendanceRequestModalProps {
@@ -25,6 +24,15 @@ interface AttendanceRequestModalProps {
 }
 
 type AttendanceRequestType = "Leave Application" | "Shift Swap";
+
+const DEFAULT_LEAVE_TYPES = [
+  "Vacation Leave",
+  "Sick Leave",
+  "Emergency Leave",
+  "Bereavement Leave",
+  "Maternity / Paternity Leave",
+  "Magna Carta Leave",
+];
 
 export function AttendanceRequestModal({
   open,
@@ -43,17 +51,39 @@ export function AttendanceRequestModal({
 
   // Shift swap state
   const [shiftDate, setShiftDate] = useState("");
-  const [targetPeer, setTargetPeer] = useState("EMP-0005");
+  const [targetPeer, setTargetPeer] = useState("");
   const [peerShiftDate, setPeerShiftDate] = useState("");
   const [swapReason, setSwapReason] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
+  const { employee: profile } = useEssProfile();
+  const [balances, setBalances] = useState<ApiLeaveBalance[]>([]);
+  const [colleagues, setColleagues] = useState<ApiEssColleague[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    essApi
+      .leaves()
+      .then((res) => setBalances(res?.balances ?? []))
+      .catch(() => setBalances([]));
+    essApi
+      .colleagues()
+      .then((res) => {
+        const list = res?.colleagues ?? [];
+        setColleagues(
+          profile?.department
+            ? list.filter((c) => c.department === profile.department)
+            : list,
+        );
+      })
+      .catch(() => setColleagues([]));
+  }, [open, profile?.department]);
 
   const activeBalance = useMemo(() => {
-    const found = myLeaveBalances.find((b) => b.type === leaveType);
-    if (!found) return { total: 15, used: 0, available: 15 };
-    return { total: found.total, used: found.used, available: found.total - found.used };
-  }, [leaveType]);
+    const found = balances.find((b) => b.type === leaveType);
+    if (!found) return { total: 0, used: 0, available: 0 };
+    return { total: found.total, used: found.used, available: found.available };
+  }, [leaveType, balances]);
 
   const requestedDays = useMemo(() => {
     if (duration !== "full") return 0.5;
@@ -68,9 +98,11 @@ export function AttendanceRequestModal({
   const remainingAfterApproval = activeBalance.available - requestedDays;
   const isBalanceExceeded = remainingAfterApproval < 0;
 
-  const peers = employees.filter(
-    (e) => e.department === myProfile.department && e.name !== myProfile.name,
-  );
+  const peers = colleagues.filter((c) => String(c.id) !== String(profile?.id ?? ""));
+
+  useEffect(() => {
+    if (!targetPeer && peers[0]) setTargetPeer(String(peers[0].id));
+  }, [peers, targetPeer]);
 
   const reset = () => {
     setDateFrom("");
@@ -125,7 +157,7 @@ export function AttendanceRequestModal({
       return;
     }
 
-    const peerObj = employees.find((e) => e.id === targetPeer);
+    const peerObj = colleagues.find((e) => String(e.id) === targetPeer);
 
     try {
       setSubmitting(true);
@@ -162,7 +194,7 @@ export function AttendanceRequestModal({
       subtitle={
         isLeave
           ? "Submit a formal paid or statutory leave request."
-          : `Trade scheduled shifts with a colleague in ${myProfile.department}.`
+          : `Trade scheduled shifts with a colleague in ${profile?.department || "your department"}.`
       }
     >
       <form
@@ -198,20 +230,17 @@ export function AttendanceRequestModal({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {myLeaveBalances.map((b) => (
+                  {(balances.length
+                    ? balances.map((b) => ({
+                        type: b.type,
+                        remaining: b.available,
+                      }))
+                    : DEFAULT_LEAVE_TYPES.map((type) => ({ type, remaining: 0 }))
+                  ).map((b) => (
                     <SelectItem key={b.type} value={b.type} className="text-xs">
-                      {b.type} ({b.total - b.used} days remaining)
+                      {b.type} ({b.remaining} days remaining)
                     </SelectItem>
                   ))}
-                  <SelectItem value="Bereavement Leave" className="text-xs">
-                    Bereavement Leave (3 days)
-                  </SelectItem>
-                  <SelectItem value="Maternity / Paternity Leave" className="text-xs">
-                    Maternity / Paternity Leave
-                  </SelectItem>
-                  <SelectItem value="Magna Carta Leave" className="text-xs">
-                    Magna Carta Leave
-                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -224,7 +253,7 @@ export function AttendanceRequestModal({
                 </SelectTrigger>
                 <SelectContent>
                   {peers.map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="text-xs">
+                    <SelectItem key={p.id} value={String(p.id)} className="text-xs">
                       {p.name} ({p.position})
                     </SelectItem>
                   ))}
@@ -342,8 +371,7 @@ export function AttendanceRequestModal({
             <div className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/40 p-2.5 text-[11px] text-muted-foreground">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
               <span>
-                <strong>Approval Chain:</strong> {myProfile.supervisor} (Supervisor) → Juan Dela
-                Cruz (HR Admin)
+                <strong>Approval Chain:</strong> {profile?.supervisor || "Your supervisor"} (Supervisor) → HR Admin
               </span>
             </div>
           </>
