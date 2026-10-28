@@ -3,18 +3,21 @@
 namespace Modules\NewHireOnboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
+use App\Observers\ActivityObserver;
+use App\Services\AuditLogger;
+use App\Services\Hr3MockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Modules\CoreHCM\Http\Controllers\Concerns\HcmCache;
+use Modules\CoreHCM\Services\EmployeeLifecycleService;
 use Modules\NewHireOnboarding\Http\Requests\StoreNewHireRequest;
 use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
 use Modules\NewHireOnboarding\Models\NewHire;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
 use Modules\NewHireOnboarding\Services\NewHireIntakeService;
-use App\Services\AuditLogger;
-use Modules\CoreHCM\Http\Controllers\Concerns\HcmCache;
-use Modules\CoreHCM\Services\EmployeeLifecycleService;
 
 class NewHireController extends Controller
 {
@@ -450,6 +453,65 @@ class NewHireController extends Controller
             targetId: (string) $employee->employee_code,
             details: "Employment type of {$employee->full_name} set to Regular (hire {$newHire->new_hire_code} reached the Regular stage).",
         );
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/new-hires/{new_hire}/complete                          */
+    /* ------------------------------------------------------------------ */
+
+    public function complete(Request $request, int $new_hire): JsonResponse
+    {
+        $model = NewHire::with('onboardingItems.templateItem.template')->findOrFail($new_hire);
+
+        $force = $request->boolean('force');
+
+        if (! $force && $model->visibleCompletionPercentage() < 100) {
+            return response()->json([
+                'message' => 'Complete every onboarding checklist item before sending this hire to Core HCM.',
+            ], 422);
+        }
+
+        $model->update([
+            'completed_at' => $model->completed_at ?? now(),
+            'evaluation_requested_at' => $model->evaluation_requested_at ?? now(),
+        ]);
+
+        $employee = $model->employee_id
+            ? Employee::find($model->employee_id)
+            : NewHireIntakeService::ensureEmployeeRecord($model);
+
+        if (! $employee && $model->email) {
+            $employee = Employee::where('email', $model->email)->first();
+        }
+
+        if ($employee) {
+            ActivityObserver::withoutLogging(fn () => $employee->forceFill([
+                'onboarding_complete' => true,
+                'employee_record_last_updated_at' => now()->toDateString(),
+            ])->save());
+
+            $model->update(['employee_id' => $employee->employee_id]);
+        }
+
+        $recommendation = app(Hr3MockService::class)->createForOnboarding($model->fresh(), $employee);
+
+        HcmCache::flush();
+
+        AuditLogger::log(
+            action: 'Onboarding Completed',
+            module: 'New Hire Onboarding',
+            targetType: 'New Hire',
+            targetId: (string) $model->new_hire_id,
+            details: $recommendation
+                ? "Onboarding completed for {$model->new_hire_code}; HR3 evaluation #{$recommendation->recommendation_id} auto-created."
+                : "Onboarding completed for {$model->new_hire_code}; no linked employee record to update.",
+        );
+
+        return response()->json([
+            'message' => 'Onboarding completion sent to Core HCM.',
+            'data' => new NewHireResource($model->fresh()->load(['department', 'position', 'onboardingItems.templateItem.template'])),
+            'recommendation' => $recommendation,
+        ]);
     }
 
     /* ------------------------------------------------------------------ */

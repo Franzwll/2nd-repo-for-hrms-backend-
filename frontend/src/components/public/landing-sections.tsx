@@ -14,7 +14,6 @@ import {
   Search,
   Sparkles,
   TrendingUp,
-  Users,
 } from "lucide-react";
 
 import {
@@ -77,8 +76,12 @@ export function StatStrip({
       value: loading ? "—" : String(departmentsCount),
       label: "Departments hiring",
     },
-    { icon: Users, value: "200+", label: "Team members" },
-    { icon: Clock, value: "2-3 wks", label: "Typical hiring time" },
+    {
+      icon: CalendarDays,
+      value: `${new Date().getFullYear() - 1995}+`,
+      label: "Years in operation",
+    },
+    { icon: MapPin, value: "Makati", label: "Hotel location" },
   ];
 
   return (

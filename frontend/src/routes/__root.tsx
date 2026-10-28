@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
-  Link,
   createRootRouteWithContext,
   useRouter,
   HeadContent,
@@ -10,38 +9,40 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { NotFoundPage } from "../components/errors/NotFoundPage";
 import { Toaster } from "../components/ui/sonner";
 import { reportError } from "../lib/error-reporting";
 import { applyInitialTheme } from "../lib/theme";
 
-function NotFoundComponent() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
-        </p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Go home
-          </Link>
-        </div>
-      </div>
-    </div>
+const CHUNK_RELOAD_KEY = "osm-chunk-reload-at";
+const CHUNK_RELOAD_WINDOW_MS = 60_000;
+
+function isChunkLoadError(error: Error): boolean {
+  const message = `${error.name} ${error.message}`;
+  return /ChunkLoadError|Loading chunk|dynamically imported module|Importing a module script failed|Unable to preload CSS|error loading dynamically imported module/i.test(
+    message,
   );
 }
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const chunkError = isChunkLoadError(error);
+
   useEffect(() => {
     reportError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+    if (!chunkError) return;
+
+    try {
+      const lastReload = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+      if (Date.now() - lastReload < CHUNK_RELOAD_WINDOW_MS) return;
+      sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+    } catch {
+      return;
+    }
+
+    window.location.reload();
+  }, [error, chunkError]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -55,6 +56,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              if (chunkError) {
+                window.location.reload();
+                return;
+              }
               router.invalidate();
               reset();
             }}
@@ -122,7 +127,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
   shellComponent: RootShell,
   component: RootComponent,
-  notFoundComponent: NotFoundComponent,
+  notFoundComponent: NotFoundPage,
   errorComponent: ErrorComponent,
 });
 

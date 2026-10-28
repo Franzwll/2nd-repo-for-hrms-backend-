@@ -10,6 +10,7 @@ use App\Services\LoginService;
 use App\Services\Notifier;
 use App\Services\OtpService;
 use App\Services\RoleSessionPolicy;
+use App\Services\SecurityPolicy;
 use App\Services\TotpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -266,7 +267,6 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'A new OTP has been sent to your work email.',
             'expires_in' => OtpService::ttlSeconds(),
-            ...$this->debugOtp($result['debug_otp']),
         ]);
     }
 
@@ -286,8 +286,9 @@ class AuthController extends Controller
     {
         return response()->json([
             'token_expiration_minutes' => (int) config('sanctum.expiration'),
-            'idle_timeout_minutes' => (int) env('SESSION_IDLE_MINUTES', 30),
+            'idle_timeout_minutes' => SecurityPolicy::idleMinutes(),
             'roles' => RoleSessionPolicy::map(),
+            'password_policy' => SecurityPolicy::publicPolicy(),
             'otp_expires_in_seconds' => OtpService::ttlSeconds(),
             'reset_expires_in_seconds' => \Modules\Auth\Services\PasswordResetService::ttlSeconds(),
         ]);
@@ -358,7 +359,6 @@ class AuthController extends Controller
             'message' => $message,
             'login_token' => $issued['login_token'],
             'expires_in' => $issued['expires_in'],
-            ...$this->debugOtp($issued['debug_otp']),
         ];
     }
 
@@ -372,8 +372,8 @@ class AuthController extends Controller
     }
 
     /**
-     * Track wrong-password attempts; lock the account for 15 minutes
-     * after 5 consecutive failures.
+     * Track wrong-password attempts and lock the account for 15 minutes
+     * after the configured number of consecutive failures.
      */
     private function registerFailedAttempt(SystemUser $user): void
     {
@@ -381,7 +381,9 @@ class AuthController extends Controller
 
         $user->forceFill(['failed_attempts' => $attempts]);
 
-        if ($attempts >= 5) {
+        $maxAttempts = SecurityPolicy::maxLoginAttempts();
+
+        if ($attempts >= $maxAttempts) {
             $user->forceFill([
                 'failed_attempts' => 0,
                 'locked_until' => now()->addMinutes(15),
@@ -393,21 +395,12 @@ class AuthController extends Controller
                 'Warning',
                 'user',
                 $user->username,
-                'Account locked for 15 minutes after 5 failed login attempts.',
+                "Account locked for 15 minutes after {$maxAttempts} failed login attempts.",
                 $user
             );
         }
 
         $user->save();
-    }
-
-    private function debugOtp(string $code): array
-    {
-        if (!app()->environment(['local', 'testing'])) {
-            return [];
-        }
-
-        return ['debug_otp' => $code];
     }
 
     private function maskEmail(string $email): string

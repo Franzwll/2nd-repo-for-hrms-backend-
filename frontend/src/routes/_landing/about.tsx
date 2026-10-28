@@ -170,12 +170,12 @@ function About() {
           })}
         </div>
 
-        {/* Team stat */}
+        {/* Verifiable hotel facts */}
         <div className="mt-12 grid gap-4 sm:grid-cols-3">
           {[
             { label: "Years in operation", value: `${new Date().getFullYear() - 1995}+` },
-            { label: "Team members", value: "200+" },
-            { label: "Guest satisfaction", value: "94%" },
+            { label: "Hotel location", value: "Makati" },
+            { label: "Front desk", value: company.hours },
           ].map((s) => (
             <div key={s.label} className="rounded-md border border-border bg-card p-5 text-center">
               <p className="font-display text-4xl font-semibold text-primary">{s.value}</p>

@@ -236,7 +236,7 @@ class LandingController extends Controller
             [
                 'q' => 'What documents should I prepare?',
                 'category' => 'Applying',
-                'a' => 'An updated resume, valid government ID, NBI clearance, and any role-specific certification such as TESDA NC II, food handler, or bartending licenses.',
+                'a' => 'Prepare an updated resume and supporting documents that prove your experience or qualifications, such as a certificate of employment, training certificates, and role-specific credentials like TESDA NC II, food handler, or bartending licenses.',
             ],
             [
                 'q' => 'How is my resume screened?',

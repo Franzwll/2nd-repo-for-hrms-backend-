@@ -3,6 +3,7 @@
 namespace Modules\Settings\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\SecurityPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -132,7 +133,7 @@ class SettingsController extends Controller
     public function resetDefaultPassword(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'password' => ['required', 'string', 'min:8', 'max:72'],
+            'password' => SecurityPolicy::passwordRules(),
         ]);
 
         $updated = SystemUser::query()

@@ -106,6 +106,8 @@ import { authApi } from "@/lib/api";
 
 import { clearSession, getUser } from "@/lib/auth";
 
+import { usePreferences } from "@/lib/preferences";
+
 import { applyInitialTheme, applyTheme, type ThemeChoice } from "@/lib/theme";
 
 import type { Notification } from "@/components/portal/portal-state";
@@ -309,6 +311,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
   useSessionTimeout();
 
+  const { t, formatTime, formatWeekdayDate } = usePreferences();
+
 
 
   useEffect(() => {
@@ -358,35 +362,15 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
   const timeString = mounted && time
 
-    ? time.toLocaleTimeString("en-US", {
+    ? formatTime(time, true)
 
-        hour: "2-digit",
-
-        minute: "2-digit",
-
-        second: "2-digit",
-
-        hour12: true,
-
-      })
-
-    : "--:--:-- --";
+    : "--:--:--";
 
 
 
   const dateString = mounted && time
 
-    ? time.toLocaleDateString("en-US", {
-
-        weekday: "short",
-
-        month: "short",
-
-        day: "numeric",
-
-        year: "numeric",
-
-      })
+    ? formatWeekdayDate(time)
 
     : "Loading...";
 
@@ -654,7 +638,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               className={baseCls}
 
-              title={item.label}
+              title={t(item.label)}
 
               aria-expanded={isOpen}
 
@@ -682,7 +666,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                 <>
 
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate">{t(item.label)}</span>
 
                   <ChevronRight
 
@@ -704,11 +688,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
           ) : (
 
-            <Link to={item.to} className={baseCls} title={item.label} onClick={onNavigate}>
+            <Link to={item.to} className={baseCls} title={t(item.label)} onClick={onNavigate}>
 
               <item.icon className="h-4 w-4 shrink-0" />
 
-              {showLabels && <span className="truncate">{item.label}</span>}
+              {showLabels && <span className="truncate">{t(item.label)}</span>}
 
             </Link>
 
@@ -756,7 +740,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   >
 
-                    {child.label}
+                    {t(child.label)}
 
                   </Link>
                 );
@@ -828,13 +812,13 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
             )}
 
-            title="My Profile"
+            title={t("My Profile")}
 
           >
 
             <UserCircle className="h-4 w-4 shrink-0" />
 
-            {open && <span>My Profile</span>}
+            {open && <span>{t("My Profile")}</span>}
 
           </Link>
 
@@ -850,7 +834,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
             <LogOut className="h-4 w-4 shrink-0" />
 
-            {open && <span>Logout</span>}
+            {open && <span>{t("Logout")}</span>}
 
           </button>
 
@@ -926,7 +910,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               <UserCircle className="h-4 w-4 shrink-0" />
 
-              <span>My Profile</span>
+              <span>{t("My Profile")}</span>
 
             </Link>
 
@@ -942,7 +926,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               <LogOut className="h-4 w-4 shrink-0" />
 
-              <span>Logout</span>
+              <span>{t("Logout")}</span>
 
             </button>
 
@@ -970,7 +954,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               onClick={() => setMobileNavOpen(true)}
 
-              aria-label="Open navigation menu"
+              aria-label={t("Open navigation menu")}
 
             >
 
@@ -988,7 +972,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               onClick={() => setOpen((v) => !v)}
 
-              aria-label="Toggle sidebar"
+              aria-label={t("Toggle sidebar")}
 
             >
 
@@ -998,7 +982,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
             <div className="shrink-0">
 
-              <p className="text-sm font-medium">{meta.label} Portal</p>
+              <p className="text-sm font-medium">{t(`${meta.label} Portal`)}</p>
 
             </div>
 
@@ -1058,7 +1042,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               <PopoverTrigger asChild>
 
-                <Button variant="ghost" size="icon" aria-label="Announcements" className="relative">
+                <Button variant="ghost" size="icon" aria-label={t("Announcements")} className="relative">
 
                   <Megaphone className="h-5 w-5" />
 
@@ -1080,7 +1064,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                 <div className="flex items-center gap-2 border-b border-border px-4 py-3">
 
-                  <p className="font-display text-lg font-semibold">Announcements</p>
+                  <p className="font-display text-lg font-semibold">{t("Announcements")}</p>
 
                   {unreadAnnouncements.length > 0 && (
 
@@ -1102,9 +1086,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                       className="h-8 w-8"
 
-                      aria-label="Mark all announcements as read"
+                      aria-label={t("Mark all announcements as read")}
 
-                      title="Mark all as read"
+                      title={t("Mark all as read")}
 
                       disabled={unreadAnnouncements.length === 0}
 
@@ -1130,9 +1114,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                         className="h-8 w-8 text-primary"
 
-                        aria-label="New announcement"
+                        aria-label={t("New announcement")}
 
-                        title="New announcement"
+                        title={t("New announcement")}
 
                         onClick={() => setAnnounceOpen(true)}
 
@@ -1156,7 +1140,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                       <p className="p-8 text-center text-sm text-muted-foreground">
 
-                        No announcements yet.
+                        {t("No announcements yet.")}
 
                       </p>
 
@@ -1266,7 +1250,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               <PopoverTrigger asChild>
 
-                <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
+                <Button variant="ghost" size="icon" aria-label={t("Notifications")} className="relative">
 
                   <Bell className="h-5 w-5" />
 
@@ -1288,7 +1272,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                 <div className="flex items-center gap-2 border-b border-border px-4 py-3">
 
-                  <p className="font-display text-lg font-semibold">Notifications</p>
+                  <p className="font-display text-lg font-semibold">{t("Notifications")}</p>
 
                   {unreadCount > 0 && (
 
@@ -1310,9 +1294,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                       className="h-8 w-8"
 
-                      aria-label="Mark all as read"
+                      aria-label={t("Mark all as read")}
 
-                      title="Mark all as read"
+                      title={t("Mark all as read")}
 
                       onClick={markAllRead}
 
@@ -1332,9 +1316,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                         className="h-8 w-8 text-primary"
 
-                        aria-label="Add announcement"
+                        aria-label={t("Add announcement")}
 
-                        title="Add announcement"
+                        title={t("Add announcement")}
 
                         onClick={() => setAnnounceOpen(true)}
 
@@ -1358,7 +1342,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                       <p className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
 
-                        <BellOff className="h-4 w-4" /> No notifications
+                        <BellOff className="h-4 w-4" /> {t("No notifications")}
 
                       </p>
 
@@ -1531,7 +1515,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   <span suppressHydrationWarning className="hidden truncate text-sm min-[900px]:inline max-w-[130px]">
 
-                    Welcome, <span className="font-medium">{displayName.split(" ")[0]}</span>
+                    {t("Welcome")}, <span className="font-medium">{displayName.split(" ")[0]}</span>
 
                   </span>
 
@@ -1557,7 +1541,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   <Link to={`${meta.base}/profile` as "/admin/profile"}>
 
-                    <UserCircle className="mr-2 h-4 w-4" /> View Profile
+                    <UserCircle className="mr-2 h-4 w-4" /> {t("View Profile")}
 
                   </Link>
 
@@ -1567,7 +1551,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   <Link to={`${meta.base}/settings` as "/admin/settings"}>
 
-                    <SettingsIcon className="mr-2 h-4 w-4" /> Settings
+                    <SettingsIcon className="mr-2 h-4 w-4" /> {t("Settings")}
 
                   </Link>
 
@@ -1601,11 +1585,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   )}
 
-                  <span className="flex-1">{isDark ? "Dark mode" : "Light mode"}</span>
+                  <span className="flex-1">{t(isDark ? "Dark mode" : "Light mode")}</span>
 
                   <Switch
 
-                    aria-label="Toggle dark mode"
+                    aria-label={t("Toggle dark mode")}
 
                     checked={isDark}
 
@@ -1623,7 +1607,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                 <DropdownMenuItem onSelect={handleLogout} className="text-primary">
 
-                  <LogOut className="mr-2 h-4 w-4" /> Logout
+                  <LogOut className="mr-2 h-4 w-4" /> {t("Logout")}
 
                 </DropdownMenuItem>
 

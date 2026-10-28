@@ -2,8 +2,10 @@
 
 namespace Tests;
 
+use App\Mail\SendOtpMail;
 use App\Models\SystemUser;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Mail;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -40,15 +42,24 @@ abstract class TestCase extends BaseTestCase
     protected function loginViaOtp(): string
     {
         $this->resetAuthGuards();
+        Mail::fake();
 
         $login = $this->postJson('/api/v1/auth/login', [
             'email' => 'bullseur@oxfordsuites.com.ph',
             'password' => 'Oxford@2026',
         ])->assertOk()->json();
 
+        $otp = null;
+        Mail::assertSent(SendOtpMail::class, function (SendOtpMail $mail) use (&$otp): bool {
+            $otp = $mail->code;
+
+            return true;
+        });
+        $this->assertNotNull($otp);
+
         $verify = $this->postJson('/api/v1/auth/otp/verify', [
             'login_token' => $login['login_token'],
-            'otp' => $login['debug_otp'],
+            'otp' => $otp,
         ])->assertOk()->json();
 
         return $verify['token'];

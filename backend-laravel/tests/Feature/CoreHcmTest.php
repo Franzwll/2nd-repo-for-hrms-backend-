@@ -6,7 +6,9 @@ use App\Models\Employee;
 use App\Models\EmployeePositionHistory;
 use App\Models\Hr3Recommendation;
 use App\Models\Position;
+use App\Models\PromotionRequest;
 use App\Models\SystemUser;
+use Modules\NewHireOnboarding\Models\NewHire;
 use Tests\Concerns\RefreshesSeededDatabase;
 use Tests\TestCase;
 
@@ -120,6 +122,107 @@ class CoreHcmTest extends TestCase
         ]);
     }
 
+    public function test_regularization_auto_creates_mock_hr3_evaluation_when_enabled(): void
+    {
+        config(['hr3.mock_enabled' => true]);
+
+        $token = $this->loginViaOtp();
+        $employee = $this->createTestEmployee($token, 'mock.regularize@oxfordsuites.com.ph');
+        $id = $employee['employee_id'];
+
+        $this->postJson("/api/v1/employees/{$id}/regularize", [
+            'effective_date' => '2026-12-01',
+        ], $this->authHeaders($token))
+            ->assertOk()
+            ->assertJsonPath('data.employment_type', 'Regular');
+
+        $this->assertDatabaseHas('hr3_recommendations', [
+            'employee_id' => $id,
+            'recommendation_type' => 'Regularization',
+            'status' => 'Approved & Processed',
+        ]);
+    }
+
+    public function test_nho_completion_flags_employee_and_creates_mock_evaluation(): void
+    {
+        config(['hr3.mock_enabled' => true]);
+
+        $token = $this->loginViaOtp();
+        $employee = $this->createTestEmployee($token, 'mock.onboarding@oxfordsuites.com.ph');
+        $id = $employee['employee_id'];
+
+        $newHire = NewHire::create([
+            'new_hire_code' => 'NH-TEST-MOCK',
+            'employee_id' => $id,
+            'name' => 'Mock Onboarding',
+            'email' => 'mock.onboarding@oxfordsuites.com.ph',
+            'position_id' => 1,
+            'department_id' => 1,
+            'stage' => 'Probationary',
+            'start_date' => '2026-10-01',
+        ]);
+
+        $response = $this->postJson("/api/v1/new-hires/{$newHire->new_hire_id}/complete", [
+            'force' => true,
+        ], $this->authHeaders($token))->assertOk();
+
+        $this->assertNotNull($response->json('data.completed_at'));
+
+        $this->assertDatabaseHas('employees', [
+            'employee_id' => $id,
+            'onboarding_complete' => true,
+        ]);
+
+        $this->assertDatabaseHas('hr3_recommendations', [
+            'employee_id' => $id,
+            'recommendation_type' => 'Regularization',
+            'status' => 'Pending HR Action',
+        ]);
+    }
+
+    public function test_promotion_forward_to_hr3_auto_accepts_in_mock_mode(): void
+    {
+        config(['hr3.mock_enabled' => true]);
+
+        $token = $this->loginViaOtp();
+        $employee = $this->createTestEmployee($token, 'mock.promotion@oxfordsuites.com.ph', 'Regular');
+        $id = $employee['employee_id'];
+
+        $promotion = PromotionRequest::create([
+            'employee_id' => $id,
+            'current_position_id' => $employee['position_id'],
+            'requested_position_id' => 2,
+            'justification' => 'Demo promotion request',
+            'status' => 'Pending',
+        ]);
+
+        $this->postJson("/api/v1/promotion-requests/{$promotion->promotion_request_id}/forward-to-hr3", [], $this->authHeaders($token))
+            ->assertOk()
+            ->assertJsonPath('hr3_auto_accepted', true)
+            ->assertJsonPath('data.status', 'Pending HR Action');
+
+        $this->assertDatabaseHas('hr3_recommendations', [
+            'employee_id' => $id,
+            'recommendation_type' => 'Promotion',
+            'status' => 'Pending HR Action',
+        ]);
+
+        $this->postJson("/api/v1/promotion-requests/{$promotion->promotion_request_id}/review", [
+            'decision' => 'approve',
+        ], $this->authHeaders($token))->assertOk();
+
+        $this->assertDatabaseHas('promotion_requests', [
+            'promotion_request_id' => $promotion->promotion_request_id,
+            'status' => 'Approved',
+        ]);
+
+        $this->assertDatabaseHas('hr3_recommendations', [
+            'employee_id' => $id,
+            'recommendation_type' => 'Promotion',
+            'status' => 'Approved & Processed',
+        ]);
+    }
+
     public function test_org_chart_returns_departments(): void
     {
         $token = $this->loginViaOtp();
@@ -127,5 +230,21 @@ class CoreHcmTest extends TestCase
         $this->getJson('/api/v1/org-chart', $this->authHeaders($token))
             ->assertOk()
             ->assertJsonStructure(['data' => [['department_id', 'name']]]);
+    }
+
+    private function createTestEmployee(string $token, string $email, string $employmentType = 'Probationary'): array
+    {
+        return $this->postJson('/api/v1/employees', [
+            'first_name' => 'Mock',
+            'last_name' => 'Hr3',
+            'email' => $email,
+            'gender' => 'Male',
+            'birth_date' => '1990-01-01',
+            'department_id' => 1,
+            'position_id' => 1,
+            'employment_type' => $employmentType,
+            'status' => 'Active',
+            'date_hired' => '2026-08-01',
+        ], $this->authHeaders($token))->assertCreated()->json('data');
     }
 }

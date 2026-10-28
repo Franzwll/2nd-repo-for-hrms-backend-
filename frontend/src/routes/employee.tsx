@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { PortalShell } from "@/components/portal/PortalShell";
+import { PreferencesProvider } from "@/lib/preferences";
 
 export const Route = createFileRoute("/employee")({
   head: () => ({
@@ -22,8 +23,8 @@ function EmployeeLayout() {
   // preloader on every ESS tab click. Route/tab content now shows the
   // skeleton fallbacks while chunks and API data are loading instead.
   return (
-    <PortalShell role="employee">
+    <PreferencesProvider><PortalShell role="employee">
       <Outlet />
-    </PortalShell>
+    </PortalShell></PreferencesProvider>
   );
 }

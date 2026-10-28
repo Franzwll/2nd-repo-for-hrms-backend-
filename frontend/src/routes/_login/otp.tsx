@@ -397,16 +397,18 @@ function OTPPage() {
                     )}
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handleResend}
-                    className="font-medium text-primary hover:underline cursor-pointer"
-                  >
-                    Code expired — send a new one
-                  </button>
+                  <>
+                    We've sent a 6-digit code to{" "}
+                    <span className="font-medium text-foreground">
+                      {maskEmail(loginCtx?.email)}
+                    </span>
+                    .
+                    <br />
+                    Enter it below to continue.
+                  </>
                 )}
-              </div>
-            )}
+              </p>
+            </div>
 
             {/* Verify Button - matching Sign In CTA */}
             <Button

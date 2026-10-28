@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, "public", "zoom-sdk");
 const REACT_VERSION = "18.3.1"; // must satisfy the SDK's peer range
+const ZOOM_SDK_VERSION = "6.5.0";
 
 const files = [
   {
@@ -29,6 +30,10 @@ const files = [
       "dist",
       "zoomus-websdk-embedded.umd.min.js",
     ),
+    urls: [
+      `https://unpkg.com/@zoom/meetingsdk@${ZOOM_SDK_VERSION}/dist/zoomus-websdk-embedded.umd.min.js`,
+      `https://cdn.jsdelivr.net/npm/@zoom/meetingsdk@${ZOOM_SDK_VERSION}/dist/zoomus-websdk-embedded.umd.min.js`,
+    ],
   },
   {
     name: "react.production.min.js",
@@ -67,12 +72,17 @@ await mkdir(outDir, { recursive: true });
 for (const f of files) {
   const dest = join(outDir, f.name);
   if (f.local) {
-    await copyFile(f.local, dest);
-    const { size } = await stat(dest);
-    console.log(`copied ${f.name} (${size} bytes)`);
-  } else {
-    const size = await download(f.urls, dest);
-    console.log(`downloaded ${f.name} (${size} bytes)`);
+    try {
+      await copyFile(f.local, dest);
+      const { size } = await stat(dest);
+      console.log(`copied ${f.name} (${size} bytes)`);
+      continue;
+    } catch (e) {
+      if (!f.urls) throw e;
+      console.log(`local ${f.name} unavailable; downloading`);
+    }
   }
+  const size = await download(f.urls, dest);
+  console.log(`downloaded ${f.name} (${size} bytes)`);
 }
 console.log("zoom-sdk vendored OK");
