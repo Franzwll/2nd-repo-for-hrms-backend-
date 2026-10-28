@@ -4,7 +4,6 @@ import {
   Award,
   ArrowRight,
   ArrowUpDown,
-  BookOpen,
   Building,
   CheckCircle2,
   ChevronDown,
@@ -828,9 +827,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           <TabsTrigger className="flex items-center gap-1.5" value="modules">
             <ClipboardList className="h-3.5 w-3.5" /> Module Queues
           </TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5" value="learning">
-            <BookOpen className="h-3.5 w-3.5" /> Learning
-          </TabsTrigger>
           {role === "superadmin" && (
             <TabsTrigger className="flex items-center gap-1.5" value="config">
               <Settings2 className="h-3.5 w-3.5" /> ESS Administration
@@ -1234,15 +1230,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
               loadAuditLogs();
             }}
           />
-        </TabsContent>
-        <TabsContent value="learning" className="mt-4">
-          <Card className="border-border/70">
-            <CardContent className="p-6">
-              <p className="text-sm text-muted-foreground">
-                Learning management is not available in this build.
-              </p>
-            </CardContent>
-          </Card>
         </TabsContent>
         {role === "superadmin" && (
           <TabsContent value="config" className="mt-4">
