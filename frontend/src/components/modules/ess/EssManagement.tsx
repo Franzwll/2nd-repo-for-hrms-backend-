@@ -35,7 +35,6 @@ import { PageHeader } from "@/components/portal/PageHeader";
 import { ReportMenu } from "@/components/ui/report-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
-import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { usePagination } from "@/hooks/usePagination";
 import { StatCard } from "@/components/portal/StatCard";
 import { Badge } from "@/components/ui/badge";
@@ -73,20 +72,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  essRequests as seed,
   requestCategories,
-  essActivityLog,
-  essRequests,
-  myAttendance,
-  myBenefits,
-  myLeaveBalances,
-  myPayroll,
-  myProfile,
-  mySchedule,
-  myPerformance,
-  myLearningCourses,
-  myEmployeeDocuments,
-  wireframeActivity,
   useEssCategories,
   addCategoryEntry,
   updateCategoryEntry,
@@ -94,13 +80,12 @@ import {
   setCategoryOpen,
   type ESSRequest,
 } from "@/data/ess";
-import { departments, employees } from "@/data/hr";
 import { useSort, SortHead } from "@/components/portal/sortable";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { EmployeeEss } from "./EmployeeEss";
 import { ModuleQueuesPanel } from "./ModuleQueuesPanel";
-import { essApi, type ApiEssRequestAttachment, type ApiEssRequestItem } from "@/lib/api";
+import { essApi, hcmApi, type ApiEmployee, type ApiEssRequestAttachment, type ApiEssRequestItem } from "@/lib/api";
 
 type Status = ESSRequest["status"] | "Returned for Clarification";
 type Row = Omit<ESSRequest, "status" | "note"> & {
@@ -118,17 +103,17 @@ type Row = Omit<ESSRequest, "status" | "note"> & {
 };
 
 const statusClass: Record<Status, string> = {
-  Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30 dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20",
-  "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30 dark:bg-blue-400/10 dark:text-blue-400 dark:border-blue-400/20",
-  "For Dispatch": "bg-sky-500/10 text-sky-600 border-sky-500/30 dark:bg-sky-400/10 dark:text-sky-400 dark:border-sky-400/20",
-  "With Module": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:bg-indigo-400/10 dark:text-indigo-400 dark:border-indigo-400/20",
-  "For Release": "bg-teal-500/10 text-teal-600 border-teal-500/30 dark:bg-teal-400/10 dark:text-teal-400 dark:border-teal-400/20",
-  Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20",
-  "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:bg-indigo-400/10 dark:text-indigo-400 dark:border-indigo-400/20",
-  Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30 dark:bg-rose-400/10 dark:text-rose-400 dark:border-rose-400/20",
-  Completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20",
-  Cancelled: "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:bg-slate-400/10 dark:text-slate-400 dark:border-slate-400/20",
-  "Returned for Clarification": "bg-orange-500/10 text-orange-600 border-orange-500/30 dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20",
+  Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30",
+  "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30",
+  "For Dispatch": "bg-sky-500/10 text-sky-600 border-sky-500/30",
+  "With Module": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
+  "For Release": "bg-teal-500/10 text-teal-600 border-teal-500/30",
+  Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
+  Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30",
+  Completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  Cancelled: "bg-slate-500/10 text-slate-600 border-slate-500/30",
+  "Returned for Clarification": "bg-orange-500/10 text-orange-600 border-orange-500/30",
 };
 
 /** Mirrors EssRequestWorkflow::requiresFulfillment for row-level UI choices. */
@@ -162,8 +147,7 @@ export function EssManagement({ role }: { role: "employee" | "admin" | "superadm
 }
 
 export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
-  const { confirm, prompt, dialog: confirmDialog } = useConfirmDialog();
-  const [rows, setRows] = useState<Row[]>(seed);
+  const [rows, setRows] = useState<Row[]>([]);
   const [countsData, setCountsData] = useState<{
     total: number;
     pending: number;
@@ -178,17 +162,17 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     returned: number;
     cancelled: number;
   }>({
-    total: seed.length,
-    pending: seed.filter((r) => r.status === "Pending").length,
-    under_review: seed.filter((r) => r.status === "Under Review").length,
+    total: 0,
+    pending: 0,
+    under_review: 0,
     for_dispatch: 0,
     with_module: 0,
-    for_release: seed.filter((r) => r.status === "For Release" || r.status === "Approved").length,
-    approved: seed.filter((r) => r.status === "Approved").length,
+    for_release: 0,
+    approved: 0,
     for_fulfillment: 0,
-    completed: seed.filter((r) => r.status === "Completed").length,
-    rejected: seed.filter((r) => r.status === "Rejected").length,
-    returned: seed.filter((r) => r.status === "Returned for Clarification").length,
+    completed: 0,
+    rejected: 0,
+    returned: 0,
     cancelled: 0,
   });
 
@@ -244,43 +228,47 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   /** Collapsible new-category panel at the top of Category Management. */
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
 
-  const [auditLogsList, setAuditLogsList] = useState<any[]>(essActivityLog);
+  const [auditLogsList, setAuditLogsList] = useState<any[]>([]);
+  const [behalfEmployeeList, setBehalfEmployeeList] = useState<
+    { id: string; name: string; department: string; position: string }[]
+  >([]);
+  const [departmentOptions, setDepartmentOptions] = useState<
+    { code: string; name: string }[]
+  >([]);
 
   const loadRequests = async () => {
     try {
       setLoading(true);
       const res = await essApi.adminRequests();
-      if (res?.requests && res.requests.length > 0) {
-        setRows(
-          res.requests.map((r: ApiEssRequestItem) => ({
-            id: r.id,
-            employee: r.employee || "Unknown Employee",
-            employeeId: r.employeeId || "EMP-0000",
-            department: r.department || "General",
-            category: r.category,
-            type: r.type,
-            filed: r.filed,
-            status: r.status as Status,
-            assignedTo: r.assignedTo || r.assigned_to || "HR Admin",
-            details: r.details,
-            note: r.note ?? r.review_note ?? undefined,
-            returnedCount: r.returnedCount ?? r.returned_count,
-            dbId: r.db_id,
-            categoryCode: r.category_code,
-            attachments: r.attachments,
-            hasFulfillment: r.has_fulfillment,
-            module: r.module,
-            moduleLabel: r.module_label,
-            moduleNote: r.module_note,
-            releasedAt: r.released_at,
-          })),
-        );
-      }
+      setRows(
+        (res?.requests ?? []).map((r: ApiEssRequestItem) => ({
+          id: r.id,
+          employee: r.employee || "",
+          employeeId: r.employeeId || "",
+          department: r.department || "",
+          category: r.category,
+          type: r.type,
+          filed: r.filed,
+          status: r.status as Status,
+          assignedTo: r.assignedTo || r.assigned_to || "",
+          details: r.details,
+          note: r.note ?? r.review_note ?? undefined,
+          returnedCount: r.returnedCount ?? r.returned_count,
+          dbId: r.db_id,
+          categoryCode: r.category_code,
+          attachments: r.attachments,
+          hasFulfillment: r.has_fulfillment,
+          module: r.module,
+          moduleLabel: r.module_label,
+          moduleNote: r.module_note,
+          releasedAt: r.released_at,
+        })),
+      );
       if (res?.counts) {
         setCountsData(res.counts);
       }
     } catch {
-      // Keep local state on error
+      // Keep the last successfully loaded queue.
     } finally {
       setLoading(false);
     }
@@ -289,17 +277,44 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const loadAuditLogs = async () => {
     try {
       const res = await essApi.auditLogs();
-      if (res?.logs?.length) {
-        setAuditLogsList(res.logs);
-      }
+      setAuditLogsList(res?.logs ?? []);
     } catch {
-      // fallback to seed
+      // Keep the last successfully loaded audit trail.
+    }
+  };
+
+  const loadBehalfEmployees = async () => {
+    try {
+      const res = await hcmApi.employees.list({ per_page: 500, status: "Active" });
+      setBehalfEmployeeList(
+        (res?.data ?? []).map((e: ApiEmployee) => ({
+          id: String(e.employee_id),
+          name: e.full_name,
+          department: e.department_name,
+          position: e.position_title,
+        })),
+      );
+    } catch {
+      setBehalfEmployeeList([]);
+    }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      const res = await hcmApi.departments.list({ per_page: 500 });
+      setDepartmentOptions(
+        (res?.data ?? []).map((d) => ({ code: d.code || String(d.department_id), name: d.name })),
+      );
+    } catch {
+      setDepartmentOptions([]);
     }
   };
 
   useEffect(() => {
     loadRequests();
     loadAuditLogs();
+    loadBehalfEmployees();
+    loadDepartments();
   }, []);
 
   const filtered = rows.filter((r) => {
@@ -318,7 +333,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     return true;
   });
 
-  const behalfEmployees = employees.filter(
+  const behalfEmployees = behalfEmployeeList.filter(
     (e) => behalfDept === "all" || e.department === behalfDept,
   );
 
@@ -428,7 +443,11 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       return;
     }
     try {
-      const empNum = parseInt(behalfEmployeeId.replace(/\D/g, ""), 10) || 1;
+      const empNum = Number(behalfEmployeeId);
+      if (!Number.isFinite(empNum) || empNum <= 0) {
+        toast.error("Please select a valid employee.");
+        return;
+      }
       await essApi.fileOnBehalf({
         employee_id: empNum,
         category_name: behalfCategory,
@@ -665,12 +684,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
   /** Manual release: the only action that makes module output visible. */
   const releaseRow = async (row: Row) => {
-    const release = await confirm({
-      title: "Release this request?",
-      description: `Release ${row.id} to ${row.employee}? This makes the module output visible to the employee.`,
-      confirmLabel: "Release",
-    });
-    if (!release) return;
+    if (!window.confirm(`Release ${row.id} to ${row.employee}?`)) return;
 
     try {
       const res = await essApi.releaseRequest(row.id);
@@ -684,14 +698,10 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
   /** Send the request to another module; applied results are reversed. */
   const rerouteRow = async (row: Row) => {
-    const module = await prompt({
-      title: "Send to another module",
-      description: "Choose erm, attendance, payroll, or performance.",
-      inputLabel: "Module",
-      placeholder: "erm, attendance, payroll, performance",
-      defaultValue: row.module || "erm",
-      confirmLabel: "Send",
-    });
+    const module = window.prompt(
+      "Send to module (erm, attendance, payroll, performance):",
+      row.module || "erm",
+    );
 
     if (!module) return;
 
@@ -756,7 +766,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
   return (
     <div>
-      {confirmDialog}
       <PageHeader
         title="ESS Management"
         description="Monitor, process and configure employee self-service requests."
@@ -857,7 +866,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All departments</SelectItem>
-                      {departments.map((d) => (
+                      {departmentOptions.map((d) => (
                         <SelectItem key={d.code} value={d.name}>
                           {d.name}
                         </SelectItem>
@@ -945,7 +954,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="all">All departments</SelectItem>
-                              {departments.map((d) => (
+                              {departmentOptions.map((d) => (
                                 <SelectItem key={d.code} value={d.name}>
                                   {d.name}
                                 </SelectItem>
@@ -1078,7 +1087,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             )}
                             {r.status === "Under Review" && r.moduleNote && (
                               <p
-                                className="mt-1 max-w-[180px] truncate text-[11px] text-amber-600 dark:text-amber-400"
+                                className="mt-1 max-w-[180px] truncate text-[11px] text-amber-600"
                                 title={r.moduleNote}
                               >
                                 Declined: {r.moduleNote}
@@ -1584,7 +1593,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All departments</SelectItem>
-                        {departments.map((d) => (
+                        {departmentOptions.map((d) => (
                           <SelectItem key={d.code} value={d.name}>
                             {d.name}
                           </SelectItem>

@@ -83,7 +83,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { usePagination } from "@/hooks/usePagination";
 import { type NewHire } from "@/data/hr";
-import { myProfile } from "@/data/ess";
 import {
   DEFAULT_ACCOUNT_PASSWORD,
   hireStore,

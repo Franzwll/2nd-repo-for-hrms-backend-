@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Sparkles,
   Send,
@@ -27,7 +31,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { getUser } from "@/lib/auth";
-import { myProfile, myPayroll, myAttendance } from "@/data/ess";
 import { essApi, type ApiEssOverview } from "@/lib/api";
 
 interface Message {
@@ -58,15 +61,15 @@ export function EssAiAssistantModal({
   onNavigateCategory,
 }: EssAiAssistantModalProps) {
   const user = getUser();
-  const userName = user?.full_name || myProfile.name;
-  const firstName = userName.split(" ")[0];
-  const userDept = user?.department_name || myProfile.department;
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [mounted, setMounted] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
+  const userName = overview?.employee?.name || user?.full_name || "";
+  const firstName = userName.split(" ")[0] || "there";
+  const userDept = overview?.employee?.department || user?.department_name || "";
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -82,10 +85,7 @@ export function EssAiAssistantModal({
 
   useEffect(() => {
     if (open) {
-      essApi
-        .overview()
-        .then(setOverview)
-        .catch(() => {});
+      essApi.overview().then(setOverview).catch(() => {});
     }
   }, [open]);
 
@@ -122,19 +122,10 @@ export function EssAiAssistantModal({
     const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
     // 1. LEAVE & BALANCES
-    if (
-      q.includes("leave") ||
-      q.includes("vacation") ||
-      q.includes("sick") ||
-      q.includes("vl") ||
-      q.includes("sl") ||
-      q.includes("credit")
-    ) {
+    if (q.includes("leave") || q.includes("vacation") || q.includes("sick") || q.includes("vl") || q.includes("sl") || q.includes("credit")) {
       const balances = overview?.leave_balances?.length
-        ? overview.leave_balances
-            .map((b) => `• **${b.type}**: ${b.available} days remaining (out of ${b.total} days)`)
-            .join("\n")
-        : `• **Vacation Leave (VL)**: 12 days remaining\n• **Sick Leave (SL)**: 10 days remaining\n• **Emergency Leave**: 3 days remaining`;
+        ? overview.leave_balances.map((b) => `• **${b.type}**: ${b.available} days remaining (out of ${b.total} days)`).join("\n")
+        : `No leave balances have been assigned to your employee record yet. Please contact HR Administration.`;
 
       return {
         id: `bot-${Date.now()}`,
@@ -144,26 +135,17 @@ export function EssAiAssistantModal({
         actionCard: {
           title: "File a Leave Request",
           description: "Submit vacation, sick, or emergency leave for supervisor review.",
-          buttonText: "Open Leave Application →",
-          actionType: "leave",
+          buttonText: "Open Leave Application →",          actionType: "leave",
         },
       };
     }
 
     // 2. PAYROLL & PAYDAY
-    if (
-      q.includes("pay") ||
-      q.includes("salary") ||
-      q.includes("payslip") ||
-      q.includes("payout") ||
-      q.includes("cut off") ||
-      q.includes("dispute") ||
-      q.includes("13th")
-    ) {
+    if (q.includes("pay") || q.includes("salary") || q.includes("payslip") || q.includes("payout") || q.includes("cut off") || q.includes("dispute") || q.includes("13th")) {
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
-        text: `**Oxford Suites Makati Payroll Schedule & Guidelines:**\n\n• **Payout Dates**: 15th and 30th/31st of each month.\n• **Cut-off Periods**:\n  - 1st–15th: Paid on the 30th.\n  - 16th–end of month: Paid on the 15th of the following month.\n• **Next Upcoming Payout**: **${myPayroll.nextPayout || "August 30, 2026"}**.\n• **Night Differential**: 10% premium for hotel shifts rendered between 10:00 PM and 6:00 AM.\n• **13th Month Pay**: Disbursed on or before December 15 annually.`,
+        text: `**Oxford Suites Makati Payroll Schedule & Guidelines:**\n\n• **Payout Dates**: 15th and 30th/31st of each month.\n• **Cut-off Periods**:\n  - 1st–15th: Paid on the 30th.\n  - 16th–end of month: Paid on the 15th of the following month.\n• **Next Upcoming Payout**: **${overview?.payroll_summary?.next_payout || "not available yet"}**.\n• **Night Differential**: 10% premium for hotel shifts rendered between 10:00 PM and 6:00 AM.\n• **13th Month Pay**: Disbursed on or before December 15 annually.`,
         timestamp: timeStr,
         actionCard: {
           title: "View Payslips & Breakdown",
@@ -175,14 +157,7 @@ export function EssAiAssistantModal({
     }
 
     // 3. COE & CERTIFICATES & DOCUMENTS
-    if (
-      q.includes("coe") ||
-      q.includes("certificate") ||
-      q.includes("document") ||
-      q.includes("2316") ||
-      q.includes("clearance") ||
-      q.includes("employment certificate")
-    ) {
+    if (q.includes("coe") || q.includes("certificate") || q.includes("document") || q.includes("2316") || q.includes("clearance") || q.includes("employment certificate")) {
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
@@ -198,16 +173,7 @@ export function EssAiAssistantModal({
     }
 
     // 4. ATTENDANCE, SHIFTS, TIME IN / DTR
-    if (
-      q.includes("attendance") ||
-      q.includes("time in") ||
-      q.includes("time out") ||
-      q.includes("clock") ||
-      q.includes("dtr") ||
-      q.includes("late") ||
-      q.includes("shift") ||
-      q.includes("schedule")
-    ) {
+    if (q.includes("attendance") || q.includes("time in") || q.includes("time out") || q.includes("clock") || q.includes("dtr") || q.includes("late") || q.includes("shift") || q.includes("schedule")) {
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
@@ -223,17 +189,7 @@ export function EssAiAssistantModal({
     }
 
     // 5. BENEFITS, HMO, LOANS & SSS
-    if (
-      q.includes("hmo") ||
-      q.includes("benefit") ||
-      q.includes("loan") ||
-      q.includes("sss") ||
-      q.includes("philhealth") ||
-      q.includes("pag-ibig") ||
-      q.includes("insurance") ||
-      q.includes("hospital") ||
-      q.includes("clinic")
-    ) {
+    if (q.includes("hmo") || q.includes("benefit") || q.includes("loan") || q.includes("sss") || q.includes("philhealth") || q.includes("pag-ibig") || q.includes("insurance") || q.includes("hospital") || q.includes("clinic")) {
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
@@ -243,15 +199,7 @@ export function EssAiAssistantModal({
     }
 
     // 6. SOCIAL RECOGNITION & KUDOS
-    if (
-      q.includes("recognition") ||
-      q.includes("kudos") ||
-      q.includes("shoutout") ||
-      q.includes("wall") ||
-      q.includes("praise") ||
-      q.includes("award") ||
-      q.includes("values")
-    ) {
+    if (q.includes("recognition") || q.includes("kudos") || q.includes("shoutout") || q.includes("wall") || q.includes("praise") || q.includes("award") || q.includes("values")) {
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
@@ -267,15 +215,7 @@ export function EssAiAssistantModal({
     }
 
     // 7. PROBATION & PERFORMANCE
-    if (
-      q.includes("probation") ||
-      q.includes("regularization") ||
-      q.includes("performance") ||
-      q.includes("review") ||
-      q.includes("appraisal") ||
-      q.includes("milestone") ||
-      q.includes("lms")
-    ) {
+    if (q.includes("probation") || q.includes("regularization") || q.includes("performance") || q.includes("review") || q.includes("appraisal") || q.includes("milestone") || q.includes("lms")) {
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
@@ -285,14 +225,7 @@ export function EssAiAssistantModal({
     }
 
     // 8. GREETINGS
-    if (
-      q.includes("hello") ||
-      q.includes("hi") ||
-      q.includes("hey") ||
-      q.includes("good morning") ||
-      q.includes("good afternoon") ||
-      q.includes("good day")
-    ) {
+    if (q.includes("hello") || q.includes("hi") || q.includes("hey") || q.includes("good morning") || q.includes("good afternoon") || q.includes("good day")) {
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
@@ -305,10 +238,7 @@ export function EssAiAssistantModal({
     return {
       id: `bot-${Date.now()}`,
       sender: "bot",
-      text: `I understand you are asking about *"query"*. \n\nHere are some of the most common topics I can help with:\n• **Leaves & Balances**: Check VL/SL credits or file a leave.\n• **Payroll & Payslips**: Payout dates, net pay, and salary queries.\n• **Certificates & COE**: Certificate of Employment requests.\n• **Benefits & HMO**: Medical insurance and SSS/Pag-IBIG loan filing.\n\nFeel free to select one of the suggested buttons below or ask a specific question!`.replace(
-        "query",
-        query,
-      ),
+      text: `I understand you are asking about *"query"*. \n\nHere are some of the most common topics I can help with:\n• **Leaves & Balances**: Check VL/SL credits or file a leave.\n• **Payroll & Payslips**: Payout dates, net pay, and salary queries.\n• **Certificates & COE**: Certificate of Employment requests.\n• **Benefits & HMO**: Medical insurance and SSS/Pag-IBIG loan filing.\n\nFeel free to select one of the suggested buttons below or ask a specific question!`.replace("query", query),
       timestamp: timeStr,
     };
   };
@@ -349,7 +279,7 @@ export function EssAiAssistantModal({
       icon: Calendar,
       title: "Leave Credits",
       desc: "How many leave days do I have left?",
-      color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-400/10",
+      color: "text-emerald-600 bg-emerald-500/10",
       query: "What is my remaining leave balance?",
     },
     {
@@ -363,30 +293,29 @@ export function EssAiAssistantModal({
       icon: Building2,
       title: "Request a COE",
       desc: "How to request an employment certificate?",
-      color: "text-blue-600 dark:text-blue-400 bg-blue-500/10 dark:bg-blue-400/10",
+      color: "text-blue-600 bg-blue-500/10",
       query: "How do I request a Certificate of Employment (COE)?",
     },
     {
       icon: ShieldCheck,
       title: "HMO & Medical",
       desc: "What does my iCare HMO cover?",
-      color: "text-purple-600 dark:text-purple-400 bg-purple-500/10 dark:bg-purple-400/10",
+      color: "text-purple-600 bg-purple-500/10",
       query: "What does my HMO healthcare cover?",
     },
   ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl w-[95vw] h-[85vh] max-h-[720px] p-0 gap-0 overflow-hidden bg-background border-border/80 shadow-2xl flex flex-col rounded-2xl [&>button]:hidden">
+      <DialogContent
+        className="max-w-3xl w-[95vw] h-[85vh] max-h-[720px] p-0 gap-0 overflow-hidden bg-background border-border/80 shadow-2xl flex flex-col rounded-2xl [&>button]:hidden"
+      >
         <DialogTitle className="sr-only">Oxford Suites HR AI Concierge</DialogTitle>
         {/* Top Minimalist Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border/60 bg-card/60 backdrop-blur-md shrink-0">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <Badge
-              variant="outline"
-              className="bg-primary/10 text-primary border-primary/20 text-[11px] font-semibold flex items-center gap-1 py-0.5"
-            >
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px] font-semibold flex items-center gap-1 py-0.5">
               <Sparkles className="h-3 w-3" /> Oxford HR AI Concierge
             </Badge>
           </div>
@@ -422,15 +351,14 @@ export function EssAiAssistantModal({
             <div className="h-full flex flex-col justify-center items-center max-w-xl mx-auto text-center space-y-6 py-6">
               {/* Badge & Star Icon */}
               <div className="space-y-3">
-                <div className="inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-gradient-to-tr from-primary/20 via-amber-500/20 dark:via-amber-400/10 to-primary/10 text-primary shadow-xs border border-primary/20">
+                <div className="inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-gradient-to-tr from-primary/20 via-amber-500/20 to-primary/10 text-primary shadow-xs border border-primary/20">
                   <Sparkles className="h-6 w-6 text-primary" />
                 </div>
                 <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                   How can I help you today, {firstName}?
                 </h2>
                 <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-                  Ask me anything about your leave balances, payroll cut-offs, hotel policies, HMO
-                  benefits, or document requests.
+                  Ask me anything about your leave balances, payroll cut-offs, hotel policies, HMO benefits, or document requests.
                 </p>
               </div>
 
@@ -452,19 +380,13 @@ export function EssAiAssistantModal({
 
                 <div className="flex items-center justify-between pt-1 border-t border-border/40">
                   <div className="flex items-center gap-1.5">
-                    <Badge
-                      variant="outline"
-                      className="text-[11px] bg-muted/60 text-muted-foreground border-border/60 py-0.5"
-                    >
+                    <Badge variant="outline" className="text-[11px] bg-muted/60 text-muted-foreground border-border/60 py-0.5">
                       {userDept}
                     </Badge>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className="hidden sm:inline-flex text-[11px] bg-primary/5 text-primary border-primary/20 py-0.5 font-medium"
-                    >
+                    <Badge variant="outline" className="hidden sm:inline-flex text-[11px] bg-primary/5 text-primary border-primary/20 py-0.5 font-medium">
                       Oxford HR v2.4
                     </Badge>
                     <Button
@@ -524,21 +446,9 @@ export function EssAiAssistantModal({
                     key={msg.id}
                     className={`flex items-start gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}
                   >
-                    <Avatar
-                      className={`h-8 w-8 shrink-0 border ${isUser ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-border"}`}
-                    >
-                      <AvatarFallback
-                        className={
-                          isUser
-                            ? "bg-primary text-primary-foreground font-bold text-xs"
-                            : "bg-amber-500/15 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 font-bold text-xs"
-                        }
-                      >
-                        {isUser ? (
-                          (firstName || "ME").slice(0, 2).toUpperCase()
-                        ) : (
-                          <Bot className="h-4 w-4" />
-                        )}
+                    <Avatar className={`h-8 w-8 shrink-0 border ${isUser ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-border"}`}>
+                      <AvatarFallback className={isUser ? "bg-primary text-primary-foreground font-bold text-xs" : "bg-amber-500/15 text-amber-600 font-bold text-xs"}>
+                        {isUser ? (firstName || "ME").slice(0, 2).toUpperCase() : <Bot className="h-4 w-4" />}
                       </AvatarFallback>
                     </Avatar>
 
@@ -561,10 +471,7 @@ export function EssAiAssistantModal({
                               <Sparkles className="h-3.5 w-3.5 text-primary" />
                               {msg.actionCard.title}
                             </span>
-                            <Badge
-                              variant="outline"
-                              className="bg-primary/10 text-primary border-primary/20 text-[10px]"
-                            >
+                            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px]">
                               Quick Action
                             </Badge>
                           </div>
@@ -573,9 +480,7 @@ export function EssAiAssistantModal({
                           </p>
                           <Button
                             size="sm"
-                            onClick={() =>
-                              handleActionClick(msg.actionCard?.actionType, msg.actionCard?.linkTo)
-                            }
+                            onClick={() => handleActionClick(msg.actionCard?.actionType, msg.actionCard?.linkTo)}
                             className="w-full text-xs h-8 font-semibold gap-1.5 shadow-2xs mt-1"
                           >
                             <span>{msg.actionCard.buttonText}</span>
@@ -583,9 +488,7 @@ export function EssAiAssistantModal({
                         </div>
                       )}
 
-                      <p
-                        className={`text-[10px] text-muted-foreground ${isUser ? "text-right" : "text-left"} px-1`}
-                      >
+                      <p className={`text-[10px] text-muted-foreground ${isUser ? "text-right" : "text-left"} px-1`}>
                         {msg.timestamp}
                       </p>
                     </div>
@@ -597,23 +500,14 @@ export function EssAiAssistantModal({
               {isThinking && (
                 <div className="flex items-start gap-3">
                   <Avatar className="h-8 w-8 shrink-0 bg-muted border border-border">
-                    <AvatarFallback className="bg-amber-500/15 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 font-bold text-xs">
+                    <AvatarFallback className="bg-amber-500/15 text-amber-600 font-bold text-xs">
                       <Bot className="h-4 w-4 animate-spin" />
                     </AvatarFallback>
                   </Avatar>
                   <div className="rounded-2xl p-3.5 bg-card border border-border/80 shadow-xs flex items-center gap-1.5">
-                    <span
-                      className="h-2 w-2 rounded-full bg-primary animate-bounce"
-                      style={{ animationDelay: "0ms" }}
-                    />
-                    <span
-                      className="h-2 w-2 rounded-full bg-primary animate-bounce"
-                      style={{ animationDelay: "150ms" }}
-                    />
-                    <span
-                      className="h-2 w-2 rounded-full bg-primary animate-bounce"
-                      style={{ animationDelay: "300ms" }}
-                    />
+                    <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
                 </div>
               )}

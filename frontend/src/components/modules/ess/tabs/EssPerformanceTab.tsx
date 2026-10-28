@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { myPerformance, myLearningCourses, myProfile } from "@/data/ess";
+import { useEssProfile } from "@/hooks/useEssProfile";
 import { LmsCertificateModal } from "@/components/modules/ess/modals/LmsCertificateModal";
 import { LmsActivityPlayer } from "@/components/modules/ess/modals/LmsActivityPlayer";
 import { essApi } from "@/lib/api";
@@ -83,8 +83,9 @@ function isCourseUrgent(c: any): boolean {
 }
 
 export function EssPerformanceTab() {
-  const [courses, setCourses] = useState<any[]>(myLearningCourses);
+  const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { employee } = useEssProfile();
   const [perfData, setPerfData] = useState<{
     rating: number | null;
     competencyLevel: string | null;
@@ -92,11 +93,11 @@ export function EssPerformanceTab() {
     completedCount: number;
     totalCount: number;
   }>({
-    rating: 4.8,
-    competencyLevel: "Proficient (Exceeding Expectations)",
-    averageScore: 95,
-    completedCount: 3,
-    totalCount: 4,
+    rating: null,
+    competencyLevel: null,
+    averageScore: null,
+    completedCount: 0,
+    totalCount: 0,
   });
 
   // The module detail replaces the materials grid, so handbook and quiz can be
@@ -265,9 +266,11 @@ export function EssPerformanceTab() {
               <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
                 <TrendingUp className="h-3.5 w-3.5 text-primary" /> Last Performance Review
               </div>
-              <p className="mt-1 text-sm font-bold text-foreground">Annual Review 2026</p>
+              <p className="mt-1 text-sm font-bold text-foreground">
+                {perfData.rating != null ? `${perfData.rating} / 5` : "Not yet rated"}
+              </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Next scheduled review: <strong className="text-foreground">Dec 15, 2026</strong>
+                Based on the latest recorded performance review.
               </p>
             </CardContent>
           </Card>
@@ -310,9 +313,9 @@ export function EssPerformanceTab() {
                 <Building className="h-3.5 w-3.5 text-primary" /> Salary Grade &amp; Step
               </div>
               <p className="mt-1 text-sm font-bold text-foreground">
-                {myPerformance.salaryGrade} · {myPerformance.salaryStep}
+                {employee?.salary_grade || "—"} · {employee?.salary_step || "—"}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Current: {myProfile.position}</p>
+              <p className="text-xs text-muted-foreground mt-1">Current: {employee?.position || "—"}</p>
             </CardContent>
           </Card>
         </div>

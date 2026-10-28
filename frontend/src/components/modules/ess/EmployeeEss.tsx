@@ -3,9 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
-import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
-import { myPayroll } from "@/data/ess";
 
 // Lazy-loaded tab components — shows skeleton while loading
 const EssOverviewTab = lazy(() =>
@@ -87,7 +85,6 @@ export function EmployeeEss() {
   const navigate = useNavigate();
   // Global Quick Action Modals
   const [clockModalOpen, setClockModalOpen] = useState(false);
-  const [payslipModalOpen, setPayslipModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Sync category query parameter from TanStack Router URL (e.g. ?category=Attendance)
@@ -194,12 +191,6 @@ export function EmployeeEss() {
 
       {/* ── Global Modals ── */}
       <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
-      <PayslipViewerModal
-        open={payslipModalOpen}
-        onOpenChange={setPayslipModalOpen}
-        period="2026-07-01 – 07-15"
-        netPay={myPayroll.net}
-      />
       <EssAiAssistantModal
         open={aiModalOpen}
         onOpenChange={setAiModalOpen}
