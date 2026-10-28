@@ -746,19 +746,6 @@ export function LmsActivityPlayer({
                 </p>
               )}
               <div className="flex flex-wrap items-center justify-center gap-2">
-                {speechSupported && (
-                  <SpeakControl
-                    speaking={speakingKey === "locked"}
-                    onClick={() =>
-                      speak(
-                        "locked",
-                        `Assessment not passed. ${
-                          errorMsg || "You did not pass this assessment. Retakes are not allowed."
-                        }${lockedScore != null ? ` Your score: ${lockedScore} percent.` : ""}`,
-                      )
-                    }
-                  />
-                )}
                 <Button
                   size="sm"
                   variant="outline"
