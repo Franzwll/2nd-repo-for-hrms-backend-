@@ -78,6 +78,7 @@ import {
   Mic,
   MicOff,
   Copy,
+  Phone,
   PhoneOff,
   Volume2,
   VolumeX,
@@ -133,6 +134,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -248,7 +250,8 @@ import {
   sanitizePhone,
 } from "@/lib/validation";
 
-function transformApiApplicant(a: ApiApplicant): Applicant {
+function transformApiApplicant(raw: ApiApplicant): Applicant {
+  const a = (raw as any)?.data && (raw as any).data.applicant_id ? (raw as any).data : raw;
   const position = a.job_post?.title || "Front Desk Receptionist";
   return {
     id: a.applicant_code || `APP-${a.applicant_id}`,
@@ -4984,7 +4987,7 @@ export function ScreeningResumeDocsMatchDetail({
    and Resume & Documents. Activity history lives in Current Stage.
    ============================================================================ */
 
-type ViewPanel = "current" | "details" | "resume" | "interview" | "test" | "practical" | "final";
+type ViewPanel = "current" | "history" | "details" | "resume" | "interview" | "test" | "practical" | "final";
 
 type ViewScreenDoc = {
   docType: VerificationDocType;
@@ -5010,7 +5013,7 @@ type ApplicantViewScreenProps = {
   onRecomputeRanking?: () => void;
   /** True while the recompute request is in flight. */
   recomputingRanking?: boolean;
-  onSchedule: () => void;
+  onSchedule?: () => void;
   onStartInterview: () => void;
   /** Slot length in minutes driving the interview start window
    *  ([start, start + duration) is startable). Falls back to 30. */
@@ -5045,6 +5048,15 @@ type ApplicantViewScreenProps = {
   onOverrideCooldown?: () => void;
   /** True while the override request is in flight. */
   overrideBusy?: boolean;
+  /** Administrative actions inside View profile */
+  isSuperAdmin?: boolean;
+  onMoveToStage?: (a: Applicant) => void;
+  onReopen?: (a: Applicant) => void;
+  onCorrectHiring?: (a: Applicant) => void;
+  onArchive?: (a: Applicant) => void;
+  onRestore?: (a: Applicant) => void;
+  onBlock?: (a: Applicant) => void;
+  onUnblock?: (a: Applicant) => void;
 };
 
 /** Humanized hiring milestones for the stage stepper (maps internal stages). */
@@ -5119,8 +5131,39 @@ function ApplicantViewScreen({
   historyLoading,
   onOverrideCooldown,
   overrideBusy,
+  isSuperAdmin,
+  onMoveToStage,
+  onReopen,
+  onCorrectHiring,
+  onArchive,
+  onRestore,
+  onBlock,
+  onUnblock,
 }: ApplicantViewScreenProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const [panel, setPanel] = useState<ViewPanel>("current");
+
+  /** Reset scroll position to top whenever View Profile is opened or switches applicant. */
+  useEffect(() => {
+    const scrollToTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      const mainEl = document.querySelector("main");
+      if (mainEl) mainEl.scrollTop = 0;
+      rootRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+    };
+
+    scrollToTop();
+    const frameId = requestAnimationFrame(scrollToTop);
+    const timer = setTimeout(scrollToTop, 50);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(timer);
+    };
+  }, [a.id]);
+
   /* Test requirements from the API (Core HCM position flags, owner) with the
      static lists as fallback — must match the API gates. Every applicant for
      a flagged position (e.g. Front Desk) must undergo the required stages. */
@@ -5210,7 +5253,7 @@ function ApplicantViewScreen({
     if (lastFlowKey.current === flowKey) return;
     lastFlowKey.current = flowKey;
     // Leave the user alone when they are reading reference material.
-    if (panel === "details" || panel === "resume") return;
+    if (panel === "details" || panel === "resume" || panel === "history") return;
     // Open the stage being worked on now (the first stage that is not finished).
     const nextIdx = stepStates.findIndex((s) => s === "current");
     // A closed pipeline (offer extended / hired) opens the final evaluation.
@@ -5330,38 +5373,53 @@ function ApplicantViewScreen({
     icon: React.ReactNode,
     badge?: number,
     done?: boolean,
-  ) => (
-    <button
-      type="button"
-      onClick={() => setPanel(id)}
-      className={cn(
-        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold transition-colors",
-        panel === id
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {icon} {label}
-      {done ? (
-        <span
-          className={cn(
-            "ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[0.6rem] font-bold",
-            panel === id ? "bg-success/25 text-success-foreground" : "bg-success/15 text-success",
-          )}
-          title="Completed"
-        >
-          <Check className="h-3 w-3" strokeWidth={3} /> Done
+  ) => {
+    const active = panel === id;
+    return (
+      <button
+        type="button"
+        onClick={() => setPanel(id)}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-semibold transition-colors cursor-pointer",
+          active
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        <span className={cn(active ? "text-primary-foreground" : "text-muted-foreground")}>
+          {icon}
         </span>
-      ) : (
-        badge !== undefined &&
-        badge > 0 && (
-          <span className="ml-auto min-w-4 rounded-full bg-secondary px-1.5 text-center text-[0.65rem] font-bold text-secondary-foreground">
-            {badge}
+        <span className="truncate flex-1">{label}</span>
+        {done ? (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.6rem] font-bold",
+              active
+                ? "bg-primary-foreground/20 text-primary-foreground"
+                : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+            )}
+            title="Completed"
+          >
+            <Check className="h-3 w-3" strokeWidth={3} /> Done
           </span>
-        )
-      )}
-    </button>
-  );
+        ) : (
+          badge !== undefined &&
+          badge > 0 && (
+            <span
+              className={cn(
+                "ml-auto min-w-4 rounded-full px-1.5 py-0.2 text-center text-[0.65rem] font-bold",
+                active
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground",
+              )}
+            >
+              {badge}
+            </span>
+          )
+        )}
+      </button>
+    );
+  };
 
   const emptyNote = (text: string) => (
     <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
@@ -5370,207 +5428,151 @@ function ApplicantViewScreen({
   );
 
   return (
-    <div className="mt-6 space-y-5">
-      {/* Top bar — Review lives in Resume & Documents, scheduling stays here */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onBack}>
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
-          </Button>
-        </div>
-        <Button size="sm" onClick={onSchedule}>
-          <CalendarClock className="mr-1.5 h-3.5 w-3.5" /> Book Interview
+    <div ref={rootRef} className="mt-6 space-y-5">
+      {/* Top bar — Back to applicants navigation */}
+      <div>
+        <Button variant="outline" size="sm" onClick={onBack} className="shadow-xs hover:bg-muted font-medium cursor-pointer">
+          <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
         </Button>
       </div>
 
-      {/* Applicant hero — mirrors the profile mockup: identity + resume file card */}
-      <Card className="border-border/70">
+      {/* Applicant hero — sleek modern card with subtle gradient highlight & rich metadata */}
+      <Card className="relative overflow-hidden border-border/80 bg-gradient-to-br from-card via-card to-muted/20 shadow-xs">
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary via-primary/80 to-primary/40" />
         <CardContent className="p-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <Avatar className="h-14 w-14 shrink-0">
-              <AvatarFallback className="bg-primary text-lg font-semibold text-primary-foreground">
-                {initials(a.name)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <h2 className="font-display text-2xl font-semibold">{a.name}</h2>
-              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Briefcase className="h-3.5 w-3.5 text-primary" />
-                <span className="font-medium text-foreground">{a.position}</span>
-              </p>
-              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <CalendarDays className="h-3.5 w-3.5" /> Applied: {displayAppliedAt(a.appliedAt)}
-                </span>
-                <Badge variant="outline" className={cn("gap-1", statusMeta[a.status].className)}>
-                  <span className={cn("h-1.5 w-1.5 rounded-full", statusMeta[a.status].dot)} />
-                  {statusMeta[a.status].label}
-                </Badge>
-              </p>
-              {/* Onboarding hand-over — the employee's first day of work. */}
-              {linkedHire?.startDate && (
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CalendarClock className="h-3.5 w-3.5 text-gold-foreground dark:text-gold" />
-                  Start Date as Employee:{" "}
-                  <span className="font-medium text-foreground">{linkedHire.startDate}</span>
-                </p>
-              )}
-            </div>
-            {a.resumeUrl ? (
-              <div className="ml-auto flex shrink-0 items-center gap-2.5 rounded-lg border border-border/70 px-3 py-2">
-                <ScreeningDocIcon docType="resume" label="RES" />
-                <div className="min-w-0 max-w-52">
-                  <p
-                    className="truncate text-xs font-semibold"
-                    title={a.resumeOriginalName || undefined}
-                  >
-                    {a.resumeOriginalName || "Resume / CV"}
-                  </p>
-                  <p className="text-[0.7rem] text-muted-foreground">
-                    PDF · Screened at {Math.round(a.score)}%
-                  </p>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 shrink-0"
-                  title="Download resume"
-                  onClick={() => window.open(a.resumeUrl!, "_blank", "noopener")}
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="ml-auto text-right">
-                <p className="eyebrow">Resume Score</p>
-                <p
-                  className={cn(
-                    "font-display text-3xl font-semibold",
-                    a.score >= passing
-                      ? "text-success"
-                      : a.score >= 60
-                        ? "text-caution"
-                        : "text-destructive",
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-4">
+              <Avatar className="h-16 w-16 shrink-0 ring-2 ring-primary/20 ring-offset-2 ring-offset-background">
+                <AvatarFallback className="bg-primary/10 text-primary font-display text-xl font-bold">
+                  {initials(a.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-display text-2xl font-bold tracking-tight text-foreground">{a.name}</h2>
+                  <span className="rounded-md border border-border bg-muted/80 px-2 py-0.5 font-mono text-xs font-semibold text-muted-foreground">
+                    {a.id}
+                  </span>
+                  {tier <= 2 && (
+                    <Badge
+                      variant="outline"
+                      className={cn("gap-1 text-[11px] font-semibold", topCandidateTierMeta[tier].className)}
+                    >
+                      <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
+                    </Badge>
                   )}
-                >
-                  {a.score}%
-                </p>
-                <p className="text-[0.65rem] text-muted-foreground">
-                  {passedScreening ? "Passed screening" : "Below passing score"}
-                </p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+                  {a.isArchived && (
+                    <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px]">
+                      <Archive className="h-3 w-3" /> Archived
+                    </Badge>
+                  )}
+                  {a.isActiveBlocked && (
+                    <Badge variant="outline" className="gap-1 border-destructive/40 bg-destructive/10 text-destructive text-[11px]">
+                      <Ban className="h-3 w-3" /> Blocked
+                    </Badge>
+                  )}
+                </div>
 
-      {/* Previous applications — same-email history with the re-apply
-          cooldown countdown / eligible flag + HR early override. */}
-      <Card className="border-border/70">
-        <CardContent className="space-y-3 px-6 py-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold">
-              Previous applications
-              {typeof history?.attempt_count === "number" && history.attempt_count > 0 && (
-                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  {history.attempt_count} attempt{history.attempt_count === 1 ? "" : "s"}
-                </span>
-              )}
-            </p>
-            {history?.cooldown && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={overrideBusy}
-                onClick={onOverrideCooldown}
-              >
-                {overrideBusy ? "Allowing…" : "Allow early re-application"}
-              </Button>
-            )}
-          </div>
-          {historyLoading ? (
-            <div className="space-y-2" aria-busy="true" aria-label="Loading application history">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {history?.block && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-                  <div className="flex items-center gap-1.5 font-semibold">
-                    <Ban className="h-4 w-4 shrink-0" />
-                    <span>Recruitment Restriction Active (Blocked)</span>
-                  </div>
-                  <p className="mt-1">
-                    <span className="font-medium">Reason:</span> {history.block.reason}
-                    {history.block.scope && (
-                      <span className="ml-2 font-medium">
-                        (Scope: {history.block.scope === "all_jobs" ? "All Positions" : `Position ${(history.block as any).scope_job_id ?? ""}`})
-                      </span>
-                    )}
-                    {(history.block as any).expires_at && (
-                      <span className="ml-2">
-                        Expires: {new Date((history.block as any).expires_at).toLocaleDateString()}
-                      </span>
-                    )}
-                  </p>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1 font-medium text-foreground">
+                    <Briefcase className="h-3.5 w-3.5 text-primary" /> {a.position}
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" /> {departmentOf(a.position)}
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <CalendarDays className="h-3.5 w-3.5" /> Applied: {displayAppliedAt(a.appliedAt)}
+                  </span>
                 </div>
-              )}
-              {history?.cooldown ? (
-                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 dark:border-amber-400/20 dark:bg-amber-400/10 px-3 py-2 text-xs leading-relaxed">
-                  Eligible to re-apply on{" "}
-                  <span className="font-semibold">{history.cooldown.eligible_after_label}</span> (
-                  {history.cooldown.days_left} day(s) left).
-                </p>
-              ) : (
-                <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs">
-                  Eligible to re-apply — no waiting period in effect.
-                </p>
-              )}
-            </div>
-          )}
-          {(history?.data ?? []).length > 0 && (
-            <div className="space-y-1.5">
-              {history!.data.map((row) => (
-                <div
-                  key={row.applicant_id}
-                  className={cn(
-                    "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border/60 px-3 py-2 text-xs",
-                    row.is_current && "border-primary/40 bg-primary/5",
+
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+                  {a.email && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[11px]">
+                      <Mail className="h-3 w-3 text-muted-foreground" /> {a.email}
+                    </span>
                   )}
-                >
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {row.applicant_code}
-                  </span>
-                  <span className="font-medium">{row.position}</span>
-                  <span className="text-muted-foreground">
-                    {row.applied_at ? new Date(row.applied_at).toLocaleDateString() : "—"}
-                  </span>
-                  <Badge variant="outline" className="text-[11px]">
-                    {row.stage}
+                  {a.phone && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[11px]">
+                      <Phone className="h-3 w-3 text-muted-foreground" /> {a.phone}
+                    </span>
+                  )}
+                  <Badge variant="outline" className={cn("gap-1.5 ml-1 text-[11px]", statusMeta[a.status].className)}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full animate-pulse", statusMeta[a.status].dot)} />
+                    {statusMeta[a.status].label}
                   </Badge>
-                  {row.offer_status === "Declined" && (
-                    <Badge variant="outline" className="border-success/40 text-[11px] text-success">
-                      Declined — no cooldown
-                    </Badge>
-                  )}
-                  {row.is_current && (
-                    <Badge variant="secondary" className="text-[11px]">
-                      Current
-                    </Badge>
-                  )}
+                  <Badge variant="secondary" className="text-[11px]">
+                    {a.stage}
+                  </Badge>
                 </div>
-              ))}
+
+                {linkedHire?.startDate && (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-gold-foreground dark:text-gold">
+                    <CalendarClock className="h-3.5 w-3.5" />
+                    Start Date as Employee: <span className="font-semibold underline">{linkedHire.startDate}</span>
+                  </p>
+                )}
+              </div>
             </div>
-          )}
+
+            {/* Right side: Resume Card or Score Widget */}
+            <div className="shrink-0 flex items-center">
+              {a.resumeUrl ? (
+                <div className="flex items-center gap-3 rounded-xl border border-border/80 bg-background/80 p-3 shadow-2xs backdrop-blur-xs">
+                  <ScreeningDocIcon docType="resume" label="RES" />
+                  <div className="min-w-0 max-w-48">
+                    <p className="truncate text-xs font-semibold text-foreground" title={a.resumeOriginalName || undefined}>
+                      {a.resumeOriginalName || "Resume / CV"}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={cn(
+                        "inline-flex items-center rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                        a.score >= passing ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-destructive/15 text-destructive"
+                      )}>
+                        {Math.round(a.score)}% Score
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">PDF</span>
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                    title="Download resume"
+                    onClick={() => window.open(a.resumeUrl!, "_blank", "noopener")}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/80 bg-background/80 px-4 py-3 text-right shadow-2xs">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Screening Score</p>
+                  <p
+                    className={cn(
+                      "font-display text-3xl font-bold tracking-tight",
+                      a.score >= passing
+                        ? "text-success"
+                        : a.score >= 60
+                          ? "text-caution"
+                          : "text-destructive",
+                    )}
+                  >
+                    {a.score}%
+                  </p>
+                  <p className="text-[10px] font-medium text-muted-foreground">
+                    {passedScreening ? "Passed screening" : "Below passing threshold"}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Stage stepper — timeline: Screening → Interview → Assessment Test →
-          Practical Assessment → Final Evaluation. Every node is clickable and
-          opens its section. */}
-      <Card className="border-border/70">
-        <CardContent className="overflow-x-auto px-6 py-5">
+      {/* Stage stepper — timeline: Screening → Interview → Assessment Test → Practical Assessment → Final Evaluation */}
+      <Card className="border-border/70 bg-card/60 backdrop-blur-xs shadow-xs">
+        <CardContent className="overflow-x-auto px-6 py-4">
           <div className="flex min-w-[640px] items-start">
             {VIEW_MILESTONES.map((m, i) => {
               /* Colour comes from the recorded progress, not the stage label:
@@ -5616,9 +5618,9 @@ function ApplicantViewScreen({
               const nextState = stepStates[i + 1] ?? "pending";
               const lineClass =
                 nextState === "done"
-                  ? "bg-success"
+                  ? "bg-emerald-500"
                   : nextState === "current"
-                    ? "bg-gradient-to-r from-success to-destructive/50"
+                    ? "bg-gradient-to-r from-emerald-500 to-primary/60"
                     : "bg-muted";
 
               return (
@@ -5631,8 +5633,8 @@ function ApplicantViewScreen({
                     <div
                       aria-hidden
                       className={cn(
-                        "absolute top-[14px] h-0.5",
-                        "left-[calc(50%+22px)] right-[calc(-50%+22px)]",
+                        "absolute top-[14px] h-[2px]",
+                        "left-[calc(50%+16px)] right-[calc(-50%+16px)]",
                         lineClass,
                       )}
                     />
@@ -5644,20 +5646,20 @@ function ApplicantViewScreen({
                     title={`Open ${m.label}`}
                     className={cn(
                       "relative z-10 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-bold transition-all",
-                      "hover:ring-4 hover:ring-primary/25 disabled:cursor-not-allowed disabled:hover:ring-0",
+                      "hover:scale-105 active:scale-95 disabled:cursor-not-allowed",
                       isFailed
-                        ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/15"
+                        ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/20 shadow-xs"
                         : done
-                          ? "bg-success text-success-foreground"
+                          ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20"
                           : current
-                            ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/15"
-                            : "bg-muted text-muted-foreground",
+                            ? "bg-primary text-primary-foreground ring-4 ring-primary/25 shadow-xs"
+                            : "bg-muted text-muted-foreground border border-border",
                     )}
                   >
                     {isFailed ? (
-                      <X className="h-4 w-4" strokeWidth={3} />
+                      <X className="h-3.5 w-3.5" strokeWidth={3} />
                     ) : done ? (
-                      <Check className="h-4 w-4" strokeWidth={3} />
+                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
                     ) : (
                       i + 1
                     )}
@@ -5666,9 +5668,9 @@ function ApplicantViewScreen({
                     className={cn(
                       "mt-2 px-1 text-xs font-semibold leading-tight",
                       done
-                        ? "text-success"
+                        ? "text-emerald-600 dark:text-emerald-400"
                         : current
-                          ? "text-destructive"
+                          ? "text-primary font-bold"
                           : "text-muted-foreground",
                     )}
                   >
@@ -5678,10 +5680,10 @@ function ApplicantViewScreen({
                     className={cn(
                       "mt-0.5 text-[11px] font-medium leading-tight",
                       done
-                        ? "text-success"
+                        ? "text-emerald-600/80 dark:text-emerald-400/80"
                         : current
-                          ? "text-destructive"
-                          : "text-muted-foreground",
+                          ? "text-primary/90"
+                          : "text-muted-foreground/70",
                     )}
                   >
                     {statusText}
@@ -5693,52 +5695,75 @@ function ApplicantViewScreen({
         </CardContent>
       </Card>
 
-      {/* Body grid: section nav + panels. */}
-      <div className="grid items-start gap-4 lg:grid-cols-[240px_1fr] lg:items-stretch">
-        <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh]">
-          <CardContent className="h-full p-3 lg:overflow-y-auto">
-            <div>
-              <p className="eyebrow mb-2">Applicant sections</p>
-              <div className="space-y-1">
-                {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
-                {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
-                {sectionBtn(
-                  "resume",
-                  "Resume & Documents",
-                  <Upload className="h-4 w-4" />,
-                  docCount,
-                  passedScreening,
-                )}
-                {sectionBtn(
-                  "interview",
-                  "Interview",
-                  <ClipboardCheck className="h-4 w-4" />,
-                  assessments.length,
-                  !!assessment,
-                )}
-                {sectionBtn(
-                  "test",
-                  "Assessment Test",
-                  <BookMarked className="h-4 w-4" />,
-                  assessmentTests.length,
-                  !!test,
-                )}
-                {sectionBtn(
-                  "practical",
-                  "Practical Assessment",
-                  <Wrench className="h-4 w-4" />,
-                  requiresPrac ? practicalTests.length : undefined,
-                  /* Not required for this position: done as soon as the
-                   applicant has advanced past the stage (progress bar rule). */
-                  requiresPrac ? !!practical : stepStates[3] === "done",
-                )}
-                {sectionBtn(
-                  "final",
-                  "Final Evaluation",
-                  <CheckCircle2 className="h-4 w-4" />,
-                  finalEvaluations.length,
-                  stepStates[4] === "done",
-                )}
+      {/* Body grid: section nav + panels */}
+      <div className="grid items-start gap-4 lg:grid-cols-[250px_1fr] lg:items-stretch">
+        <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh] shadow-xs">
+          <CardContent className="h-full p-3 flex flex-col justify-between lg:overflow-y-auto">
+            <div className="space-y-4">
+              <div>
+                <p className="px-2 pb-2 text-[10px] font-bold tracking-wider uppercase text-muted-foreground">
+                  Applicant Sections
+                </p>
+                <div className="space-y-1">
+                  {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
+                  {sectionBtn(
+                    "history",
+                    "Previous Applications",
+                    <History className="h-4 w-4" />,
+                    (history?.data?.length ?? 0) > 0 ? history?.data?.length : undefined,
+                    !history?.cooldown && !history?.block?.is_blocked && (history?.data?.length ?? 0) > 0,
+                  )}
+                  {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
+                  {sectionBtn(
+                    "resume",
+                    "Resume & Documents",
+                    <Upload className="h-4 w-4" />,
+                    docCount,
+                    passedScreening,
+                  )}
+                  {sectionBtn(
+                    "interview",
+                    "Interview",
+                    <ClipboardCheck className="h-4 w-4" />,
+                    assessments.length,
+                    !!assessment,
+                  )}
+                  {sectionBtn(
+                    "test",
+                    "Assessment Test",
+                    <BookMarked className="h-4 w-4" />,
+                    assessmentTests.length,
+                    !!test,
+                  )}
+                  {sectionBtn(
+                    "practical",
+                    "Practical Assessment",
+                    <Wrench className="h-4 w-4" />,
+                    requiresPrac ? practicalTests.length : undefined,
+                    /* Not required for this position: done as soon as the
+                     applicant has advanced past the stage (progress bar rule). */
+                    requiresPrac ? !!practical : stepStates[3] === "done",
+                  )}
+                  {sectionBtn(
+                    "final",
+                    "Final Evaluation",
+                    <CheckCircle2 className="h-4 w-4" />,
+                    finalEvaluations.length,
+                    stepStates[4] === "done",
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Summary Pill at bottom of sidebar */}
+            <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] uppercase font-bold tracking-wider">Applicant ID</span>
+                <span className="font-mono text-[11px] font-medium text-foreground">{a.id}</span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] uppercase font-bold tracking-wider">Current Stage</span>
+                <span className="text-[11px] font-semibold text-primary">{a.stage}</span>
               </div>
             </div>
           </CardContent>
@@ -5749,22 +5774,22 @@ function ApplicantViewScreen({
             switch (panel) {
               case "current":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
                         <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                             <Info className="h-4 w-4 text-primary" /> {a.stage}
                           </h3>
-                          <p className="text-xs text-muted-foreground">
-                            {stageDesc[a.stage] ?? "Process stage for this applicant."}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {stageDesc[a.stage] ?? "Current recruitment pipeline stage for this applicant."}
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           {tier <= 2 && (
                             <Badge
                               variant="outline"
-                              className={cn(topCandidateTierMeta[tier].className)}
+                              className={cn("gap-1 font-semibold", topCandidateTierMeta[tier].className)}
                             >
                               <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
                             </Badge>
@@ -5772,14 +5797,59 @@ function ApplicantViewScreen({
                         </div>
                       </div>
 
-                      {/* Stage overview — shortcuts only, details live in each section */}
+                      {/* Quick Administrative Controls Bar */}
+                      <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                          <Sliders className="h-3.5 w-3.5 text-primary" />
+                          <span>Administrative Actions</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isSuperAdmin && a.stage !== "Rejected" && onMoveToStage && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 cursor-pointer" onClick={() => onMoveToStage(a)}>
+                              <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
+                            </Button>
+                          )}
+                          {isSuperAdmin && a.stage === "Rejected" && onReopen && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onReopen(a)}>
+                              <RotateCcw className="h-3.5 w-3.5" /> Reopen application
+                            </Button>
+                          )}
+                          {isSuperAdmin && (a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") && onCorrectHiring && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer" onClick={() => onCorrectHiring(a)}>
+                              <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
+                            </Button>
+                          )}
+                          {!a.isArchived && onArchive ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground cursor-pointer" onClick={() => onArchive(a)}>
+                              <Archive className="h-3.5 w-3.5" /> Archive
+                            </Button>
+                          ) : a.isArchived && onRestore ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onRestore(a)}>
+                              <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+                            </Button>
+                          ) : null}
+                          {isSuperAdmin && (!a.isActiveBlocked && onBlock ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer" onClick={() => onBlock(a)}>
+                              <Ban className="h-3.5 w-3.5" /> Block
+                            </Button>
+                          ) : a.isActiveBlocked && onUnblock ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onUnblock(a)}>
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                            </Button>
+                          ) : null)}
+                        </div>
+                      </div>
+
+                      {/* Stage overview — interactive shortcut cards */}
                       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {[
                           {
-                            id: "details" as ViewPanel,
+                            id: "resume" as ViewPanel,
                             icon: <FileText className="h-4 w-4" />,
                             label: "Screening",
                             meta: passedScreening ? "Passed" : "For Review",
+                            tone: passedScreening ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+                            dot: passedScreening ? "bg-emerald-500" : "bg-amber-500",
                           },
                           {
                             id: "interview" as ViewPanel,
@@ -5790,42 +5860,60 @@ function ApplicantViewScreen({
                               : interview
                                 ? `Scheduled · ${interview.date}`
                                 : "Not yet conducted",
+                            tone: assessment?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : assessment?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
+                            dot: assessment?.result === "Passed" ? "bg-emerald-500" : assessment?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
                           },
                           {
                             id: "test" as ViewPanel,
                             icon: <BookMarked className="h-4 w-4" />,
                             label: "Assessment Test",
                             meta: test ? `${test.result} · ${test.total}%` : "Not yet taken",
+                            tone: test?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : test?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
+                            dot: test?.result === "Passed" ? "bg-emerald-500" : test?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
                           },
                           {
                             id: "practical" as ViewPanel,
                             icon: <Wrench className="h-4 w-4" />,
-                            label: "Practical Assessment",
+                            label: "Practical",
                             meta: !requiresPrac
                               ? "Not required"
                               : practical
                                 ? `${practical.result} · ${practical.total}%`
                                 : "Pending",
+                            tone: !requiresPrac ? "text-muted-foreground" : practical?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : practical?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
+                            dot: !requiresPrac ? "bg-muted-foreground/30" : practical?.result === "Passed" ? "bg-emerald-500" : practical?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
                           },
                         ].map((r) => (
                           <button
                             key={r.id}
                             type="button"
                             onClick={() => setPanel(r.id)}
-                            className="flex min-h-0 flex-col items-start gap-1.5 rounded-md border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/40"
+                            className="group relative flex min-h-0 flex-col items-start gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition-all hover:border-primary/40 hover:shadow-sm hover:bg-muted/30"
                           >
-                            <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                              {r.icon} {r.label}
-                            </span>
-                            <span className="text-[0.7rem] text-muted-foreground">{r.meta}</span>
+                            <div className="flex w-full items-center justify-between">
+                              <span className="flex items-center gap-2">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-primary">
+                                  {r.icon}
+                                </span>
+                                <span className="text-xs font-semibold text-foreground">{r.label}</span>
+                              </span>
+                              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", r.dot)} />
+                              <span className={cn("text-[0.68rem] font-medium", r.tone)}>{r.meta}</span>
+                            </div>
                           </button>
                         ))}
                       </div>
 
-                      <div className="mt-4">
-                        <h4 className="text-sm font-semibold tracking-wide text-muted-foreground">
-                          Recent Activity
-                        </h4>
+                      <div className="mt-5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            <History className="h-3.5 w-3.5 text-primary" /> Recent Activity & Milestones
+                          </h4>
+                          <span className="text-[11px] text-muted-foreground">Latest events</span>
+                        </div>
                         {(() => {
                           const stageFallback =
                             audit.length === 0
@@ -5888,29 +5976,38 @@ function ApplicantViewScreen({
                             );
                           }
                           return (
-                            <div className="mt-2 space-y-2">
+                            <div className="space-y-2">
                               {items.map((e) => (
                                 <div
                                   key={e.id}
-                                  className="flex items-start gap-2.5 rounded-md border border-border px-3 py-2"
+                                  className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/20 p-3 transition-colors hover:bg-muted/40 hover:border-border"
                                 >
-                                  <span
-                                    className={cn(
-                                      "mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full",
-                                      /Rejected|Cancelled|No-Show/.test(e.actionType)
-                                        ? "bg-destructive"
-                                        : "bg-primary",
-                                    )}
-                                  />
+                                  <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center">
+                                    <span
+                                      className={cn(
+                                        "h-2 w-2 rounded-full ring-4",
+                                        /Rejected|Cancelled|No-Show/.test(e.actionType)
+                                          ? "bg-destructive ring-destructive/20"
+                                          : /Passed|Hired|Completed/.test(e.actionType)
+                                            ? "bg-emerald-500 ring-emerald-500/20"
+                                            : "bg-primary ring-primary/20",
+                                      )}
+                                    />
+                                  </div>
                                   <div className="min-w-0 flex-1">
-                                    <p className="truncate text-xs font-semibold">{e.actionType}</p>
-                                    <p className="truncate text-[0.7rem] text-muted-foreground">
+                                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                      <p className="text-xs font-semibold text-foreground">{e.actionType}</p>
+                                      <span className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                        {e.date} {e.time}
+                                      </span>
+                                    </div>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
                                       {e.details}
                                     </p>
+                                    <span className="mt-1 inline-block text-[10px] text-muted-foreground/80">
+                                      Recorded by: {e.actorName}
+                                    </span>
                                   </div>
-                                  <span className="shrink-0 text-[0.65rem] text-muted-foreground">
-                                    {e.actorName} · {e.date} {e.time}
-                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -5920,52 +6017,234 @@ function ApplicantViewScreen({
                     </CardContent>
                   </Card>
                 );
+              case "history":
+                return (
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-5">
+                      {/* Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                        <div>
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <History className="h-4 w-4 text-primary" /> Previous Applications
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Past application attempts by the same email address.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {historyLoading ? (
+                            <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs font-semibold">
+                              {history?.data?.length ?? 0} attempt{(history?.data?.length ?? 0) !== 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                          {onOverrideCooldown && (history?.cooldown?.active || history?.blocked) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                              disabled={overrideBusy}
+                              onClick={onOverrideCooldown}
+                            >
+                              {overrideBusy ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <ShieldAlert className="h-3.5 w-3.5" />
+                              )}
+                              Override cooldown
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Block alert */}
+                      {history?.blocked && (
+                        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
+                          <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-destructive">Applicant is blocked</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              This applicant has been restricted from re-applying. Only a super admin can lift this restriction.
+                            </p>
+                          </div>
+                          {isSuperAdmin && onUnblock && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 shrink-0 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                              onClick={() => onUnblock(a)}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Cooldown / eligible status card */}
+                      {!historyLoading && history && (
+                        history.cooldown?.active ? (
+                          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
+                            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Cooling-down period active</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {history.cooldown.message ?? "This applicant must wait before re-applying."}
+                              </p>
+                            </div>
+                          </div>
+                        ) : !history.blocked ? (
+                          <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4">
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                            <div>
+                              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Eligible to re-apply</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">No cooldown or block restriction is active.</p>
+                            </div>
+                          </div>
+                        ) : null
+                      )}
+
+                      {/* History list */}
+                      {historyLoading ? (
+                        <div className="space-y-3">
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <div key={i} className="h-20 animate-pulse rounded-xl border border-border bg-muted/30" />
+                          ))}
+                        </div>
+                      ) : history?.data && history.data.length > 0 ? (
+                        <div className="space-y-3">
+                          {history.data.map((row, idx) => {
+                            const isCurrent = row.id === a.id;
+                            return (
+                              <div
+                                key={row.id ?? idx}
+                                className={cn(
+                                  "rounded-xl border p-4 transition-colors",
+                                  isCurrent
+                                    ? "border-primary/40 bg-primary/5"
+                                    : "border-border bg-card hover:border-border/80 hover:bg-muted/20"
+                                )}
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-mono text-[11px] font-bold text-muted-foreground">
+                                        {row.applicantCode ?? `#${idx + 1}`}
+                                      </span>
+                                      {isCurrent && (
+                                        <Badge variant="outline" className="text-[10px] gap-1 border-primary/40 text-primary">
+                                          Current
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <p className="text-sm font-semibold text-foreground">{row.position ?? a.position}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Applied: {row.appliedAt ? displayAppliedAt(row.appliedAt) : "—"}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1.5">
+                                    {row.stage && (
+                                      <Badge variant="secondary" className="text-[11px]">{row.stage}</Badge>
+                                    )}
+                                    {row.status && (
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-[10px]",
+                                          row.status === "hired" ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/8" :
+                                          row.status === "rejected" ? "border-destructive/40 text-destructive bg-destructive/8" :
+                                          "border-border text-muted-foreground"
+                                        )}
+                                      >
+                                        {row.status}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : !historyLoading && (
+                        <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/60">
+                            <History className="h-7 w-7 text-muted-foreground/50" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">First-Time Applicant</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">No previous applications found for this email address.</p>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
               case "details":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-5">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <FileText className="h-4 w-4 text-primary" /> Application Details
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Submitted via {a.source} · {displayAppliedAt(a.appliedAt)}
                         </p>
                       </div>
 
-                      <div className="mt-4 grid gap-x-10 gap-y-3 sm:grid-cols-2">
-                        {[
-                          ["Applicant ID", a.id],
-                          ["Full Name", a.name],
-                          ["Email", a.email],
-                          ["Phone", a.phone],
-                          ["Position Applied", a.position],
-                          ["Department", departmentOf(a.position)],
-                          ["Source", a.source],
-                          ["Current Stage", a.stage],
-                          ["Applied", displayAppliedAt(a.appliedAt)],
-                        ].map(([k, v]) => (
-                          <div key={k}>
-                            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                              {k}
-                            </p>
-                            <p className="text-sm font-medium">{v}</p>
-                          </div>
-                        ))}
+                      <div className="grid gap-4">
+                        {/* Card 1 — Candidate Profile */}
+                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            <User className="h-3.5 w-3.5" /> Candidate Profile
+                          </h4>
+                          {[
+                            { label: "Full Name", value: a.name },
+                            { label: "Email", value: a.email, mono: true },
+                            { label: "Phone", value: a.phone, mono: true },
+                            { label: "Source", value: a.source },
+                          ].map(({ label, value, mono }) => (
+                            <div key={label} className="flex items-start justify-between gap-2">
+                              <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">{label}</span>
+                              <span className={cn("text-right text-xs font-medium text-foreground break-all", mono && "font-mono")}>{value ?? "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Card 2 — Application Metadata */}
+                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            <Briefcase className="h-3.5 w-3.5" /> Application Metadata
+                          </h4>
+                          {[
+                            { label: "Applicant ID", value: String(a.id), mono: true },
+                            { label: "Position", value: a.position },
+                            { label: "Department", value: departmentOf(a.position) },
+                            { label: "Current Stage", value: a.stage },
+                            { label: "Date Applied", value: displayAppliedAt(a.appliedAt) },
+                          ].map(({ label, value, mono }) => (
+                            <div key={label} className="flex items-start justify-between gap-2">
+                              <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">{label}</span>
+                              <span className={cn("text-right text-xs font-medium text-foreground break-all", mono && "font-mono")}>{value ?? "—"}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 );
               case "resume":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
                         <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                             <Upload className="h-4 w-4 text-primary" /> Resume &amp; Documents
                           </h3>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             Resume screening result plus supporting verification documents (COE,
                             Certificate, Credentials, Others).
                           </p>
@@ -6202,22 +6481,21 @@ function ApplicantViewScreen({
                 );
               case "interview":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <ClipboardCheck className="h-4 w-4 text-primary" /> Interview
                         </h3>
-                        <p className="text-xs text-muted-foreground">
-                          This applicant&apos;s interview record — booking &amp; rescheduling stay
-                          in the main list.
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          This applicant&apos;s interview record and evaluation outcomes.
                         </p>
                       </div>
 
                       {(showAcceptInterview ||
                         showScheduleInterview ||
                         showRescheduleInterview) && (
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2">
                           {showAcceptInterview && (
                             <Button size="sm" onClick={onAcceptAndSchedule}>
                               <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Accept &amp; Schedule
@@ -6241,9 +6519,9 @@ function ApplicantViewScreen({
                       )}
 
                       {assessment ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-semibold text-foreground">
                               Interview completed {assessment.date}
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
@@ -6251,14 +6529,14 @@ function ApplicantViewScreen({
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-semibold text-primary">
+                            <span className="font-display text-2xl font-bold text-primary">
                               {assessment.total}%
                             </span>
                             <Badge
                               variant="outline"
                               className={cn(
                                 assessment.result === "Passed"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : "border-destructive/30 bg-destructive/10 text-destructive",
                               )}
                             >
@@ -6268,7 +6546,7 @@ function ApplicantViewScreen({
                               variant="outline"
                               className={cn(
                                 assessment.outcome === "Recommended"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : assessment.outcome === "Hold"
                                     ? "border-warning/40 bg-warning/10 text-warning"
                                     : "border-destructive/30 bg-destructive/10 text-destructive",
@@ -6286,8 +6564,8 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : interview ? (
-                        <div className="mt-4 space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                             <div className="min-w-0">
                               <p className="text-sm font-medium">
                                 {interview.date} · {interview.time}
@@ -6425,41 +6703,41 @@ function ApplicantViewScreen({
                 );
               case "test":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <BookMarked className="h-4 w-4 text-primary" /> Assessment Test
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Job-specific test that unlocks after the interview assessment is passed.
                           {!requiresTest && " This position does not require it (set in Core HCM)."}
                         </p>
                       </div>
 
                       {!requiresTest ? (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote(
                             "This position does not require an assessment test (Core HCM).",
                           )}
                         </div>
                       ) : test ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">{test.title}</p>
+                            <p className="text-sm font-semibold text-foreground">{test.title}</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               {test.name} · {test.position} · {test.date}
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-semibold text-primary">
+                            <span className="font-display text-2xl font-bold text-primary">
                               {test.total}%
                             </span>
                             <Badge
                               variant="outline"
                               className={cn(
                                 test.result === "Passed"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : "border-destructive/30 bg-destructive/10 text-destructive",
                               )}
                             >
@@ -6471,9 +6749,9 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : readyForTest ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">Ready for the assessment test</p>
+                            <p className="text-sm font-semibold text-foreground">Ready for the assessment test</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               {a.position} — the interview assessment was passed.
                             </p>
@@ -6493,11 +6771,10 @@ function ApplicantViewScreen({
                               )}
                               Copy applicant test link
                             </Button>
-
                           </div>
                         </div>
                       ) : (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote(
                             requiresTest
                               ? "Assessment test unlocks after the interview stage is completed and passed."
@@ -6510,39 +6787,39 @@ function ApplicantViewScreen({
                 );
               case "practical":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <Wrench className="h-4 w-4 text-primary" /> Practical Assessment
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Hands-on practical exam — required only when the Core HCM position
                           requires it.
                         </p>
                       </div>
 
                       {!requiresPrac ? (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote("This position does not require a practical assessment.")}
                         </div>
                       ) : practical ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">{practical.taskTitle}</p>
+                            <p className="text-sm font-semibold text-foreground">{practical.taskTitle}</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               {practical.name} · {practical.position} · {practical.date}
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-semibold text-primary">
+                            <span className="font-display text-2xl font-bold text-primary">
                               {practical.total}%
                             </span>
                             <Badge
                               variant="outline"
                               className={cn(
                                 practical.result === "Passed"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : "border-destructive/30 bg-destructive/10 text-destructive",
                               )}
                             >
@@ -6558,9 +6835,9 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : readyForPractical ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-semibold text-foreground">
                               Ready for the practical assessment
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
@@ -6572,7 +6849,7 @@ function ApplicantViewScreen({
                           </Button>
                         </div>
                       ) : (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote(
                             requiresTest
                               ? "Practical exam unlocks after passing the assessment test."
@@ -6585,22 +6862,22 @@ function ApplicantViewScreen({
                 );
               case "final":
                 return (
-                  <Card className="border-border/70 min-h-full">
-                    <CardContent className="p-6">
-                      <div>
-                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Card className="border-border/70 min-h-full shadow-xs">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="border-b border-border/60 pb-4">
+                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
                           <CheckCircle2 className="h-4 w-4 text-primary" /> Final Evaluation
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Whole-process verdict — resume screening, interview, assessment test and
                           practical.
                         </p>
                       </div>
 
                       {final ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-semibold text-foreground">
                               Final evaluation recorded {final.date}
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
@@ -6612,7 +6889,7 @@ function ApplicantViewScreen({
                               variant="outline"
                               className={cn(
                                 final.recommendation === "Recommended for Hire"
-                                  ? "border-success/30 bg-success/10 text-success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : final.recommendation === "For Another Position"
                                     ? "border-warning/40 bg-warning/10 text-warning"
                                     : "border-destructive/30 bg-destructive/10 text-destructive",
@@ -6626,9 +6903,9 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : readyForFinal ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium">Ready for the final evaluation</p>
+                            <p className="text-sm font-semibold text-foreground">Ready for the final evaluation</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               {a.position} — all process stages completed.
                             </p>
@@ -6639,7 +6916,7 @@ function ApplicantViewScreen({
                           </Button>
                         </div>
                       ) : (
-                        <div className="mt-4">
+                        <div className="mt-2">
                           {emptyNote(
                             "Final evaluation unlocks after the assessment test (and the practical, when required) is passed.",
                           )}
@@ -8486,6 +8763,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       });
       const updated = transformApiApplicant(saved);
       setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
       toast.success(`Application reopened for ${a.name} at ${reopenTarget}`);
       setReopenFor(null);
       await loadApplicantRecords();
@@ -8554,6 +8832,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       const res = await applicantsApi.archive(a.dbId, { reason });
       const updated = transformApiApplicant(res.data);
       setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
       toast.success(`${a.name} archived`);
       setArchiveFor(null);
       await loadApplicantRecords();
@@ -8583,6 +8862,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       const res = await applicantsApi.restore(a.dbId, { reason });
       const updated = transformApiApplicant(res.data);
       setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
       toast.success(`${a.name} restored from archive`);
       setRestoreFor(null);
       await loadApplicantRecords();
@@ -8622,6 +8902,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       });
       const updated = transformApiApplicant(res.data);
       setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
       toast.warning(`${a.name} has been restricted from recruitment`);
       setBlockFor(null);
       await loadApplicantRecords();
@@ -8655,6 +8936,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       const res = await applicantsApi.unblock(a.dbId, { reason });
       const updated = transformApiApplicant(res.data);
       setRows((prev) => prev.map((r) => (r.dbId === updated.dbId ? updated : r)));
+      setViewingApplicant((prev) => (prev && prev.dbId === updated.dbId ? updated : prev));
       toast.success(`Recruitment restriction lifted for ${a.name}`);
       setUnblockFor(null);
       await loadApplicantRecords();
@@ -11218,9 +11500,41 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       })
       .filter(({ a, interview, liveInterview, assessment, test, practical, final }) => {
         if (showArchivedAndBlocked) {
-          if (!a.isArchived && !a.isActiveBlocked) return false;
+          if (pipelineResult === "archived" && !a.isArchived) return false;
+          if ((pipelineResult === "blocked" || pipelineResult === "block") && !a.isActiveBlocked) return false;
+          if (pipelineResult === "all" && !a.isArchived && !a.isActiveBlocked) return false;
         } else {
           if (a.isArchived || a.isActiveBlocked) return false;
+
+          if (pipelineResult === "passed") {
+            const ok =
+              assessment?.result === "Passed" ||
+              test?.result === "Passed" ||
+              practical?.result === "Passed" ||
+              (final != null && final.recommendation !== "Not Recommended");
+            if (!ok) return false;
+          }
+          if (pipelineResult === "failed") {
+            const offer = offerStateOf(a);
+            const bad =
+              assessment?.result === "Failed" ||
+              test?.result === "Failed" ||
+              practical?.result === "Failed" ||
+              final?.recommendation === "Not Recommended" ||
+              // A declined offer (or one whose 7-day window lapsed) fails the
+              // applicant even though the final evaluation recommended them.
+              offer?.status === "Declined" ||
+              (offer?.expired ?? false);
+            if (!bad) return false;
+          }
+          if (pipelineResult === "pending") {
+            if (test || practical || final) return false;
+          }
+          if (pipelineResult === "perfect") {
+            // Metric-card quick filter — candidates the screener marked perfect
+            // for the job (status = fit).
+            if (a.status !== "fit") return false;
+          }
         }
         if (pipelinePosition !== "all" && a.position !== pipelinePosition) return false;
         if (pipelineStage !== "all" && a.stage !== pipelineStage) return false;
@@ -11237,35 +11551,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           if (!booked || booked.status === "Cancelled" || booked.date !== pipelineScheduledDate) {
             return false;
           }
-        }
-        if (pipelineResult === "passed") {
-          const ok =
-            assessment?.result === "Passed" ||
-            test?.result === "Passed" ||
-            practical?.result === "Passed" ||
-            (final != null && final.recommendation !== "Not Recommended");
-          if (!ok) return false;
-        }
-        if (pipelineResult === "failed") {
-          const offer = offerStateOf(a);
-          const bad =
-            assessment?.result === "Failed" ||
-            test?.result === "Failed" ||
-            practical?.result === "Failed" ||
-            final?.recommendation === "Not Recommended" ||
-            // A declined offer (or one whose 7-day window lapsed) fails the
-            // applicant even though the final evaluation recommended them.
-            offer?.status === "Declined" ||
-            (offer?.expired ?? false);
-          if (!bad) return false;
-        }
-        if (pipelineResult === "pending") {
-          if (test || practical || final) return false;
-        }
-        if (pipelineResult === "perfect") {
-          // Metric-card quick filter — candidates the screener marked perfect
-          // for the job (status = fit).
-          if (a.status !== "fit") return false;
         }
         return true;
       });
@@ -11390,42 +11675,45 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         title="Applicant Management"
         description="NER resume screening, candidate ranking, interview scheduling and evaluation."
         actions={
-          <div className="flex items-center gap-2">
-            <ReportMenu
-              size="sm"
-              recordCount={
-                tab === "history"
-                  ? auditSort.sorted.length || auditFiltered.length
-                  : tab === "scheduling"
-                    ? pipelineSort.sorted.length || pipelineRows.length
-                    : applicantSort.sorted.length || filtered.length
-              }
-              report={() => {
-                if (tab === "history") return buildAuditReportData();
-                if (tab === "scheduling")
+          !viewedApplicant ? (
+            <div className="flex items-center gap-2">
+              <ReportMenu
+                size="sm"
+                recordCount={
+                  tab === "history"
+                    ? auditSort.sorted.length || auditFiltered.length
+                    : tab === "scheduling"
+                      ? pipelineSort.sorted.length || pipelineRows.length
+                      : applicantSort.sorted.length || filtered.length
+                }
+                report={() => {
+                  if (tab === "history") return buildAuditReportData();
+                  if (tab === "scheduling")
+                    return buildApplicantReportData(
+                      reportOptions.find((o) => o.id === "interview") ?? reportOptions[0]!,
+                    );
                   return buildApplicantReportData(
-                    reportOptions.find((o) => o.id === "interview") ?? reportOptions[0]!,
+                    reportOptions.find((o) => o.id === "all") ?? reportOptions[0]!,
                   );
-                return buildApplicantReportData(
-                  reportOptions.find((o) => o.id === "all") ?? reportOptions[0]!,
-                );
-              }}
-            />
-            <Button
-              size="icon"
-              variant="outline"
-              aria-label="Re-apply cooldown settings"
-              title="Re-apply cooldown settings"
-              onClick={() => {
-                setCooldownDraft(String(cooldownDays));
-                setCooldownOpen(true);
-              }}
-            >
-              <Settings2 className="h-4 w-4" />
-            </Button>
-          </div>
+                }}
+              />
+              <Button
+                size="icon"
+                variant="outline"
+                aria-label="Re-apply cooldown settings"
+                title="Re-apply cooldown settings"
+                onClick={() => {
+                  setCooldownDraft(String(cooldownDays));
+                  setCooldownOpen(true);
+                }}
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : undefined
         }
       />
+
 
       {/* Re-apply cooldown settings — same gear pattern as Recruitment's Screening setup */}
       <Dialog open={cooldownOpen} onOpenChange={setCooldownOpen}>
@@ -11562,6 +11850,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           historyLoading={viewHistoryLoading}
           onOverrideCooldown={overrideViewingCooldown}
           overrideBusy={overrideBusy}
+          isSuperAdmin={isSuperAdmin}
+          onMoveToStage={(ap) => openMoveToStage(ap)}
+          onReopen={(ap) => openReopen(ap)}
+          onCorrectHiring={(ap) => openCorrectHiring(ap)}
+          onArchive={(ap) => openArchive(ap)}
+          onRestore={(ap) => openRestore(ap)}
+          onBlock={(ap) => openBlock(ap)}
+          onUnblock={(ap) => openUnblock(ap)}
         />
       ) : (
         <>
@@ -12453,7 +12749,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             )}
                           >
                             {cell.date.getDate()}
-                            {count > 1 && (
+                            {count > 0 && (
                               <span
                                 className={cn(
                                   "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
@@ -14758,11 +15054,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <SelectValue placeholder="Any result" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">Any result</SelectItem>
-                          <SelectItem value="passed">Passed</SelectItem>
-                          <SelectItem value="failed">Failed</SelectItem>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="perfect">Perfect for the Job</SelectItem>
+                          {showArchivedAndBlocked ? (
+                            <>
+                              <SelectItem value="all">Any result</SelectItem>
+                              <SelectItem value="blocked">Block</SelectItem>
+                              <SelectItem value="archived">Archived</SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="all">Any result</SelectItem>
+                              <SelectItem value="passed">Passed</SelectItem>
+                              <SelectItem value="failed">Failed</SelectItem>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="perfect">Perfect for the Job</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                       {pipelineScheduledDate && (
@@ -14805,7 +15111,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         size="sm"
                         variant={showArchivedAndBlocked ? "secondary" : "outline"}
                         className="h-9 gap-1.5 px-3 text-xs"
-                        onClick={() => setShowArchivedAndBlocked((v) => !v)}
+                        onClick={() => {
+                          setShowArchivedAndBlocked((v) => !v);
+                          setPipelineResult("all");
+                        }}
                         title="Toggle between active pipeline and archived/blocked applicants"
                       >
                         <Archive className="h-3.5 w-3.5" />

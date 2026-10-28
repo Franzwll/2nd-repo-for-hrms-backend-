@@ -46,20 +46,24 @@ class DuplicateApplicationService
     /**
      * @return array|null existing applicant row (applicant_id, applicant_code, applied_at) or null
      */
-    public static function findDuplicate(string $email, int $jobPostId): ?object
+    public static function findDuplicate(string $email, int $jobPostId, ?int $excludeApplicantId = null): ?object
     {
         $email = mb_strtolower(trim($email));
 
         $cutoff = now()->subDays(static::REAPPLY_DAYS);
 
-        return DB::table('applicants')
+        $query = DB::table('applicants')
             ->select('applicant_id', 'applicant_code', 'applied_at', 'stage')
             ->where('job_post_id', $jobPostId)
             ->whereRaw('LOWER(email) = ?', [$email])
             ->whereNotIn('stage', static::TERMINAL_STAGES)
-            ->where('applied_at', '>=', $cutoff)
-            ->orderByDesc('applied_at')
-            ->first();
+            ->where('applied_at', '>=', $cutoff);
+
+        if ($excludeApplicantId) {
+            $query->where('applicant_id', '!=', $excludeApplicantId);
+        }
+
+        return $query->orderByDesc('applied_at')->first();
     }
 
     public static function duplicateResponse(object $existing, string $jobTitle = ''): array

@@ -1263,7 +1263,8 @@ class ApplicantManagementController extends Controller
             }
         }
 
-        // The step is being redone: clear the rejection/cooldown anchors
+        // The step is being redone: clear the rejection/cooldown anchors,
+        // any active archive flag (since candidate returns to active pipeline),
         // and any offer reply trail so the pipeline starts clean at the
         // target stage.
         $model->forceFill([
@@ -1272,6 +1273,9 @@ class ApplicantManagementController extends Controller
             'fit_score'                  => $fitScore,
             'rejected_at'                => null,
             'cooldown_lifted_at'         => null,
+            'archived_at'                => null,
+            'archived_by'                => null,
+            'archived_reason'            => null,
             'offer_status'               => null,
             'offer_sent_at'              => null,
             'offer_expires_at'           => null,
@@ -1398,11 +1402,17 @@ class ApplicantManagementController extends Controller
                 }
             }
 
-            $model->update([
+            $updateData = [
                 'stage'              => $targetStage,
                 'rejected_at'        => null,
                 'cooldown_lifted_at' => null,
-            ]);
+            ];
+            if (! in_array($targetStage, ['Hired', 'Rejected'], true)) {
+                $updateData['archived_at'] = null;
+                $updateData['archived_by'] = null;
+                $updateData['archived_reason'] = null;
+            }
+            $model->update($updateData);
         }
 
         $positionTitle = $model->jobPost?->title ?? 'Position';

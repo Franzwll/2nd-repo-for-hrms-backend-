@@ -398,8 +398,8 @@ class ApplicantRecognitionService
         ?string $address = null,
         ?int $excludeApplicantId = null
     ): ?object {
-        // Direct email check first
-        $direct = DuplicateApplicationService::findDuplicate($email, $jobPostId);
+        // Direct email check first (honoring $excludeApplicantId to avoid matching an applicant against itself)
+        $direct = DuplicateApplicationService::findDuplicate($email, $jobPostId, $excludeApplicantId);
         if ($direct) {
             return $direct;
         }
