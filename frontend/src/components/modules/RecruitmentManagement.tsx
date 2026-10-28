@@ -3537,8 +3537,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       qualifications: nextQualifications.join("\n"),
       educationLevels,
       experienceLevels,
-      education: (weakestAcceptedLevel(educationLevels, EDUCATION_LEVEL_OPTIONS) ?? d.education) as Job["education"],
-      experience: (weakestAcceptedLevel(experienceLevels, EXPERIENCE_LEVEL_OPTIONS) ?? d.experience) as Job["experience"],
     }));
     setAppliedTemplate(template);
     // Make sure the seeded blocks sit on the builder canvas and are active.

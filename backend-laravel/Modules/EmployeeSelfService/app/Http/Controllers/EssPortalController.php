@@ -80,13 +80,17 @@ class EssPortalController extends Controller
 
     /**
      * Resolve the current authenticated employee.
-     * Returns null when the authenticated user has no linked employee record
-     * so callers respond 403/404 instead of falling back to an arbitrary record.
+     *
+     * Staff accounts (Admin / Super Admin) without a linked employee record
+     * never fall back to another employee's record. By default this throws a
+     * 409 ESS_NOT_LINKED response; pass $requireLink = false (as my-context
+     * does) to receive null instead. Employee (role 3) behavior is unchanged:
+     * null is returned when nothing could be resolved or provisioned.
      */
-    private function resolveEmployee(Request $request): ?Employee
+    private function resolveEmployee(Request $request, bool $requireLink = true): ?Employee
     {
         $user = $request->user();
-        $relations = ['department', 'position.salaryGrade', 'salaryGrade', 'supervisor', 'emergencyContacts'];
+        $isStaff = $user && in_array((int) $user->role_id, [1, 2], true);
 
         if ($user?->employee_id) {
             $emp = Employee::with($relations)->find($user->employee_id);
@@ -112,12 +116,43 @@ class EssPortalController extends Controller
             }
         }
 
-        // A New Hire can be linked before the Onboarding module promotes them to
-        // an Employee. Only create the Employee when the hire has a real
-        // position and department — never fall back to arbitrary master data.
-        $newHire = $user?->email
-            ? \Modules\NewHireOnboarding\Models\NewHire::where('email', $user->email)->first()
-            : null;
+        // Staff accounts must be explicitly linked to an employee record.
+        // Never guess by name or fall back to an arbitrary employee record.
+        if ($isStaff) {
+            if ($requireLink) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                    response()->json([
+                        'code' => 'ESS_NOT_LINKED',
+                        'message' => 'This account is not linked to an employee record.',
+                    ], 409)
+                );
+            }
+
+            return null;
+        }
+
+        if ($user?->full_name) {
+            $names = explode(' ', trim($user->full_name));
+            $firstName = $names[0] ?? '';
+            $lastName = count($names) > 1 ? end($names) : '';
+            $query = Employee::with(['department', 'position', 'supervisor'])->where('first_name', $firstName);
+            if ($lastName) {
+                $query->where('last_name', $lastName);
+            }
+            $emp = $query->first();
+            if ($emp) {
+                if ($user && ! $user->employee_id) {
+                    $user->employee_id = $emp->employee_id;
+                    $user->save();
+                }
+                return $emp;
+            }
+        }
+
+        // Check if there is a NewHire record for this user to auto-create / link Employee record
+        $newHire = \Modules\NewHireOnboarding\Models\NewHire::where('email', $user?->email)
+            ->orWhere('name', $user?->full_name)
+            ->first();
 
         if ($newHire) {
             if ($newHire->employee_id) {
@@ -169,10 +204,68 @@ class EssPortalController extends Controller
                 $user->save();
             }
 
-            return $emp->load($relations);
+            return $emp->load(['department', 'position', 'supervisor']);
+        }
+
+        // For user with role_id 3 (Employee) without existing records, auto-provision
+        if ($user && $user->role_id == 3 && $user->email) {
+            $names = explode(' ', trim($user->full_name ?? $user->username));
+            $firstName = $names[0] ?? 'Employee';
+            $lastName = count($names) > 1 ? end($names) : 'Staff';
+            $nextCodeNumber = (Employee::max('employee_id') ?? 0) + 1;
+            $code = 'EMP-' . str_pad((string) $nextCodeNumber, 4, '0', STR_PAD_LEFT);
+
+            $emp = Employee::create([
+                'employee_code'   => $code,
+                'first_name'      => $firstName,
+                'last_name'       => $lastName,
+                'email'           => $user->email,
+                'department_id'   => 1,
+                'position_id'     => 1,
+                'employment_type' => 'Probationary',
+                'date_hired'      => now(),
+                'status'          => 'Active',
+                'onboarding_complete' => true,
+            ]);
+
+            $user->employee_id = $emp->employee_id;
+            $user->save();
+
+            return $emp->load(['department', 'position', 'supervisor']);
         }
 
         return null;
+    }
+
+    /**
+     * GET /api/v1/ess/my-context
+     *
+     * Tells the portal whether the signed-in account is linked to an employee
+     * record. Admin and Super Admin accounts must never fall back to another
+     * employee's record.
+     */
+    public function getMyContext(Request $request): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request, false);
+
+        if (! $employee) {
+            return response()->json([
+                'linked' => false,
+                'employee' => null,
+            ]);
+        }
+
+        return response()->json([
+            'linked' => true,
+            'employee' => [
+                'id' => $employee->employee_id,
+                'code' => $employee->employee_code,
+                'name' => trim($employee->first_name . ' ' . $employee->last_name),
+                'email' => $employee->email,
+                'department' => $employee->department?->name,
+                'position' => $employee->position?->title,
+            ],
+        ]);
     }
 
     /**

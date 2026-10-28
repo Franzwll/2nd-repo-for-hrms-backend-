@@ -2946,6 +2946,18 @@ export interface ApiEssCategory {
 
 export const essApi = {
   // Employee Portal
+  myContext: () =>
+    request<{
+      linked: boolean;
+      employee: {
+        id: number;
+        code: string;
+        name: string;
+        email: string | null;
+        department: string | null;
+        position: string | null;
+      } | null;
+    }>("/ess/my-context"),
   overview: () => request<ApiEssOverview>("/ess/my-overview"),
   colleagues: () => request<{ colleagues: ApiEssColleague[] }>("/ess/colleagues"),
   schedule: () =>

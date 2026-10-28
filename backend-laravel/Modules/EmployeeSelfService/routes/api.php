@@ -24,6 +24,7 @@ Route::prefix('v1/ess')->middleware('api')->group(function () {
 
 Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess')->group(function () {
     // Employee Self-Service (Portal) Endpoints
+    Route::get('my-context', [EssPortalController::class, 'getMyContext']);
     Route::get('my-overview', [EssPortalController::class, 'getOverview']);
     Route::get('my-schedule', [EssPortalController::class, 'getSchedule']);
     Route::get('colleagues', [EssPortalController::class, 'getColleagues']);
