@@ -23,5 +23,6 @@ class DatabaseSeeder extends Seeder
         $this->call(ScreeningReferenceDataSeeder::class);
         $this->call(ScreeningRequirementTemplateSeeder::class);
         $this->call(SettingsDatabaseSeeder::class);
+        $this->call(AdminEssProfileSeeder::class);
     }
 }

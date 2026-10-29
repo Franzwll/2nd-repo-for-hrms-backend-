@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/portal/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
-import { myPayroll } from "@/data/ess";
 import {
   EssPortalProvider,
   essPortalPath,
@@ -208,12 +207,6 @@ export function EmployeeEss({
 
         {/* ── Global Modals ── */}
         <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
-        <PayslipViewerModal
-          open={payslipModalOpen}
-          onOpenChange={setPayslipModalOpen}
-          period="2026-07-01 – 07-15"
-          netPay={myPayroll.net}
-        />
         <EssAiAssistantModal
           open={aiModalOpen}
           onOpenChange={setAiModalOpen}

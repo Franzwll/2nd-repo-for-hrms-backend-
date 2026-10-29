@@ -28,10 +28,6 @@ import {
   Users,
   X,
   ArrowUpDown,
-  Compass,
-  Flag,
-  Clock,
-  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -4332,6 +4328,8 @@ export function EmployeeOnboarding() {
         date: `Submitted ${new Date(submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · awaiting HR verification`,
         isoDate: submittedIso,
         submittedAt,
+        // Clear correction note on resubmission — the fresh upload supersedes it
+        reviewNote: null,
         ...(uploadedFileName ? { fileName: uploadedFileName } : {}),
         ...(uploadedFileUrl ? { fileUrl: uploadedFileUrl } : {}),
         ...(uploadNotes.trim() || viewingItem.notes
@@ -4427,66 +4425,6 @@ export function EmployeeOnboarding() {
       window.removeEventListener("resize", syncListHeight);
     };
   }, [syncListHeight, filteredItems, viewingItem]);
-
-  // Calculate Tenure & 30-60-90-180 Day Probation Milestones
-  const hireDateStr = newHire?.start_date || "2026-08-01";
-  const hireDate = useMemo(() => new Date(hireDateStr), [hireDateStr]);
-  const now = useMemo(() => new Date(), []);
-
-  const elapsedDays = useMemo(() => {
-    const diffTime = Math.abs(now.getTime() - hireDate.getTime());
-    return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
-  }, [hireDate, now]);
-
-  const totalProbationDays = 180;
-  const currentMonthNum = Math.min(6, Math.max(1, Math.ceil(elapsedDays / 30)));
-  const daysRemaining = Math.max(0, totalProbationDays - elapsedDays);
-  const tenurePct = Math.min(100, Math.round((elapsedDays / totalProbationDays) * 100));
-
-  const regularizationDate = useMemo(() => {
-    const d = new Date(hireDate);
-    d.setDate(d.getDate() + 180);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }, [hireDate]);
-
-  const milestones = [
-    {
-      id: "w1",
-      dayTarget: 7,
-      label: "Week 1",
-      title: "Orientation & Setup",
-      desc: "Biometrics, company policies & initial tooling",
-      status: elapsedDays >= 7 ? "completed" : "in-progress",
-      targetDate: new Date(hireDate.getTime() + 7 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    },
-    {
-      id: "m1",
-      dayTarget: 30,
-      label: "Month 1",
-      title: "30-Day Check-in",
-      desc: "Initial performance touchpoint with supervisor",
-      status: elapsedDays >= 30 ? "completed" : elapsedDays >= 7 ? "in-progress" : "upcoming",
-      targetDate: new Date(hireDate.getTime() + 30 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    },
-    {
-      id: "m3",
-      dayTarget: 90,
-      label: "Month 3",
-      title: "Mid-Probation Review",
-      desc: "Mid-term evaluation & KPI performance sync",
-      status: elapsedDays >= 90 ? "completed" : elapsedDays >= 30 ? "in-progress" : "upcoming",
-      targetDate: new Date(hireDate.getTime() + 90 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    },
-    {
-      id: "m6",
-      dayTarget: 180,
-      label: "Month 6",
-      title: "Regularization",
-      desc: "Final appraisal for regular employment status",
-      status: elapsedDays >= 180 ? "completed" : elapsedDays >= 90 ? "in-progress" : "upcoming",
-      targetDate: regularizationDate,
-    },
-  ];
 
   /** Every format is password-protected: picking one opens the password gate. */
   const handleExportEmployeeReport = (format: ReportFormat) => {
@@ -4626,108 +4564,6 @@ export function EmployeeOnboarding() {
         }
       />
 
-      {/* PROBATIONARY JOURNEY & MILESTONE TIMELINE */}
-      <Card className="border-border/70 shadow-xs overflow-hidden">
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 bg-muted/20 border-b border-border/60">
-          <div>
-            <CardTitle className="font-display text-lg sm:text-xl font-semibold flex items-center gap-2">
-              <Compass className="h-5 w-5 text-primary" />
-              Probationary Journey &amp; Milestone Timeline
-            </CardTitle>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-semibold px-2.5 py-1 flex items-center gap-1.5 shadow-2xs dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              Day {elapsedDays} of {totalProbationDays} Active
-            </Badge>
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold px-2.5 py-1">
-              Month {currentMonthNum} of 6
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="p-6 space-y-6">
-          {/* Stepper Progression Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {milestones.map((m) => {
-              const isCompleted = m.status === "completed";
-              const isInProgress = m.status === "in-progress";
-
-              return (
-                <div
-                  key={m.id}
-                  className={`relative rounded-xl border p-4 transition-all ${
-                    isCompleted
-                      ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15 dark:border-emerald-400/30 shadow-2xs"
-                      : isInProgress
-                      ? "border-primary/60 bg-primary/5 shadow-xs ring-1 ring-primary/25"
-                      : "border-border/70 bg-muted/10 opacity-75"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                        isCompleted
-                          ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20"
-                          : isInProgress
-                          ? "bg-primary text-primary-foreground font-semibold"
-                          : "bg-muted text-muted-foreground border border-border"
-                      }`}
-                    >
-                      {m.label}
-                    </span>
-
-                    {isCompleted ? (
-                      <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold dark:text-emerald-400">
-                        <CheckCircle2 className="h-4 w-4" />
-                        <span>Passed</span>
-                      </div>
-                    ) : isInProgress ? (
-                      <div className="flex items-center gap-1 text-primary text-xs font-semibold">
-                        <Clock className="h-4 w-4 animate-pulse" />
-                        <span>Current Stage</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-muted-foreground text-xs font-medium">
-                        <Calendar className="h-3.5 w-3.5" />
-                        <span>{m.targetDate}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <h4 className="font-display text-sm font-bold text-foreground">
-                    {m.title}
-                  </h4>
-
-                  <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground">Target: Day {m.dayTarget}</span>
-                    <span className="font-semibold text-foreground">
-                      {isCompleted ? "Verified ✓" : isInProgress ? `Day ${elapsedDays} · Active` : m.targetDate}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Overall Probation Timeline Bar */}
-          <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs mb-2">
-              <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <Flag className="h-3.5 w-3.5 text-primary" /> Overall Probationary Elapsed Progress
-              </span>
-              <span className="text-muted-foreground">
-                <strong className="text-primary font-bold">{tenurePct}%</strong> elapsed · <strong className="text-foreground">{daysRemaining} days</strong> remaining until regularization review
-              </span>
-            </div>
-            <Progress value={tenurePct} className="h-2.5" />
-            <div className="flex justify-between items-center text-[11px] text-muted-foreground mt-2">
-              <span>Start Date: <strong className="text-foreground">{hireDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong></span>
-              <span>Target Regularization: <strong className="text-foreground">{regularizationDate}</strong></span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
 
       {/* SPLIT VIEW CONTAINER: Checklist on Left, Task Detail Panel on Right.
           The checklist card keeps a constant 7-row height and DEFINES the
@@ -4860,9 +4696,23 @@ export function EmployeeOnboarding() {
 
                 {/* Existing Uploaded Document */}
                 {viewingItem.fileName && (
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/5 p-3">
+                  <div className={cn(
+                    "flex items-center justify-between gap-3 rounded-lg border p-3",
+                    viewingItem.done
+                      ? "border-success/30 bg-success/5"
+                      : viewingItem.reviewNote
+                        ? "border-orange-500/30 bg-orange-500/5 dark:border-orange-400/20 dark:bg-orange-400/5"
+                        : "border-primary/30 bg-primary/5",
+                  )}>
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <FileCheck2 className="h-5 w-5 text-success shrink-0" />
+                      <FileCheck2 className={cn(
+                        "h-5 w-5 shrink-0",
+                        viewingItem.done
+                          ? "text-success"
+                          : viewingItem.reviewNote
+                            ? "text-orange-500 dark:text-orange-400"
+                            : "text-primary",
+                      )} />
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-foreground truncate">
                           {viewingItem.fileName}
@@ -4892,16 +4742,24 @@ export function EmployeeOnboarding() {
                   />
                 )}
 
-                {/* Upload Dropzone / Placeholder — only when the checklist
-                    item requires an upload; stretches to fill leftover
-                    vertical space in the card */}
-                {viewingItem.requiresUpload !== false && (
+                {/* Upload Dropzone — shown when the item is NOT yet verified
+                    by HR so the employee can attach / replace a document for
+                    initial submission OR for correction after HR return. */}
+                {!viewingItem.done && viewingItem.requiresUpload !== false && (
                   <div className="flex flex-1 flex-col gap-2">
                     <Label className="text-xs font-semibold">
-                      {viewingItem.fileName
-                        ? "Replace Attached Document"
-                        : "Upload Document Requirement"}
+                      {viewingItem.reviewNote
+                        ? "Upload Corrected Document"
+                        : viewingItem.fileName
+                          ? "Replace Attached Document"
+                          : "Upload Document Requirement"}
                     </Label>
+                    {viewingItem.reviewNote && (
+                      <p className="text-[11px] text-orange-600 dark:text-orange-400 leading-relaxed">
+                        HR returned this requirement for correction. Please upload the corrected file
+                        and resubmit.
+                      </p>
+                    )}
                     <div
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -4918,7 +4776,9 @@ export function EmployeeOnboarding() {
                         "relative flex min-h-[180px] flex-1 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-colors bg-card",
                         dragActive
                           ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50",
+                          : viewingItem.reviewNote
+                            ? "border-orange-500/40 hover:border-orange-500/70 dark:border-orange-400/30 dark:hover:border-orange-400/50"
+                            : "border-border hover:border-primary/50",
                       )}
                     >
                       <Upload
@@ -4930,7 +4790,9 @@ export function EmployeeOnboarding() {
                       <p className="text-xs font-medium text-foreground">
                         {uploadFile
                           ? uploadFile.name
-                          : viewingItem.uploadPlaceholder || "Choose a file or drag & drop here"}
+                          : viewingItem.reviewNote
+                            ? "Choose the corrected file or drag & drop here"
+                            : viewingItem.uploadPlaceholder || "Choose a file or drag & drop here"}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
                         {dragActive
@@ -4940,6 +4802,7 @@ export function EmployeeOnboarding() {
                       <input
                         type="file"
                         className="absolute inset-0 opacity-0 cursor-pointer"
+                        accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.xls,.xlsx"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) setUploadFile(file);
@@ -4965,20 +4828,106 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                {/* Optional Notes */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">
-                    Notes / Details{" "}
-                    <span className="font-normal text-muted-foreground">(Optional)</span>
-                  </Label>
-                  <Textarea
-                    value={uploadNotes}
-                    onChange={(e) => setUploadNotes(e.target.value)}
-                    placeholder="Provide any additional reference number or notes for HR..."
-                    rows={3}
-                    className="text-xs"
-                  />
-                </div>
+                {/* Upload not required — but item not yet done, let employee
+                    still attach a supporting doc if they want to */}
+                {!viewingItem.done && viewingItem.requiresUpload === false && (
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-xs font-semibold">
+                      Attach Supporting Document{" "}
+                      <span className="font-normal text-muted-foreground">(Optional)</span>
+                    </Label>
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragActive(true);
+                      }}
+                      onDragLeave={() => setDragActive(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragActive(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) setUploadFile(file);
+                      }}
+                      className={cn(
+                        "relative flex min-h-[100px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-colors bg-card",
+                        dragActive
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50",
+                      )}
+                    >
+                      <Upload
+                        className={cn(
+                          "h-7 w-7 mb-1.5 transition-colors",
+                          dragActive ? "text-primary" : "text-muted-foreground",
+                        )}
+                      />
+                      <p className="text-xs font-medium text-foreground">
+                        {uploadFile
+                          ? uploadFile.name
+                          : "Choose a file or drag & drop here"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {dragActive
+                          ? "Release to attach"
+                          : "PDF, DOCX, PNG, JPG (up to 10MB)"}
+                      </p>
+                      <input
+                        type="file"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.xls,.xlsx"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setUploadFile(file);
+                        }}
+                      />
+                    </div>
+                    {uploadFile && (
+                      <div className="flex items-center justify-between rounded-md bg-muted/40 p-2 text-xs">
+                        <span className="truncate max-w-[220px]">
+                          Selected: <strong>{uploadFile.name}</strong> (
+                          {(uploadFile.size / 1024).toFixed(0)} KB)
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 cursor-pointer"
+                          onClick={() => setUploadFile(null)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Optional Notes — hidden once verified */}
+                {!viewingItem.done && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">
+                      Notes / Details{" "}
+                      <span className="font-normal text-muted-foreground">(Optional)</span>
+                    </Label>
+                    <Textarea
+                      value={uploadNotes}
+                      onChange={(e) => setUploadNotes(e.target.value)}
+                      placeholder={
+                        viewingItem.reviewNote
+                          ? "Explain the correction or provide additional notes for HR..."
+                          : "Provide any additional reference number or notes for HR..."
+                      }
+                      rows={3}
+                      className="text-xs"
+                    />
+                  </div>
+                )}
+
+                {/* Verified — read-only confirmation */}
+                {viewingItem.done && (
+                  <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 p-3 text-xs text-success font-semibold">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    This requirement has been verified by HR. No further action needed.
+                  </div>
+                )}
 
                 {/* Action Buttons — pinned to the bottom of the card */}
                 <div className="mt-auto flex items-center justify-end gap-2 border-t border-border pt-3">
@@ -4991,25 +4940,35 @@ export function EmployeeOnboarding() {
                       setUploadFile(null);
                     }}
                   >
-                    Cancel
+                    {viewingItem.done ? "Close" : "Cancel"}
                   </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleTaskSubmit}
-                    disabled={submitting}
-                    className="cursor-pointer text-xs h-9"
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-1.5 h-3.5 w-3.5" />{" "}
-                        {uploadFile ? "Upload & Submit" : "Submit to HR"}
-                      </>
-                    )}
-                  </Button>
+                  {!viewingItem.done && (
+                    <Button
+                      size="sm"
+                      onClick={handleTaskSubmit}
+                      disabled={submitting}
+                      className={cn(
+                        "cursor-pointer text-xs h-9",
+                        viewingItem.reviewNote && "bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600",
+                      )}
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Saving...
+                        </>
+                      ) : viewingItem.reviewNote ? (
+                        <>
+                          <Send className="mr-1.5 h-3.5 w-3.5" />{" "}
+                          {uploadFile ? "Upload & Resubmit Correction" : "Resubmit to HR"}
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-1.5 h-3.5 w-3.5" />{" "}
+                          {uploadFile ? "Upload & Submit" : "Submit to HR"}
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

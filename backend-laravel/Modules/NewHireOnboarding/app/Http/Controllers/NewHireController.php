@@ -117,17 +117,20 @@ class NewHireController extends Controller
         // Auto-apply matching Active checklist templates to the new hire
         OnboardingChecklistTemplate::applyAllFor($newHire);
 
-        // Create the portal account so the hire can log into the Employee portal
-        $account = NewHireIntakeService::ensurePortalAccount($newHire);
-
-        // Email the employee their portal credentials (email + password)
-        NewHireIntakeService::sendCredentialsEmail($newHire, $account);
+        // Welcome email is sent by NewHireIntakeService::fileApplicant() for hires
+        // coming from Applicant Management. For direct hires, send it here.
+        if ($newHire->stage === 'Pre-onboarding') {
+            NewHireIntakeService::sendWelcomeEmail($newHire);
+        }
 
         // Hires added straight at Probationary/Regular are Core HCM employees;
         // Pre-onboarding hires are not employees yet and get their record when
         // they are promoted (see promoteStage).
         if ($newHire->stage !== 'Pre-onboarding') {
             NewHireIntakeService::ensureEmployeeRecord($newHire, $newHire->stage);
+            // For direct hires at Probationary/Regular, also create portal account & send credentials
+            $account = NewHireIntakeService::ensurePortalAccount($newHire);
+            NewHireIntakeService::sendCredentialsEmail($newHire, $account);
         }
 
         HcmCache::flush();

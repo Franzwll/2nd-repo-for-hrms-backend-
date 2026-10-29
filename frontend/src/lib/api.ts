@@ -223,6 +223,8 @@ export interface ApiApplicant {
   resume_url: string | null;
   /** Number of uploaded supporting documents (added by withCount). */
   documents_count?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
   job_post?: {
     job_post_id: number;
     title: string;
@@ -280,6 +282,8 @@ export interface ApiDocumentEvidence {
 
 export interface ApiScreening {
   screening_id?: number;
+  processed_at?: string | null;
+  created_at?: string | null;
   success?: boolean;
   processing_status: "PROCESSED" | "PARTIALLY_PROCESSED" | "FAILED" | "PENDING" | "PROCESSING";
   screening_result: "fit" | "other-role" | "credential" | "not-fit" | null;
@@ -350,7 +354,6 @@ export interface ApiScreening {
   reasons?: string[];
   model_info?: { base_model?: string; custom_ner_loaded?: boolean } | null;
   error_message?: string | null;
-  processed_at?: string | null;
 }
 
 export interface ApiScreeningPreview extends ApiScreening {
@@ -1098,6 +1101,10 @@ export const assessmentTestsApi = {
 export interface ApiAssessmentInvite {
   assessment_invite_id: number;
   token: string;
+  /** Public applicant-facing URL (assessment-test/{token}). */
+  test_url?: string;
+  /** True when the backend emailed the link to the applicant. */
+  email_sent?: boolean;
   applicant_id: number;
   applicant_name: string | null;
   position: string | null;

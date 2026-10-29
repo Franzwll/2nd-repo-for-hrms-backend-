@@ -3,6 +3,7 @@
 namespace Modules\ApplicantManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\AssessmentTestInviteMail;
 use App\Mail\AssessmentTestResultMail;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
@@ -36,8 +37,9 @@ class AssessmentInviteController extends Controller
 
     /* POST /api/v1/applicants/{applicant}/assessment-invites
      * Generates a single-use link the APPLICANT opens (no login) to take the
-     * assessment test. Workflow gate mirrors AssessmentTestController: the
-     * interview assessment must be recorded and marked Passed first. */
+     * assessment test and emails it to them. Workflow gate mirrors
+     * AssessmentTestController: the interview assessment must be recorded and
+     * marked Passed first. */
     public function store(Request $request, int $applicant): JsonResponse
     {
         if (! \Modules\ApplicantManagement\Services\AssessmentConfig::assessmentTestEnabled()) {
@@ -99,7 +101,36 @@ class AssessmentInviteController extends Controller
             details: "Generated a secure assessment test link for {$model->name} (\"{$invite->test_title}\"), valid for {$expiryDays} days."
         );
 
-        return response()->json($this->summarize($invite->load('applicant.jobPost')), 201);
+        // Email the single-use test link to the applicant automatically. This
+        // is the step right after the interview assessment is marked Passed,
+        // so the applicant can proceed without HR copying the link manually.
+        $testUrl   = $this->testUrl($invite);
+        $emailSent = false;
+
+        if ($model->email) {
+            try {
+                Mail::to($model->email)->send(new AssessmentTestInviteMail(
+                    recipientEmail: $model->email,
+                    applicantName: $model->name,
+                    position: $model->jobPost?->title ?? 'Position',
+                    testTitle: $invite->test_title,
+                    testUrl: $testUrl,
+                    passingScore: (float) $invite->passing_score,
+                    expiresAt: $invite->expires_at?->format('F j, Y g:i A'),
+                ));
+                $emailSent = true;
+            } catch (\Throwable $e) {
+                Log::warning("Failed to send assessment test link to {$model->email}: ".$e->getMessage());
+            }
+        }
+
+        return response()->json(
+            $this->summarize($invite->load('applicant.jobPost')) + [
+                'test_url'   => $testUrl,
+                'email_sent' => $emailSent,
+            ],
+            201
+        );
     }
 
     /* GET /api/v1/assessment-invites/{token} — PUBLIC (no auth).
@@ -266,6 +297,17 @@ class AssessmentInviteController extends Controller
 
     /* ------------------------------------------------------------------ */
 
+    /** Public applicant-facing URL for an invite (no login required). */
+    private function testUrl(AssessmentInvite $invite): string
+    {
+        $base = rtrim((string) config('app.frontend_url'), '/');
+        if ($base === '') {
+            $base = rtrim((string) config('app.url'), '/');
+        }
+
+        return $base.'/assessment-test/'.$invite->token;
+    }
+
     /** Marks a pending invite as Expired once its expiry time has passed. */
     private function expireIfStale(AssessmentInvite $invite): void
     {
@@ -284,6 +326,7 @@ class AssessmentInviteController extends Controller
         return [
             'assessment_invite_id' => $invite->assessment_invite_id,
             'token'                => $invite->token,
+            'test_url'             => $this->testUrl($invite),
             'applicant_id'         => $invite->applicant_id,
             'applicant_name'       => $invite->applicant?->name,
             'position'             => $invite->applicant?->jobPost?->title,
