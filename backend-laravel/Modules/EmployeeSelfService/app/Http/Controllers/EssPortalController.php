@@ -4,6 +4,7 @@ namespace Modules\EmployeeSelfService\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceRecord;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeBenefit;
 use App\Models\EmployeeDocument;
@@ -12,6 +13,7 @@ use App\Models\EssRequest;
 use App\Models\EssRequestAttachment;
 use App\Models\EssRequestStatusHistory;
 use App\Models\LeaveBalance;
+use App\Models\Position;
 use App\Models\WorkSchedule;
 use App\Services\AuditLogger;
 use App\Services\HandbookTextCleaner;
@@ -117,30 +119,15 @@ class EssPortalController extends Controller
             }
         }
 
-        // Staff accounts must be explicitly linked to an employee record.
-        // Never guess by name or fall back to an arbitrary employee record.
-        if ($isStaff) {
-            if ($requireLink) {
-                throw new \Illuminate\Http\Exceptions\HttpResponseException(
-                    response()->json([
-                        'code' => 'ESS_NOT_LINKED',
-                        'message' => 'This account is not linked to an employee record.',
-                    ], 409)
-                );
-            }
-
-            return null;
-        }
-
         if ($user?->full_name) {
             $names = explode(' ', trim($user->full_name));
             $firstName = $names[0] ?? '';
             $lastName = count($names) > 1 ? end($names) : '';
-            $query = Employee::with(['department', 'position', 'supervisor'])->where('first_name', $firstName);
+            $query = Employee::with($relations)->where('first_name', $firstName);
             if ($lastName) {
                 $query->where('last_name', $lastName);
             }
-            $emp = $query->first();
+            $emp = $query->where('status', 'Active')->first();
             if ($emp) {
                 if ($user && ! $user->employee_id) {
                     $user->employee_id = $emp->employee_id;
@@ -205,7 +192,7 @@ class EssPortalController extends Controller
                 $user->save();
             }
 
-            return $emp->load(['department', 'position', 'supervisor']);
+            return $emp->load($relations);
         }
 
         // For user with role_id 3 (Employee) without existing records, auto-provision
@@ -232,7 +219,47 @@ class EssPortalController extends Controller
             $user->employee_id = $emp->employee_id;
             $user->save();
 
-            return $emp->load(['department', 'position', 'supervisor']);
+            return $emp->load($relations);
+        }
+
+        // For staff accounts without an employee record, automatically provision an executive / management employee record
+        if ($isStaff && $user) {
+            $names = explode(' ', trim($user->full_name ?? $user->username));
+            $firstName = $names[0] ?? 'Admin';
+            $lastName = count($names) > 1 ? end($names) : 'Staff';
+            $nextCodeNumber = (Employee::max('employee_id') ?? 0) + 1;
+            $code = 'EMP-' . str_pad((string) $nextCodeNumber, 4, '0', STR_PAD_LEFT);
+
+            $dept = Department::where('code', 'DEP-HR')->first() ?? Department::first();
+            $pos = Position::where('position_code', 'POS-014')->first() ?? Position::first();
+
+            $emp = Employee::create([
+                'employee_code'   => $code,
+                'first_name'      => $firstName,
+                'last_name'       => $lastName,
+                'email'           => $user->email,
+                'department_id'   => $dept?->department_id ?? 5,
+                'position_id'     => $pos?->position_id ?? 14,
+                'salary_grade_id' => $pos?->salary_grade_id ?? 7,
+                'employment_type' => 'Regular',
+                'date_hired'      => now()->subYears(2),
+                'status'          => 'Active',
+                'onboarding_complete' => true,
+            ]);
+
+            $user->employee_id = $emp->employee_id;
+            $user->save();
+
+            return $emp->load($relations);
+        }
+
+        if ($requireLink) {
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                response()->json([
+                    'code' => 'ESS_NOT_LINKED',
+                    'message' => 'This account is not linked to an employee record.',
+                ], 409)
+            );
         }
 
         return null;
