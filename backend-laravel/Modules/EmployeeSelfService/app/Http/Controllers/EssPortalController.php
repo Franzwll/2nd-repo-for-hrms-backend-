@@ -1384,7 +1384,30 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'Employee not found.'], 404);
         }
 
-        $courses = DB::table('learning_courses')->get();
+        // Only show courses that target this employee's department/position,
+        // plus universal courses (those with no targets at all).
+        $courses = DB::table('learning_courses')
+            ->where(function ($q) use ($employee) {
+                // Universal courses: no rows in learning_course_targets
+                $q->whereNotExists(function ($sub) {
+                    $sub->select(DB::raw(1))
+                        ->from('learning_course_targets')
+                        ->whereColumn('learning_course_targets.course_id', 'learning_courses.course_id');
+                })
+                // OR courses targeted to this employee's department or position
+                ->orWhereExists(function ($sub) use ($employee) {
+                    $sub->select(DB::raw(1))
+                        ->from('learning_course_targets')
+                        ->whereColumn('learning_course_targets.course_id', 'learning_courses.course_id')
+                        ->where(function ($w) use ($employee) {
+                            $w->where('learning_course_targets.department_id', $employee->department_id);
+                            if ($employee->position_id) {
+                                $w->orWhere('learning_course_targets.position_id', $employee->position_id);
+                            }
+                        });
+                });
+            })
+            ->get();
         $userLearning = DB::table('employee_learning')
             ->where('employee_id', $employee->employee_id)
             ->get();
