@@ -91,6 +91,7 @@ class EssPortalController extends Controller
     {
         $user = $request->user();
         $isStaff = $user && in_array((int) $user->role_id, [1, 2], true);
+        $relations = ['department', 'position.salaryGrade', 'salaryGrade', 'supervisor', 'emergencyContacts'];
 
         if ($user?->employee_id) {
             $emp = Employee::with($relations)->find($user->employee_id);

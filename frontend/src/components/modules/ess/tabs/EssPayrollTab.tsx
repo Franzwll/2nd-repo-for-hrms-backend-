@@ -8,12 +8,16 @@ import {
   EyeOff,
   FileText,
   HeartHandshake,
+  HeartPulse,
+  Info,
   Landmark,
   ShieldCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -73,6 +77,7 @@ export function EssPayrollTab() {
   );
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Record<string, boolean>>({});
+  const [hmoCardRevealed, setHmoCardRevealed] = useState(false);
 
   const toggleRevealId = (label: string) =>
     setRevealedIds((prev) => ({ ...prev, [label]: !prev[label] }));

@@ -354,7 +354,6 @@ export interface ApiScreening {
   reasons?: string[];
   model_info?: { base_model?: string; custom_ner_loaded?: boolean } | null;
   error_message?: string | null;
-  processed_at?: string | null;
 }
 
 export interface ApiScreeningPreview extends ApiScreening {
