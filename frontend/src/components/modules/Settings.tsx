@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 
 import { MfaSettings } from "@/components/modules/MfaSettings";
+import { usePreferences, type UserPreferences } from "@/lib/preferences";
 import { PageHeader } from "@/components/portal/PageHeader";
 import {
   AlertDialog,
@@ -447,6 +448,11 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
    *  password / OTP values in the database. */
   const currentUser = getUser()?.email ?? "";
 
+  // Portal-wide preferences context — used to broadcast saved language/date/time
+  // settings immediately (clock, nav labels, Settings page) instead of waiting
+  // for a full page reload.
+  const { setPreferences: commitPreferences, t } = usePreferences();
+
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [backupSchedule, setBackupSchedule] = useState("daily");
   const [backups, setBackups] = useState<BackupEntry[]>([]);
@@ -474,9 +480,11 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   });
   const [prefsSavedSnapshot, setPrefsSavedSnapshot] = useState("");
 
-  // Login security (password policy + session rules, saved to "security")
+  // Login security (password policy + session rules, saved to "security").
+  // The legacy twoFactor switch was removed from the UI — it was never enforced
+  // server-side (SecurityPolicy ignores it); MFA is covered by the per-account
+  // authenticator-app (TOTP) enrollment.
   const [security, setSecurity] = useState({
-    twoFactor: false,
     minLength: 0,
     requireUppercase: false,
     requireLowercase: false,
@@ -515,7 +523,9 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     map: Partial<{
       company: typeof company;
       preferences: typeof preferences;
-      security: typeof security;
+      /** security values coming from the DB can still carry the legacy
+       *  twoFactor key — kept optional so we can safely strip it. */
+      security: Partial<typeof security> & { twoFactor?: boolean };
       backups: BackupEntry[];
       backup: { enabled?: boolean; schedule?: string };
     }>,
@@ -536,8 +546,21 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       );
     }
     if (map["security"]) {
-      setSecurity(map["security"]);
-      setSecuritySavedSnapshot(JSON.stringify(map["security"]));
+      // Drop the legacy twoFactor key if a stored row still carries it — the
+      // authenticator-app (TOTP) enrollment replaces that toggle. Missing values
+      // fall back to the same defaults the backend SecurityPolicy uses.
+      const { twoFactor: _legacyTwoFactor, ...policy } = map["security"];
+      const next = {
+        minLength: policy.minLength ?? 8,
+        requireUppercase: policy.requireUppercase ?? true,
+        requireLowercase: policy.requireLowercase ?? true,
+        requireNumber: policy.requireNumber ?? true,
+        requireSymbol: policy.requireSymbol ?? false,
+        sessionTimeout: policy.sessionTimeout ?? "30 minutes",
+        maxLoginAttempts: policy.maxLoginAttempts ?? "5 attempts",
+      };
+      setSecurity(next);
+      setSecuritySavedSnapshot(JSON.stringify(next));
     }
     if (map["backups"]) {
       setBackups(Array.isArray(map["backups"]) ? map["backups"] : []);
@@ -600,6 +623,12 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       }
       await mySettingsApi.save("preferences", currentUser, preferences);
       setPrefsSavedSnapshot(JSON.stringify(preferences));
+      // Broadcast the saved values through the preferences context so language /
+      // date format / time format / time zone apply instantly (theme is applied
+      // via applyTheme above and persisted under its own localStorage key).
+      // The state values always match the UserPreferences options (the selects
+      // only offer valid values), so a direct cast here is safe.
+      commitPreferences(preferences as unknown as UserPreferences);
       toast.success("Preferences saved to database");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not save preferences");
@@ -707,6 +736,12 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
 
   const isSuperAdmin = role === "superadmin";
 
+  // Company + Chatbot FAQ cards are intentionally kept OFF the Super Admin
+  // Settings page so the view stays a clean two-row layout: Preferences |
+  // Security on the top row, and a full-width Backup & Restore below. Flip to
+  // true to restore the Company editor card on this page.
+  const showCompanyCard = false;
+
   const securityDirty =
     securitySavedSnapshot !== "" && JSON.stringify(security) !== securitySavedSnapshot;
 
@@ -746,28 +781,32 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   return (
     <div>
       <PageHeader
-        title="Settings"
+        title={t("Settings")}
         description={
           role === "employee"
-            ? "Notifications, portal preferences, account security, personal contact details, and work information."
-            : "Account security, default password and notification preferences."
+            ? t(
+                "Notifications, portal preferences, account security, personal contact details, and work information.",
+              )
+            : isSuperAdmin
+              ? t("System security policy, account preferences, and database backups.")
+              : t("Account security, default password and notification preferences.")
         }
       />
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
         {/* Chatbot FAQ — compact manager in the former Notifications slot (admins only) */}
-        {(isSuperAdmin || role === "admin") && (
+        {role === "admin" && (
           <ChatbotFaqSettingsCard />
         )}
 
         {/* Preferences — edited inline on the card */}
         <SettingsCard
           icon={<SlidersHorizontal className="h-5 w-5" />}
-          title="Preferences"
+          title={t("Preferences")}
         >
           <div className="space-y-2.5">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">Theme</span>
+              <span className="text-sm text-muted-foreground">{t("Theme")}</span>
               <Select
                 value={preferences.theme}
                 onValueChange={(v) => {
@@ -787,7 +826,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               </Select>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">Language</span>
+              <span className="text-sm text-muted-foreground">{t("Language")}</span>
               <Select
                 value={preferences.language}
                 onValueChange={(v) => setPreferences((p) => ({ ...p, language: v }))}
@@ -802,7 +841,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               </Select>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">Date format</span>
+              <span className="text-sm text-muted-foreground">{t("Date format")}</span>
               <Select
                 value={preferences.dateFormat}
                 onValueChange={(v) => setPreferences((p) => ({ ...p, dateFormat: v }))}
@@ -818,7 +857,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               </Select>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">Time format</span>
+              <span className="text-sm text-muted-foreground">{t("Time format")}</span>
               <Select
                 value={preferences.timeFormat}
                 onValueChange={(v) => setPreferences((p) => ({ ...p, timeFormat: v }))}
@@ -833,7 +872,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               </Select>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">Time zone</span>
+              <span className="text-sm text-muted-foreground">{t("Time zone")}</span>
               <Select
                 value={preferences.timeZone}
                 onValueChange={(v) => setPreferences((p) => ({ ...p, timeZone: v }))}
@@ -853,33 +892,34 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           </div>
           <div className="mt-4 flex items-center justify-end gap-2 border-t border-border/60 pt-4">
             {prefsDirty && (
-              <span className="mr-auto text-xs font-medium text-caution">Unsaved changes</span>
+              <span className="mr-auto text-xs font-medium text-caution">
+                {t("Unsaved changes")}
+              </span>
             )}
             <Button size="sm" disabled={!prefsDirty} onClick={savePreferences}>
-              Save changes
+              {t("Save changes")}
             </Button>
           </div>
         </SettingsCard>
 
-        {/* Login Security — system-wide policy (superadmin only) */}
+        {/* Security — system-wide policy + authenticator enrollment (superadmin only) */}
         {isSuperAdmin && (
           <SettingsCard
             icon={<Shield className="h-5 w-5" />}
-            title="Login Security"
+            title={t("Security")}
           >
             <div className="flex min-h-0 flex-1 flex-col">
+              {/* Authenticator-app MFA — emailed codes vs TOTP. Moved here from the
+                  per-account Security card so Super Admin enrolls alongside the policy. */}
+              <MfaSettings />
+
+              <div className="my-4 border-t border-border/60" />
+
               {/* Editable security controls — kept inside a bounded scroll area
                   so the card height never changes regardless of content. */}
-              <div className="max-h-[300px] min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-                <div className="flex items-center justify-between gap-4">
-                  <Label>Two-factor authentication</Label>
-                  <Switch
-                    checked={security.twoFactor}
-                    onCheckedChange={(v) => setSecurity((p) => ({ ...p, twoFactor: v }))}
-                  />
-                </div>
+              <div className="max-h-[320px] min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                 <div className="space-y-2">
-                  <Label htmlFor="pw-min-length">Minimum password length</Label>
+                  <Label htmlFor="pw-min-length">{t("Minimum password length")}</Label>
                   <Input
                     id="pw-min-length"
                     type="number"
@@ -895,7 +935,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Password requirements</Label>
+                  <Label>{t("Password requirements")}</Label>
                   {(
                     [
                       ["requireUppercase", "Require at least one uppercase letter (A–Z)"],
@@ -917,7 +957,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   ))}
                 </div>
                 <div className="space-y-2">
-                  <Label>Session timeout</Label>
+                  <Label>{t("Session timeout")}</Label>
                   <Select
                     value={security.sessionTimeout}
                     onValueChange={(v) => setSecurity((p) => ({ ...p, sessionTimeout: v }))}
@@ -933,7 +973,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Max login attempts</Label>
+                  <Label>{t("Max login attempts")}</Label>
                   <Select
                     value={security.maxLoginAttempts}
                     onValueChange={(v) => setSecurity((p) => ({ ...p, maxLoginAttempts: v }))}
@@ -952,10 +992,12 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
 
               <div className="mt-4 flex items-center justify-end gap-2 border-t border-border/60 pt-4">
                 {securityDirty && (
-                  <span className="mr-auto text-xs font-medium text-caution">Unsaved changes</span>
+                  <span className="mr-auto text-xs font-medium text-caution">
+                    {t("Unsaved changes")}
+                  </span>
                 )}
                 <Button size="sm" disabled={!securityDirty} onClick={saveSecurity}>
-                  Save changes
+                  {t("Save changes")}
                 </Button>
               </div>
 
@@ -968,15 +1010,18 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   setResetPwOpen(true);
                 }}
               >
-                <KeyRound className="mr-1.5 h-4 w-4" /> Change default password of all users
+                <KeyRound className="mr-1.5 h-4 w-4" /> {t("Change default password of all users")}
               </Button>
             </div>
           </SettingsCard>
         )}
 
-        {/* Security — password + personal OTP toggle — every logged-in account */}
-        <Card
-          id="security"
+        {/* Per-account Security — OTP toggle, authenticator, password change.
+            Hidden for Super Admin (the authenticator moved into the system-wide
+            Security card above, and OTP-at-login is role-required for Super Admins). */}
+        {!isSuperAdmin && (
+          <Card
+            id="security"
           className="flex h-full flex-col scroll-mt-20 rounded-xl border-border/70 shadow-sm"
         >
           <CardContent className="flex flex-1 flex-col space-y-4 p-6">
@@ -985,14 +1030,14 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 <Shield className="h-5 w-5" />
               </span>
               <div>
-                <h2 className="font-display text-xl font-semibold">Security</h2>
+                <h2 className="font-display text-xl font-semibold">{t("Security")}</h2>
               </div>
             </div>
 
             {/* Personal OTP requirement */}
             <div className="flex items-center justify-between gap-4 rounded-md border border-border/70 bg-muted/30 px-3 py-2.5">
               <div className="min-w-0">
-                <p className="text-sm font-medium">OTP verification at login</p>
+                <p className="text-sm font-medium">{t("OTP verification at login")}</p>
               </div>
               <Switch
                 aria-label="Require OTP at login"
@@ -1012,7 +1057,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
 
             <div className="grid gap-4">
               <div className="space-y-2">
-                <Label htmlFor="cur-pw">Current password</Label>
+                <Label htmlFor="cur-pw">{t("Current password")}</Label>
                 <div className="relative">
                   <Input
                     id="cur-pw"
@@ -1034,7 +1079,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-pw">New password</Label>
+                <Label htmlFor="new-pw">{t("New password")}</Label>
                 <div className="relative">
                   <Input
                     id="new-pw"
@@ -1056,7 +1101,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirm-pw">Confirm new password</Label>
+                <Label htmlFor="confirm-pw">{t("Confirm new password")}</Label>
                 <div className="relative">
                   <Input
                     id="confirm-pw"
@@ -1084,7 +1129,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
             <AlertDialog open={pwConfirmOpen} onOpenChange={setPwConfirmOpen}>
               <AlertDialogTrigger asChild>
                 <Button className="mt-auto self-end" disabled={!currentPassword || !newPassword}>
-                  <KeyRound className="mr-2 h-4 w-4" /> Update password
+                  <KeyRound className="mr-2 h-4 w-4" /> {t("Update password")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -1109,7 +1154,8 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               </AlertDialogContent>
             </AlertDialog>
           </CardContent>
-        </Card>
+          </Card>
+        )}
 
         {isSuperAdmin && (
           <Dialog open={resetPwOpen} onOpenChange={setResetPwOpen}>
@@ -1156,8 +1202,9 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           </Dialog>
         )}
 
-        {/* Company (superadmin only) */}
-        {isSuperAdmin && (
+        {/* Company (superadmin only) — intentionally hidden while showCompanyCard
+            is false so the Super Admin page keeps exactly two rows. */}
+        {showCompanyCard && (
           <SettingsCard
             icon={<Building2 className="h-5 w-5" />}
             title="Company"
@@ -1274,9 +1321,10 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           </Dialog>
         )}
 
-        {/* Backup & Restore (superadmin only) */}
+        {/* Backup & Restore (superadmin only) — full-width second row */}
         {isSuperAdmin && (
-          <Card className="flex h-full flex-col rounded-xl border-border/70 shadow-sm">
+          <div className="lg:col-span-2">
+            <Card className="flex h-full flex-col rounded-xl border-border/70 shadow-sm">
             <CardContent className="flex flex-1 flex-col space-y-4 p-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -1284,11 +1332,11 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                     <Database className="h-5 w-5" />
                   </span>
                   <div>
-                    <h2 className="font-display text-xl font-semibold">Backup & Restore</h2>
+                    <h2 className="font-display text-xl font-semibold">{t("Backup & Restore")}</h2>
                   </div>
                 </div>
                 <Button onClick={createBackup} disabled={backupInProgress}>
-                  {backupInProgress ? "Creating backup…" : "Create backup"}
+                  {backupInProgress ? "Creating backup…" : t("Create backup")}
                 </Button>
               </div>
 
@@ -1303,7 +1351,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
 
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-caution/30 bg-caution/10 p-4">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">Automatic backups</p>
+                  <p className="text-sm font-medium">{t("Automatic backups")}</p>
                   <p className="text-xs text-muted-foreground">
                     Run scheduled backups without manual action
                   </p>
@@ -1410,7 +1458,8 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 </Table>
               </div>
             </CardContent>
-          </Card>
+            </Card>
+          </div>
         )}
       </div>
     </div>

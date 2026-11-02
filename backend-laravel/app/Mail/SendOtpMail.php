@@ -30,6 +30,7 @@ class SendOtpMail extends Mailable
     {
         return new Content(
             view: 'emails.otp',
+            text: 'emails.otp-text',
             with: [
                 'code' => $this->code,
                 'name' => $this->name,

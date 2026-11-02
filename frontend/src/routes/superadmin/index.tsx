@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/loading-skeletons";
 import { dashboardApi } from "@/lib/api";
 import type { ApiDashboardStats } from "@/lib/api";
+import { usePreferences } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/superadmin/")({
@@ -85,20 +86,12 @@ const moduleToneClass: Record<string, string> = {
   muted: "border-border text-muted-foreground",
 };
 
-const formatDateTime = (iso: string | null) => {
-  if (!iso) return "Never";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Never";
-  return d.toLocaleString("en-PH", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
-
 function SuperAdminDashboard() {
   const [stats, setStats] = useState<ApiDashboardStats | null>(null);
+
+  // Last login / audit timestamps follow the user's saved portal preferences.
+  const { formatDateTime: fmtDateTime } = usePreferences();
+  const formatDateTime = (iso: string | null) => (iso ? fmtDateTime(iso) : "Never");
 
   useEffect(() => {
     let cancelled = false;

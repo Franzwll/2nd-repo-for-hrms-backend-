@@ -15,7 +15,9 @@
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center" style="vertical-align:middle;">
-                    <img src="{{ $message->embed(resource_path('views/emails/oxford-mark-white.png')) }}" alt="Oxford Suites Makati" width="72" style="display:inline-block;width:72px;height:auto;vertical-align:middle;" />
+                    {{-- Hosted image (not an embedded CID attachment) so Gmail
+                         and Outlook render the real logo inline. --}}
+                    <img src="{{ config('mail.logo_url') ?: asset('images/oxford-mark-white.png') }}" alt="Oxford Suites Makati" width="72" height="72" style="display:inline-block;width:72px;height:72px;border:0;outline:none;text-decoration:none;vertical-align:middle;" />
                   </td>
                 </tr>
                 <tr>
