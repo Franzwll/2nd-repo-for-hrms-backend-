@@ -71,6 +71,143 @@ class AuthFlowTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_resend_otp_issues_a_fresh_code(): void
+    {
+        Mail::fake();
+
+        $login = $this->postJson('/api/v1/auth/login', [
+            'email' => 'bullseur@oxfordsuites.com.ph',
+            'password' => 'Oxford@2026',
+        ])->assertOk()->json();
+
+        $this->postJson('/api/v1/auth/otp/resend', [
+            'login_token' => $login['login_token'],
+        ])->assertOk()->assertJsonPath('expires_in', 120);
+
+        Mail::assertSent(SendOtpMail::class, 2);
+
+        // Only the most recently emailed code should work.
+        $codes = [];
+        Mail::assertSent(SendOtpMail::class, function (SendOtpMail $mail) use (&$codes): bool {
+            $codes[] = $mail->code;
+
+            return true;
+        });
+        $latest = end($codes);
+
+        $this->postJson('/api/v1/auth/otp/verify', [
+            'login_token' => $login['login_token'],
+            'otp' => $latest,
+        ])->assertOk()->assertJsonStructure(['token', 'user']);
+    }
+
+    public function test_resend_otp_rejects_unknown_token(): void
+    {
+        $this->postJson('/api/v1/auth/otp/resend', [
+            'login_token' => 'not-a-real-token',
+        ])->assertStatus(422);
+    }
+
+    public function test_resend_extends_the_code_lifetime(): void
+    {
+        Mail::fake();
+
+        $login = $this->postJson('/api/v1/auth/login', [
+            'email' => 'bullseur@oxfordsuites.com.ph',
+            'password' => 'Oxford@2026',
+        ])->assertOk()->json();
+
+        // Resend late in the first window. The fresh code must live for its
+        // own full lifetime, not for the first code's remaining seconds.
+        $this->travel(100)->seconds();
+
+        $this->postJson('/api/v1/auth/otp/resend', [
+            'login_token' => $login['login_token'],
+        ])->assertOk();
+
+        // 200s after login: past the first code's expiry, inside the new one's.
+        $this->travel(100)->seconds();
+
+        $this->postJson('/api/v1/auth/otp/verify', [
+            'login_token' => $login['login_token'],
+            'otp' => $this->latestOtpCode(),
+        ])->assertOk()->assertJsonStructure(['token', 'user']);
+    }
+
+    public function test_resend_works_after_the_code_has_expired(): void
+    {
+        Mail::fake();
+
+        $login = $this->postJson('/api/v1/auth/login', [
+            'email' => 'bullseur@oxfordsuites.com.ph',
+            'password' => 'Oxford@2026',
+        ])->assertOk()->json();
+
+        $expiredCode = $this->latestOtpCode();
+
+        $this->travel(121)->seconds();
+
+        // The expired code is rejected...
+        $this->postJson('/api/v1/auth/otp/verify', [
+            'login_token' => $login['login_token'],
+            'otp' => $expiredCode,
+        ])->assertStatus(422);
+
+        // ...but the user can still request a new one without signing in again.
+        $this->postJson('/api/v1/auth/otp/resend', [
+            'login_token' => $login['login_token'],
+        ])->assertOk()->assertJsonPath('expires_in', 120);
+
+        Mail::assertSent(SendOtpMail::class, 2);
+
+        $this->postJson('/api/v1/auth/otp/verify', [
+            'login_token' => $login['login_token'],
+            'otp' => $this->latestOtpCode(),
+        ])->assertOk()->assertJsonStructure(['token', 'user']);
+    }
+
+    public function test_login_reports_mail_delivery_failure(): void
+    {
+        Mail::shouldReceive('to')->andThrow(new \RuntimeException('SMTP unavailable'));
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'bullseur@oxfordsuites.com.ph',
+            'password' => 'Oxford@2026',
+        ])->assertStatus(503)
+            ->assertJsonPath(
+                'message',
+                'We could not send your verification code right now. Please try again in a moment.'
+            );
+    }
+
+    public function test_resend_reports_mail_delivery_failure(): void
+    {
+        Mail::fake();
+
+        $login = $this->postJson('/api/v1/auth/login', [
+            'email' => 'bullseur@oxfordsuites.com.ph',
+            'password' => 'Oxford@2026',
+        ])->assertOk()->json();
+
+        Mail::shouldReceive('to')->andThrow(new \RuntimeException('SMTP unavailable'));
+
+        $this->postJson('/api/v1/auth/otp/resend', [
+            'login_token' => $login['login_token'],
+        ])->assertStatus(503)
+            ->assertJsonPath(
+                'message',
+                'We could not resend your verification code right now. Please try again in a moment.'
+            );
+    }
+
+    private function latestOtpCode(): string
+    {
+        $mail = Mail::sent(SendOtpMail::class)->last();
+        $this->assertNotNull($mail, 'No OTP email was sent.');
+
+        return $mail->code;
+    }
+
     public function test_me_returns_authenticated_user(): void
     {
         $token = $this->loginViaOtp();
