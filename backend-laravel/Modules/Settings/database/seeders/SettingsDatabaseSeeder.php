@@ -37,7 +37,6 @@ class SettingsDatabaseSeeder extends Seeder
             ],
 
             'security' => [
-                'twoFactor'        => false,
                 'minLength'        => 8,
                 'requireUppercase' => true,
                 'requireLowercase' => true,

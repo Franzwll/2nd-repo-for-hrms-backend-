@@ -41,7 +41,11 @@ const maskEmail = (email?: string) => {
 function OTPPage() {
   useLightOnly();
   const navigate = useNavigate();
-  const loginCtx = getLoginContext();
+  // Snapshot the login context once. Calling getLoginContext() on every render
+  // made the page re-read (and eventually delete) sessionStorage while the user
+  // was typing, so the masked email suddenly became blank and the resend
+  // control disappeared when the 120s token expired.
+  const [loginCtx, setLoginCtx] = useState(() => getLoginContext());
   const isTotp = loginCtx?.mfa_method === "totp";
 
   const [digits, setDigits] = useState<string[]>(() =>
@@ -137,7 +141,9 @@ function OTPPage() {
       }
       return;
     }
-    const ctx = getLoginContext();
+    // Fall back to the snapshot so an expired code is rejected by the server
+    // ("Invalid or expired OTP") instead of bouncing the user to the login page.
+    const ctx = getLoginContext() ?? loginCtx;
     if (!ctx) {
       setError("Your login session has expired. Please sign in again.");
       navigate({ to: "/login" });
@@ -189,22 +195,28 @@ function OTPPage() {
   };
 
   const handleResend = async () => {
-    const ctx = getLoginContext();
+    // Prefer the stored context, but fall back to the snapshot so the button
+    // still works after sessionStorage was cleared on token expiry (where the
+    // server, not the browser, is the source of truth).
+    const ctx = getLoginContext() ?? loginCtx;
     if (!ctx || ctx.mfa_method === "totp") return;
     setSubmitting(true);
     try {
       const res = await authApi.resendOtp(ctx.login_token);
+      // Refresh the stored context (new token window) and mirror it in state so
+      // the countdown, cooldown and masked email stay in sync.
       persistLoginContext({
         login_token: ctx.login_token,
         email: ctx.email,
         expires_in: res.expires_in,
         ...(ctx.mfa_method ? { mfa_method: ctx.mfa_method } : {}),
       });
+      setLoginCtx((prev) => (prev ? { ...prev, expires_in: res.expires_in } : prev));
       setDigits(Array.from({ length: OTP_LENGTH }, () => ""));
       setTimeLeft(res.expires_in);
       setResendDisabled(true);
       setError("");
-      toast("A new OTP has been sent to your work email.");
+      toast.success("A new OTP has been sent to your work email.");
       inputRefs.current[0]?.focus();
     } catch (err: any) {
       setError(err?.message || "Unable to resend OTP. Please sign in again.");
@@ -251,16 +263,12 @@ function OTPPage() {
           {isTotp ? (
             <>
               Open your authenticator app and enter the 6-digit code for{" "}
-              <span className="font-medium text-foreground">
-                {maskEmail(loginCtx?.email)}
-              </span>.
+              <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
             </>
           ) : (
             <>
               We've sent a 6-digit code to{" "}
-              <span className="font-medium text-foreground">
-                {maskEmail(loginCtx?.email)}
-              </span>.
+              <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
               <br />
               Enter it below to continue.
             </>
@@ -362,34 +370,43 @@ function OTPPage() {
 
             {/* Timer / resend for email OTP */}
             {!isTotp && (
-              <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <Timer className="h-3.5 w-3.5" />
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
                 {timeLeft > 0 ? (
-                  <span>
-                    Code expires in {Math.floor(timeLeft / 60)}:
-                    {String(timeLeft % 60).padStart(2, "0")}
+                  <>
+                    <Timer className="h-3.5 w-3.5" />
+                    <span>
+                      Code expires in {Math.floor(timeLeft / 60)}:
+                      {String(timeLeft % 60).padStart(2, "0")}
+                    </span>
                     {!resendDisabled && (
                       <>
-                        {" · "}
+                        <span aria-hidden="true">·</span>
                         <button
                           type="button"
                           onClick={handleResend}
-                          className="font-medium text-primary hover:underline cursor-pointer"
+                          disabled={submitting}
+                          className="font-medium text-primary hover:underline cursor-pointer disabled:opacity-60"
                         >
                           Resend OTP
                         </button>
                       </>
                     )}
-                  </span>
+                  </>
                 ) : (
                   <>
-                    We've sent a 6-digit code to{" "}
-                    <span className="font-medium text-foreground">
-                      {maskEmail(loginCtx?.email)}
-                    </span>
-                    .
-                    <br />
-                    Enter it below to continue.
+                    <span>This code has expired.</span>
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      disabled={submitting}
+                      className="font-medium text-primary hover:underline cursor-pointer disabled:opacity-60"
+                    >
+                      Send a new code
+                    </button>
+                    <span aria-hidden="true">·</span>
+                    <Link to="/login" className="font-medium text-primary hover:underline">
+                      Sign in again
+                    </Link>
                   </>
                 )}
               </div>

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { auditLogApi, type ApiAuditLog } from "@/lib/api";
+import { usePreferences } from "@/lib/preferences";
 import type { ReportData } from "@/lib/report-export";
 import { cn } from "@/lib/utils";
 
@@ -58,19 +59,6 @@ type AuditStats = {
 
 const EMPTY_META: AuditMeta = { current_page: 1, last_page: 1, per_page: 10, total: 0 };
 const REPORT_ROW_LIMIT = 1000;
-
-const formatTimestamp = (iso?: string | null) => {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
 
 const display = (value?: string | null) => (value?.trim() ? value : "—");
 
@@ -118,6 +106,10 @@ export function AuditLogs() {
   const [sort, setSort] = useState<SortState<AuditSortKey>>(null);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<ApiAuditLog | null>(null);
+
+  // Date / time columns follow the user's saved portal preferences (format + time zone).
+  const { formatDateTime } = usePreferences();
+  const formatTimestamp = (iso?: string | null) => (iso ? formatDateTime(iso) : "—");
 
   const filterParams = useMemo(
     () => ({
