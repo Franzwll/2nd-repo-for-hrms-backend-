@@ -1,16 +1,11 @@
 import { useState, Suspense, lazy } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { FileQuestion } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
-import {
-  EssPortalProvider,
-  essPortalPath,
-  myRequestModulePath,
-  type EssBasePath,
-  type EssViewerRole,
-} from "./EssPortalContext";
 
 // Lazy-loaded tab components — shows skeleton while loading
 const EssOverviewTab = lazy(() =>
@@ -88,13 +83,7 @@ function EssPageSkeleton() {
   );
 }
 
-export function EmployeeEss({
-  basePath = "/employee",
-  viewerRole = "employee",
-}: {
-  basePath?: EssBasePath;
-  viewerRole?: EssViewerRole;
-}) {
+export function EmployeeEss() {
   const navigate = useNavigate();
   // Global Quick Action Modals
   const [clockModalOpen, setClockModalOpen] = useState(false);
@@ -147,7 +136,7 @@ export function EmployeeEss({
         return "Live web clocking, weekly roster, and biometric records. File leave from My Request → Attendance.";
       case "Payroll":
       case "Payslip":
-        return "View net pay, released payslips, and statutory benefits. File payroll inquiries from My Request → Payroll.";
+        return "Net pay, payslips, and government contributions.";
       case "Performance":
       case "Promotion":
         return "Review your performance evaluation and learning progress. File career requests from My Request → Promotion.";
@@ -172,65 +161,73 @@ export function EmployeeEss({
   const attendanceInitialTab = categoryParam === "Schedule" ? "roster" : "clocking";
 
   const isDocumentsPage = categoryParam === "Documents" || categoryParam === "RequestDoc";
-  const essTo = essPortalPath(basePath);
-  const myRequestModuleTo = myRequestModulePath(basePath);
+  const isPayrollPage = categoryParam === "Payroll" || categoryParam === "Payslip";
 
   return (
-    <EssPortalProvider basePath={basePath} viewerRole={viewerRole}>
-        <div className="space-y-6">
-        <PageHeader
-          title={getPageTitle()}
-          description={getPageDescription()}
-          actions={
-            isDocumentsPage ? (
-              <Suspense fallback={null}>
-                <EssDocumentsExport />
-              </Suspense>
-            ) : undefined
-          }
-        />
-
-        {/* ── Module Content with Skeleton Loading ── */}
-        <Suspense fallback={<EssPageSkeleton />}>
-          {!categoryParam && <EssOverviewTab />}
-          {(categoryParam === "Attendance" ||
-            categoryParam === "Clocking" ||
-            categoryParam === "Schedule" ||
-            categoryParam === "Leave") && <EssAttendanceTab initialTab={attendanceInitialTab} />}
-          {(categoryParam === "Payroll" || categoryParam === "Payslip") && <EssPayrollTab />}
-          {(categoryParam === "Documents" || categoryParam === "RequestDoc") && <EssDocumentsTab />}
-          {(categoryParam === "Requests" || categoryParam === "COE") && <EssAllRequestsTab />}
-          {categoryParam === "Recognition" && <EssRecognitionTab />}
-          {(categoryParam === "Benefits" || categoryParam === "Statutory") && <EssBenefitsTab />}
-          {(categoryParam === "Promotion" || categoryParam === "Performance") && <EssPromotionTab />}
-        </Suspense>
-
-        {/* ── Global Modals ── */}
-        <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
-        <EssAiAssistantModal
-          open={aiModalOpen}
-          onOpenChange={setAiModalOpen}
-          onNavigateCategory={(cat) => {
-            if (cat.startsWith("MyRequest:")) {
-              const module = cat.split(":")[1];
-              if (module === "attendance" || module === "documents" || module === "payroll" || module === "promotion") {
-                navigate({ to: myRequestModuleTo, params: { module } });
+    <div className="space-y-6">
+      <PageHeader
+        title={getPageTitle()}
+        description={getPageDescription()}
+        actions={
+          isDocumentsPage ? (
+            <Suspense fallback={null}>
+              <EssDocumentsExport />
+            </Suspense>
+          ) : isPayrollPage ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="cursor-pointer gap-1.5 shadow-xs"
+              onClick={() =>
+                navigate({ to: "/employee/my-requests/$module", params: { module: "payroll" } })
               }
-              return;
+            >
+              <FileQuestion className="h-4 w-4 text-primary" /> File inquiry
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {/* ── Module Content with Skeleton Loading ── */}
+      <Suspense fallback={<EssPageSkeleton />}>
+        {!categoryParam && <EssOverviewTab />}
+        {(categoryParam === "Attendance" ||
+          categoryParam === "Clocking" ||
+          categoryParam === "Schedule" ||
+          categoryParam === "Leave") && <EssAttendanceTab initialTab={attendanceInitialTab} />}
+        {(categoryParam === "Payroll" || categoryParam === "Payslip") && <EssPayrollTab />}
+        {(categoryParam === "Documents" || categoryParam === "RequestDoc") && <EssDocumentsTab />}
+        {(categoryParam === "Requests" || categoryParam === "COE") && <EssAllRequestsTab />}
+        {categoryParam === "Recognition" && <EssRecognitionTab />}
+        {(categoryParam === "Benefits" || categoryParam === "Statutory") && <EssBenefitsTab />}
+        {(categoryParam === "Promotion" || categoryParam === "Performance") && <EssPromotionTab />}
+      </Suspense>
+
+      {/* ── Global Modals ── */}
+      <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
+      <EssAiAssistantModal
+        open={aiModalOpen}
+        onOpenChange={setAiModalOpen}
+        onNavigateCategory={(cat) => {
+          if (cat.startsWith("MyRequest:")) {
+            const module = cat.split(":")[1];
+            if (module === "attendance" || module === "documents" || module === "payroll" || module === "promotion") {
+              navigate({ to: "/employee/my-requests/$module", params: { module } });
             }
-            if (cat === "Schedule" || cat === "Clocking" || cat === "Attendance" || cat === "Leave") {
-              navigate({ to: essTo, search: { category: cat } });
-            } else if (cat === "Payroll") {
-              navigate({ to: essTo, search: { category: "Payroll" } });
-            } else if (cat === "Documents") {
-              navigate({ to: essTo, search: { category: "Documents" } });
-            } else if (cat === "Recognition") {
-              navigate({ to: essTo, search: { category: "Recognition" } });
-            }
-          }}
-        />
-        </div>
-    </EssPortalProvider>
+            return;
+          }
+          if (cat === "Schedule" || cat === "Clocking" || cat === "Attendance" || cat === "Leave") {
+            navigate({ to: "/employee/ess", search: { category: cat } });
+          } else if (cat === "Payroll") {
+            navigate({ to: "/employee/ess", search: { category: "Payroll" } });
+          } else if (cat === "Documents") {
+            navigate({ to: "/employee/ess", search: { category: "Documents" } });
+          } else if (cat === "Recognition") {
+            navigate({ to: "/employee/ess", search: { category: "Recognition" } });
+          }
+        }}
+      />
+    </div>
   );
 }
 

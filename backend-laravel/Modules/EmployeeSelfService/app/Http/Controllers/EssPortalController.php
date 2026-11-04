@@ -700,6 +700,7 @@ class EssPortalController extends Controller
                     ? (config("ess_routing.modules.{$r->routed_module}.label") ?? ucfirst($r->routed_module))
                     : null,
                 'details' => $r->details,
+                'details_meta' => $r->details_meta,
                 'review_note' => $r->review_note,
                 'returned_count' => $r->returned_count,
                 'completed_at' => $r->completed_at?->toIso8601String(),
@@ -770,17 +771,35 @@ class EssPortalController extends Controller
             'attachment_path' => ['nullable', 'string', 'max:255', 'regex:/^[\w\-.\/\\: ]+$/'],
             'attachments' => 'nullable|array|max:5',
             'attachments.*' => 'file|max:10240|mimes:pdf,png,jpg,jpeg,doc,docx',
+            // Structured payloads used by the requests tracker (loans today,
+            // other request types can add their own keys later).
+            'loan_amount' => 'nullable|numeric|min:0|max:99999999',
+            'loan_term_months' => 'nullable|integer|min:1|max:120',
         ]);
 
-        // Find or associate category. Fall back to the human name when the
-        // client-supplied code does not match a stored category code (the
-        // frontend derives codes from names, e.g. "hr_document" vs "ESS-HRDOC").
+        // Find or associate category. Match case-insensitively by code or name
+        // (the frontend derives codes from names, e.g. "hr_document" vs "ESS-HRDOC",
+        // "career_promotion" vs "ESS-CAREER", "schedule" vs "ESS-SCHED").
         $category = null;
         if (! empty($validated['category_code'])) {
-            $category = EssCategory::where('code', $validated['category_code'])->first();
+            $catCode = strtolower(trim($validated['category_code']));
+            $category = EssCategory::whereRaw('LOWER(code) = ?', [$catCode])->first();
+            // Handle aliases/prefixes like "ESS-CAREER" vs "career" / "career_promotion"
+            if (! $category) {
+                if (str_contains($catCode, 'career') || str_contains($catCode, 'promot')) {
+                    $category = EssCategory::whereRaw('LOWER(code) LIKE ? OR LOWER(name) LIKE ?', ['%career%', '%career%'])->first();
+                } elseif (str_contains($catCode, 'sched')) {
+                    $category = EssCategory::whereRaw('LOWER(code) LIKE ? OR LOWER(name) LIKE ?', ['%sched%', '%sched%'])->first();
+                } elseif (str_contains($catCode, 'hrdoc') || str_contains($catCode, 'doc')) {
+                    $category = EssCategory::whereRaw('LOWER(code) LIKE ? OR LOWER(name) LIKE ?', ['%hrdoc%', '%document%'])->first();
+                } elseif (str_contains($catCode, 'att')) {
+                    $category = EssCategory::whereRaw('LOWER(code) LIKE ? OR LOWER(name) LIKE ?', ['%att%', '%attendance%'])->first();
+                }
+            }
         }
         if (! $category && ! empty($validated['category_name'])) {
-            $category = EssCategory::where('name', $validated['category_name'])->first();
+            $category = EssCategory::whereRaw('LOWER(name) = ?', [strtolower(trim($validated['category_name']))])->first()
+                ?: EssCategory::where('name', $validated['category_name'])->first();
         }
 
         // Promotions must be filed through the dedicated endpoint so the ESS
@@ -809,6 +828,7 @@ class EssPortalController extends Controller
             'date_to' => $validated['date_to'] ?? null,
             'status' => 'Pending',
             'details' => $validated['details'],
+            'details_meta' => $this->buildDetailsMeta($validated),
             'attachment_path' => $validated['attachment_path'] ?? null,
         ]);
 
@@ -869,6 +889,30 @@ class EssPortalController extends Controller
             'message' => 'Request submitted successfully.',
             'request' => $essRequest->load(['category', 'employee', 'attachments', 'statusHistory']),
         ], 201);
+    }
+
+    /**
+     * Normalise structured request payloads into the details_meta JSON column.
+     * Loan amounts/terms are stored once so every reader (employee tracker, HR
+     * queue, exports) renders the same summary without parsing free text.
+     */
+    private function buildDetailsMeta(array $validated): ?array
+    {
+        $amount = isset($validated['loan_amount']) ? (float) $validated['loan_amount'] : null;
+        if ($amount === null || $amount <= 0) {
+            return null;
+        }
+
+        $term = isset($validated['loan_term_months']) ? (int) $validated['loan_term_months'] : null;
+        $term = $term && $term > 0 ? $term : null;
+
+        return [
+            'loan' => [
+                'amount' => round($amount, 2),
+                'term_months' => $term,
+                'monthly_amortization' => $term ? round($amount / $term, 2) : null,
+            ],
+        ];
     }
 
     /**
@@ -1528,7 +1572,30 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'Employee not found.'], 404);
         }
 
-        $courses = DB::table('learning_courses')->get();
+        // Only show courses that target this employee's department/position,
+        // plus universal courses (those with no targets at all).
+        $courses = DB::table('learning_courses')
+            ->where(function ($q) use ($employee) {
+                // Universal courses: no rows in learning_course_targets
+                $q->whereNotExists(function ($sub) {
+                    $sub->select(DB::raw(1))
+                        ->from('learning_course_targets')
+                        ->whereColumn('learning_course_targets.course_id', 'learning_courses.course_id');
+                })
+                // OR courses targeted to this employee's department or position
+                ->orWhereExists(function ($sub) use ($employee) {
+                    $sub->select(DB::raw(1))
+                        ->from('learning_course_targets')
+                        ->whereColumn('learning_course_targets.course_id', 'learning_courses.course_id')
+                        ->where(function ($w) use ($employee) {
+                            $w->where('learning_course_targets.department_id', $employee->department_id);
+                            if ($employee->position_id) {
+                                $w->orWhere('learning_course_targets.position_id', $employee->position_id);
+                            }
+                        });
+                });
+            })
+            ->get();
         $userLearning = DB::table('employee_learning')
             ->where('employee_id', $employee->employee_id)
             ->get();

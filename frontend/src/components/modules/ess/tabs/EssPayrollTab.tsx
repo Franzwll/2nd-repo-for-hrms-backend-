@@ -4,6 +4,7 @@ import {
   Building,
   Calculator,
   CheckCircle2,
+  Download,
   Eye,
   EyeOff,
   FileText,
@@ -191,6 +192,20 @@ export function EssPayrollTab() {
 
   const payslipPage = usePagination(payslipsList, 4);
 
+  const releasedCount = useMemo(
+    () => payslipsList.filter((ps) => ps.status === "Released").length,
+    [payslipsList],
+  );
+
+  // Late/absence-related deductions already present in the breakdown.
+  const lateAbsenceDeductions = useMemo(
+    () =>
+      calculation.deductions
+        .filter((row) => /late|absent|undertime|tard/i.test(row.label))
+        .reduce((sum, row) => sum + row.amount, 0),
+    [calculation.deductions],
+  );
+
   const openPayslip = (ps: { period: string; net: number }) => {
     setSelectedPayslipPeriod(ps.period);
     setSelectedPayslipNet(ps.net);
@@ -330,9 +345,11 @@ export function EssPayrollTab() {
                   </div>
                   <div className="text-right">
                     <p className="font-mono text-xs font-semibold text-foreground">
-                      {money(row.amount)}
+                      {money(row.amount / 2)}
                     </p>
-                    <p className="text-[10px] text-muted-foreground">{row.unit}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      this cutoff · {money(row.amount)}/mo
+                    </p>
                   </div>
                 </div>
               );
@@ -415,16 +432,28 @@ export function EssPayrollTab() {
                 <p className="mt-1 text-3xl font-extrabold font-display tracking-tight text-emerald-600 dark:text-emerald-400">
                   {money(calculation.net)}
                 </p>
-                <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                  {money(calculation.gross)} − {money(calculation.totalDeductions)} ={" "}
-                  {money(calculation.net)}
-                </p>
               </div>
               <div className="text-right text-xs text-muted-foreground">
                 <p>Next payout</p>
                 <p className="font-semibold text-foreground">{nextPayout}</p>
                 <p className="mt-1 text-[10px]">{calculation.source}</p>
               </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">
+                Late / absences{" "}
+                <strong className="font-mono font-semibold text-foreground">
+                  {money(lateAbsenceDeductions)}
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/employee/ess", search: { category: "Attendance" } })}
+                className="cursor-pointer font-medium text-primary underline-offset-4 hover:underline"
+              >
+                View attendance for this period
+              </button>
             </div>
           </CardContent>
         </Card>
@@ -679,10 +708,11 @@ export function EssPayrollTab() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 font-display text-lg font-semibold">
-                <FileText className="h-4 w-4 text-primary" /> SSS Payslip
+                <FileText className="h-4 w-4 text-primary" /> My payslips
               </CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                View and download official itemized pay stubs.
+                Gross pay, deductions, and net pay for each period. Drafts stay hidden until
+                released.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -691,7 +721,7 @@ export function EssPayrollTab() {
                 className="gap-1.5 border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {payslipsList.length} Payslips Available
+                {releasedCount} Released
               </Badge>
               <ReportMenu
                 size="sm"
@@ -725,46 +755,94 @@ export function EssPayrollTab() {
         <CardContent>
           <ListBody>
             <div className="relative w-full overflow-auto">
-              <Table>
+              <Table className="min-w-[720px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[30%]">Pay Period</TableHead>
-                    <TableHead className="w-[22%]">Status</TableHead>
-                    <TableHead className="w-[24%] text-right">Net Pay</TableHead>
-                    <TableHead className="w-[24%] text-right">Actions</TableHead>
+                    <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                      Period
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                      Pay date
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider">
+                      Gross
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider">
+                      Ded
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider">
+                      Net
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                      Status
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {payslipPage.pageItems.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4}>
+                      <TableCell colSpan={7}>
                         <ListEmptyState placeholder="Search payslips…" subject="payslips" />
                       </TableCell>
                     </TableRow>
                   ) : (
-                    payslipPage.pageItems.map((ps, idx) => (
-                      <TableRow key={idx} className="transition-colors">
-                        <TableCell className="text-xs font-medium text-foreground">
-                          {ps.period}
-                        </TableCell>
-                        <TableCell>
-                          <EssStatusBadge status={ps.status} />
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                          ₱{ps.net.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="py-1 text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 cursor-pointer gap-1 px-2 text-xs font-medium text-primary hover:bg-primary/10"
-                            onClick={() => openPayslip(ps)}
-                          >
-                            <Eye className="h-3.5 w-3.5" /> View Payslip
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    payslipPage.pageItems.map((ps, idx) => {
+                      const released = ps.status === "Released";
+                      const statusLabel =
+                        ps.status === "Draft" ? "Processing" : ps.status;
+
+                      return (
+                        <TableRow key={idx} className="transition-colors">
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
+                            {ps.period}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                            {ps.payoutDate || "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm text-foreground">
+                            {released ? money(ps.gross) : "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm text-rose-600 dark:text-rose-400">
+                            {released ? `-${money(ps.deductions)}` : "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                            {released ? money(ps.net) : "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3">
+                            <EssStatusBadge status={statusLabel} />
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-right">
+                            {released ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 cursor-pointer gap-1 px-2 text-xs font-medium text-primary hover:bg-primary/10"
+                                  onClick={() => openPayslip(ps)}
+                                  title="View payslip"
+                                >
+                                  <Eye className="h-3.5 w-3.5" /> View
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 cursor-pointer gap-1 px-2 text-xs font-medium text-primary hover:bg-primary/10"
+                                  onClick={() => openPayslip(ps)}
+                                  title="Download payslip PDF"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>

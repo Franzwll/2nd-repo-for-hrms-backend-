@@ -4,6 +4,7 @@ export function EssStatusBadge({ status }: { status: string }) {
   switch (status) {
     case "Pending":
     case "Under Review":
+    case "Processing":
       return (
         <Badge
           variant="outline"
@@ -155,6 +156,18 @@ export function EssStatusBadge({ status }: { status: string }) {
           className="bg-violet-500/10 text-violet-600 border-violet-500/30 font-medium dark:bg-violet-400/10 dark:text-violet-400 dark:border-violet-400/20"
         >
           {status}
+        </Badge>
+      );
+    case "On leave":
+      return (
+        <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30 font-medium">
+          On leave
+        </Badge>
+      );
+    case "Rest day":
+      return (
+        <Badge variant="outline" className="bg-slate-500/10 text-slate-600 border-slate-500/30 font-medium">
+          Rest day
         </Badge>
       );
     case "In Progress":

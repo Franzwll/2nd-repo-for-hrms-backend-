@@ -1,23 +1,15 @@
 import { useState, useMemo, useEffect } from "react";
-import {
-  Calendar,
-  Clock,
-  FileText,
-  MapPin,
-  CheckCircle2,
-  AlertCircle,
-  Sun,
-  Moon,
-  Sparkles,
-  ShieldCheck,
-  Building2,
-  Check,
-  Info,
-} from "lucide-react";
+import { Calendar, Clock, FileText, MapPin, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
@@ -32,8 +24,15 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
+import {
+  LEGEND,
+  attendanceTableStatus,
+  statusOf,
+  type DayStatus,
+} from "@/components/modules/ess/shared/attendanceStatus";
 import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
-import { essApi, type ApiScheduleDay, type ApiEssEmployee } from "@/lib/api";
+import { usePagination } from "@/hooks/usePagination";
+import { essApi, type ApiScheduleDay } from "@/lib/api";
 
 interface EssAttendanceTabProps {
   initialTab?: "clocking" | "roster" | "schedule";
@@ -61,9 +60,9 @@ function getShiftVisual(shift: string, time: string) {
       type: "rest" as const,
       label: "Rest Day",
       tag: "Off Duty",
-      themeBorder: "border-slate-500/25 dark:border-slate-400/20",
+      themeBorder: "border-slate-500/25",
       themeBg: "bg-muted/30",
-      themeAccent: "from-slate-500/10 to-transparent dark:from-slate-400/10",
+      themeAccent: "from-slate-500/10 to-transparent",
       badgeColor: "bg-muted text-muted-foreground border-border/80",
       iconSvg: (
         <div className="p-3 rounded-2xl bg-muted/60 text-muted-foreground border border-border/70 shadow-2xs">
@@ -101,12 +100,12 @@ function getShiftVisual(shift: string, time: string) {
       type: "night" as const,
       label: "Night Shift",
       tag: "Evening / Night",
-      themeBorder: "border-indigo-500/35 dark:border-indigo-400/25",
-      themeBg: "bg-indigo-500/5 dark:bg-indigo-400/10",
-      themeAccent: "from-indigo-500/15 via-purple-500/5 to-transparent dark:from-indigo-400/10 dark:via-purple-400/5",
-      badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30 dark:bg-indigo-400/10 dark:border-indigo-400/20",
+      themeBorder: "border-indigo-500/35",
+      themeBg: "bg-indigo-500/5",
+      themeAccent: "from-indigo-500/15 via-purple-500/5 to-transparent",
+      badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
       iconSvg: (
-        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shadow-xs dark:bg-indigo-400/10 dark:border-indigo-400/20">
+        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shadow-xs">
           <svg
             className="h-8 w-8 text-indigo-400 drop-shadow-sm"
             viewBox="0 0 24 24"
@@ -135,14 +134,14 @@ function getShiftVisual(shift: string, time: string) {
       type: "mid" as const,
       label: "Mid Shift",
       tag: "Afternoon",
-      themeBorder: "border-orange-500/35 dark:border-orange-400/25",
-      themeBg: "bg-orange-500/5 dark:bg-orange-400/10",
-      themeAccent: "from-orange-500/15 via-amber-500/5 to-transparent dark:from-orange-400/10 dark:via-amber-400/5",
-      badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30 dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20",
+      themeBorder: "border-orange-500/35",
+      themeBg: "bg-orange-500/5",
+      themeAccent: "from-orange-500/15 via-amber-500/5 to-transparent",
+      badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30",
       iconSvg: (
-        <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-xs dark:bg-orange-400/10 dark:text-orange-400 dark:border-orange-400/20">
+        <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-xs">
           <svg
-            className="h-8 w-8 text-orange-500 dark:text-orange-400 drop-shadow-sm"
+            className="h-8 w-8 text-orange-500 drop-shadow-sm"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -169,14 +168,14 @@ function getShiftVisual(shift: string, time: string) {
     type: "day" as const,
     label: "Day Shift",
     tag: "Morning / AM",
-    themeBorder: "border-amber-500/35 dark:border-amber-400/25",
-    themeBg: "bg-amber-500/5 dark:bg-amber-400/10",
-    themeAccent: "from-amber-500/15 via-primary/5 to-transparent dark:from-amber-400/10",
-    badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30 dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20",
+    themeBorder: "border-amber-500/35",
+    themeBg: "bg-amber-500/5",
+    themeAccent: "from-amber-500/15 via-primary/5 to-transparent",
+    badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30",
     iconSvg: (
-      <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-xs dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20">
+      <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-xs">
         <svg
-          className="h-8 w-8 text-amber-500 dark:text-amber-400 drop-shadow-sm"
+          className="h-8 w-8 text-amber-500 drop-shadow-sm"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -200,18 +199,6 @@ function getShiftVisual(shift: string, time: string) {
 }
 
 export function EssAttendanceTab(_props: EssAttendanceTabProps) {
-  // Live Clock Terminal State — client-only (null until mounted so SSR HTML matches).
-  const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [currentDutyStatus, setCurrentDutyStatus] = useState<
-    "clocked_in" | "on_break" | "clocked_out"
-  >("clocked_out");
-  const [punchLog, setPunchLog] = useState({
-    timeIn: "—",
-    breakIn: "—",
-    breakOut: "—",
-    timeOut: "—",
-  });
-
   // Attendance summary & history
   const [attSummary, setAttSummary] = useState({
     present_days: 0,
@@ -220,27 +207,20 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
   });
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<DayStatus | "all">("all");
 
   // Schedule state
   const [scheduleLoading, setScheduleLoading] = useState(true);
-  const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
   const [roster, setRoster] = useState<ApiScheduleDay[]>(EMPTY_ROSTER);
-  const todayRoster = useMemo(() => {
-    const dayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][
-      new Date().getDay()
-    ];
-    return roster.find((r) => r.day === dayName);
-  }, [roster]);
+
+  // "Today" resolves after mount so SSR HTML matches (no hydration mismatch).
+  const [todayDayName, setTodayDayName] = useState("");
+  useEffect(() => {
+    setTodayDayName(new Date().toLocaleDateString("en-US", { weekday: "long" }));
+  }, []);
 
   // TRY: top-right records modal — remove state if not applicable
   const [recordsModalOpen, setRecordsModalOpen] = useState(false);
-
-  // Clock Ticker — starts after mount so SSR HTML matches (no hydration mismatch).
-  useEffect(() => {
-    setCurrentTime(new Date());
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const loadData = async () => {
     // Attendance Logs
@@ -249,22 +229,6 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
       .then((res) => {
         if (res?.records) {
           setAttendanceLogs(res.records);
-          if (res.records[0]) {
-            const rec = res.records[0];
-            setPunchLog((prev) => ({
-              ...prev,
-              timeIn: rec.timeIn || prev.timeIn,
-              timeOut: rec.timeOut || prev.timeOut,
-            }));
-            const today = new Date().toLocaleDateString("en-CA");
-            if (rec.rawDate === today) {
-              setCurrentDutyStatus(
-                rec.timeIn && rec.timeIn !== "—" && (!rec.timeOut || rec.timeOut === "—")
-                  ? "clocked_in"
-                  : "clocked_out",
-              );
-            }
-          }
         }
         if (res?.summary) {
           setAttSummary(res.summary);
@@ -277,7 +241,6 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
     try {
       setScheduleLoading(true);
       const schedRes = await essApi.schedule();
-      if (schedRes?.employee) setEmployeeInfo(schedRes.employee);
       if (schedRes?.weekly_roster && schedRes.weekly_roster.length > 0) {
         setRoster(schedRes.weekly_roster);
       }
@@ -292,30 +255,15 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
     loadData();
   }, []);
 
-  const formattedTime = currentTime
-    ? currentTime.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      })
-    : "--:--:--";
-
-  const formattedDate = currentTime
-    ? currentTime.toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : "Loading…";
-
-  const todayDayName = currentTime
-    ? currentTime.toLocaleDateString("en-US", { weekday: "long" })
-    : "";
-
   // DTR history — live biometric / web clock records only.
   const dtrRecords = useMemo(() => attendanceLogs, [attendanceLogs]);
+
+  const filteredAttendance = useMemo(() => {
+    if (statusFilter === "all") return dtrRecords;
+    return dtrRecords.filter((h: any) => statusOf(h) === statusFilter);
+  }, [dtrRecords, statusFilter]);
+
+  const attPage = usePagination(filteredAttendance, 10);
 
   return (
     <div className="space-y-6">
@@ -340,180 +288,6 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
       )}
 
       <div className="mt-6 space-y-4">
-        <Card className="border-border/70 shadow-xs">
-          <CardContent className="p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
-              <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                <Clock className="h-4 w-4 text-primary" /> Attendance &amp; Schedule
-              </h2>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Badge
-                  variant="outline"
-                  className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1"
-                >
-                  Station Active
-                </Badge>
-                {currentDutyStatus === "clocked_in" && (
-                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:bg-emerald-400/10 dark:border-emerald-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Currently On Duty
-                  </Badge>
-                )}
-                {currentDutyStatus === "on_break" && (
-                  <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 dark:bg-amber-400/10 dark:border-amber-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
-                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                    On Lunch / Meal Break
-                  </Badge>
-                )}
-                {currentDutyStatus === "clocked_out" && (
-                  <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 dark:bg-slate-400/10 dark:border-slate-400/20 gap-1.5 px-3 py-1 text-xs font-semibold">
-                    Shift Completed / Clocked Out
-                  </Badge>
-                )}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Clocking guidelines"
-                      title="Clocking guidelines"
-                      className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
-                    >
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-80 text-xs">
-                    <div className="flex items-center gap-2 pb-2">
-                      <Info className="h-4 w-4 shrink-0 text-primary" />
-                      <p className="font-display text-sm font-semibold text-foreground">
-                        Clocking Guidelines
-                      </p>
-                    </div>
-                    <div className="space-y-2 text-muted-foreground">
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span>
-                          <strong className="text-foreground">Punctuality:</strong> 15-min grace
-                          period compliant past shift start.
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span>
-                          <strong className="text-foreground">Meal Breaks:</strong> 1-hour statutory
-                          interval for break out and in.
-                        </span>
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              {/* Terminal Body */}
-              <div className="grid gap-6 lg:grid-cols-12">
-                {/* Left Column: Live Clock + Web Clocking Action Buttons (7 Cols) */}
-                <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
-                  {/* Giant Live Clock Display */}
-                  <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-muted/20 p-6 text-center shadow-xs">
-                    <p className="text-xs uppercase font-semibold text-muted-foreground tracking-widest">
-                      {formattedDate}
-                    </p>
-                    <div className="my-2.5">
-                      <span className="text-5xl sm:text-6xl font-extrabold font-mono tracking-tight text-foreground drop-shadow-xs">
-                        {formattedTime}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Today's Punch Summary Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
-                        Time In
-                      </p>
-                      <p className="font-bold text-foreground mt-1 text-sm font-mono">
-                        {punchLog.timeIn}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
-                        Break Out
-                      </p>
-                      <p className="font-bold text-foreground mt-1 text-sm font-mono">
-                        {punchLog.breakIn}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
-                        Break In
-                      </p>
-                      <p className="font-bold text-foreground mt-1 text-sm font-mono">
-                        {punchLog.breakOut}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
-                        Time Out
-                      </p>
-                      <p className="font-bold text-foreground mt-1 text-sm font-mono">
-                        {punchLog.timeOut}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Column: Station Verification & Shift Info (5 Cols) */}
-                <div className="lg:col-span-5 flex flex-col justify-between rounded-2xl border border-border/70 bg-muted/20 p-5 shadow-2xs">
-                  <div>
-                    <div className="flex items-center justify-between pb-3.5 border-b border-border/60">
-                      <h4 className="font-display text-sm font-semibold text-foreground">
-                        Station Verification &amp; Shift Info
-                      </h4>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-400/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 dark:border-emerald-400/20">
-                        Verified
-                      </span>
-                    </div>
-
-                    <div className="space-y-2.5 pt-3.5 text-xs">
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
-                        <span className="text-muted-foreground font-medium">Assigned Shift:</span>
-                        <span className="font-semibold text-foreground text-right">
-                          {todayRoster && todayRoster.shift !== "No schedule assigned"
-                            ? `${todayRoster.shift} (${todayRoster.time})`
-                            : "No schedule assigned"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
-                        <span className="text-muted-foreground font-medium">Location:</span>
-                        <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">
-                          {todayRoster?.location || "—"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
-                        <span className="text-muted-foreground font-medium">Supervisor:</span>
-                        <span className="font-semibold text-foreground">
-                          {employeeInfo?.supervisor || "—"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
-                        <span className="text-muted-foreground font-medium">Department:</span>
-                        <span className="font-semibold text-foreground">
-                          {employeeInfo?.department || "—"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
         <Card className="border-border/70 shadow-xs">
           <CardContent className="p-6">
             {/* TRY: roster header + top-right records button — remove block if not applicable */}
@@ -612,6 +386,127 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                 })}
               </div>
             )}
+          </CardContent>
+        </Card>
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+              <div>
+                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                  <Clock className="h-4 w-4 text-primary" /> Attendance Records
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Monthly calendar and full history of your time records. Select a day or row for
+                  details.
+                </p>
+              </div>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => setStatusFilter(value as DayStatus | "all")}
+              >
+                <SelectTrigger className="h-9 w-36 shrink-0 sm:w-40" aria-label="Filter by status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {LEGEND.map((l) => (
+                    <SelectItem key={l.status} value={l.status}>
+                      {l.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <ListBody rows={10}>
+              <Table className="min-w-[760px]">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                      Date
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                      Day
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                      Time in
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                      Time out
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider">
+                      Hours
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider">
+                      Late
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider">
+                      OT
+                    </TableHead>
+                    <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                      Status
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {attPage.pageItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8}>
+                        <ListEmptyState subject="attendance records" />
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    attPage.pageItems.map((h: any, i: number) => {
+                      const worked = !!h.timeIn && h.timeIn !== "—";
+                      const lateMinutes = Number(h.lateMinutes ?? 0);
+                      const overtimeHours = Number(h.overtimeHours ?? 0);
+
+                      return (
+                        <TableRow key={i}>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
+                            {h.date}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                            {h.day ? String(h.day).slice(0, 3) : "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 font-mono text-sm">
+                            {h.timeIn}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 font-mono text-sm">
+                            {h.timeOut}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-semibold text-foreground">
+                            {worked ? Number(h.workedHours ?? 0).toFixed(1) : "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm">
+                            {!worked ? "—" : lateMinutes > 0 ? `${lateMinutes} min` : "0"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm">
+                            {!worked ? "—" : overtimeHours > 0 ? String(overtimeHours) : "0"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap px-4 py-3 text-sm">
+                            <EssStatusBadge status={attendanceTableStatus(h)} />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </ListBody>
+
+            <div className="border-t border-border/60 pt-3">
+              <TablePagination
+                page={attPage.page}
+                pageCount={attPage.pageCount}
+                from={attPage.from}
+                to={attPage.to}
+                total={attPage.total}
+                label="records"
+                showRangeLabel={false}
+                onPageChange={attPage.setPage}
+              />
+            </div>
           </CardContent>
         </Card>
       </div>

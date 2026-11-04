@@ -15,6 +15,7 @@ use App\Services\Hr3MockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\LearningAutoAssigner;
 use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 use Modules\CoreHCM\Http\Controllers\Concerns\HcmCache;
 use Modules\CoreHCM\Http\Requests\EmployeeLifecycleRequest;
@@ -100,6 +101,9 @@ class EmployeeController extends Controller
         });
         HcmCache::flush();
 
+        // Auto-assign learning courses based on the new employee's department/position.
+        app(LearningAutoAssigner::class)->assignForEmployee($employee->employee_id);
+
         return response()->json([
             'message' => 'Employee created successfully.',
             'data' => new EmployeeResource($employee->load('department', 'position')),
@@ -168,6 +172,12 @@ class EmployeeController extends Controller
         }
 
         HcmCache::flush();
+
+        // If the employee changed department or position, auto-assign any new
+        // learning courses applicable to their new role.
+        if ($positionChanged || $departmentChanged) {
+            app(LearningAutoAssigner::class)->reassignOnTransfer($employee->employee_id);
+        }
 
         return response()->json([
             'message' => 'Employee updated successfully.',

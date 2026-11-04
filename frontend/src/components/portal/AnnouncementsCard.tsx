@@ -94,6 +94,12 @@ export function AnnouncementsCard({ role, className }: { role: Role; className?:
               className="rounded-xl border border-border/70 bg-muted/20 p-4 hover:border-primary/40 hover:bg-muted/40 transition-all cursor-pointer group shadow-2xs"
             >
               <div className="flex items-start gap-2">
+                {!readAnnouncementIds.has(String(a.id)) && (
+                  <span
+                    className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary"
+                    aria-label="Unread announcement"
+                  />
+                )}
                 <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
                   {a.title}
                 </p>
@@ -127,7 +133,7 @@ export function AnnouncementsCard({ role, className }: { role: Role; className?:
             </div>
           ))}
 
-          {visible.length > 3 && (
+          {visible.length > 0 && (
             <Button
               variant="ghost"
               size="sm"

@@ -163,7 +163,7 @@ export function AttendanceRequestModal({
       setSubmitting(true);
       await essApi.createRequest({
         category_code: "schedule",
-        category_name: "Shift Schedule",
+        category_name: "Attendance",
         request_type: "Shift Swap Request",
         date_from: shiftDate,
         date_to: peerShiftDate,

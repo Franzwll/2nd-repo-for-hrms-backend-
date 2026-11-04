@@ -1,5 +1,16 @@
 import { useState, useEffect } from "react";
-import { FileCheck, Download, Upload, Search, FileText, LayoutGrid, List, AlertTriangle, CalendarClock } from "lucide-react";
+import {
+  FileCheck,
+  Download,
+  Upload,
+  Search,
+  FileText,
+  LayoutGrid,
+  List,
+  AlertTriangle,
+  CalendarClock,
+  PenLine,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,11 +22,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/modules/ess/shared/EssStatusBadge";
+import { EssStatusBadge, docCategoryTint } from "@/components/modules/ess/shared/EssStatusBadge";
 import { CardSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
 import { DocumentViewerModal } from "@/components/modules/ess/modals/DocumentViewerModal";
 import { ReportMenu } from "@/components/ui/report-menu";
+import { StatCard } from "@/components/portal/StatCard";
 import { essApi } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -69,6 +81,7 @@ export function EssDocumentsTab() {
             size: d.fileSize,
             expiry: (d as any).expiryDate ?? null,
             downloadUrl: d.downloadUrl,
+            hasFile: Boolean((d as any).has_file),
           })),
         );
       })
@@ -91,11 +104,17 @@ export function EssDocumentsTab() {
       if (exists) {
         return prev.map((d) =>
           d.title === uploadedDoc.title
-            ? { ...d, status: "Submitted", size: uploadedDoc.size, downloadUrl: uploadedDoc.downloadUrl }
+            ? {
+                ...d,
+                status: "Submitted",
+                size: uploadedDoc.size,
+                downloadUrl: uploadedDoc.downloadUrl,
+                hasFile: true,
+              }
             : d,
         );
       }
-      return [...prev, uploadedDoc];
+      return [...prev, { ...uploadedDoc, hasFile: true }];
     });
   };
 
@@ -113,7 +132,14 @@ export function EssDocumentsTab() {
     toast.error("No file is available for this document yet.");
   };
 
-  const missingDocs = documents.filter((d) => d.status === "Missing");
+  const pendingSignatureDocs = documents.filter(
+    (d) => d.status === "Pending Verification" || /signature/i.test(String(d.status)),
+  );
+  const missingDocs = documents.filter(
+    (d) =>
+      d.status === "Missing" ||
+      (!d.hasFile && d.status !== "Verified & Active" && d.status !== "Verified"),
+  );
   const expiringDocs = documents.filter((d) => {
     if (d.status === "Missing" || !(d as any).expiry) return false;
     const exp = new Date((d as any).expiry);
@@ -122,10 +148,14 @@ export function EssDocumentsTab() {
     return days >= 0 && days <= 60;
   });
 
+  const matchesStatusFilter = (doc: any) =>
+    docStatusFilter === "all" ||
+    (docStatusFilter === "Missing" ? missingDocs.includes(doc) : doc.status === docStatusFilter);
+
   if (loading) {
     return (
       <div className="space-y-6" aria-busy="true" aria-label="Loading documents">
-        <StatCardsSkeleton count={3} />
+        <StatCardsSkeleton count={4} />
         <Card className="border-border/70 shadow-xs">
           <CardContent className="p-5">
             <CardSkeleton rows={6} />
@@ -138,59 +168,36 @@ export function EssDocumentsTab() {
   return (
     <div className="space-y-6">
       {/* Metric Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Documents on File</p>
-              <div className="rounded-lg bg-emerald-500/10 dark:bg-emerald-400/10 p-2 text-emerald-600 dark:text-emerald-400">
-                <FileCheck className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 font-bold font-display text-emerald-600 dark:text-emerald-400">
-              <span className="text-4xl">{documents.filter((d) => ON_FILE_STATUSES.includes(d.status)).length}</span>{" "}
-              <span className="text-base">File(s)</span>
-            </p>
-          </CardContent>
-        </Card>
-        <button
-          type="button"
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Total files"
+          value={documents.length}
+          icon={FileText}
+          tone="primary"
+          hint="All employment documents on record"
+        />
+        <StatCard
+          label="Pending signature"
+          value={pendingSignatureDocs.length}
+          icon={PenLine}
+          tone="caution"
+          hint="Awaiting HR verification"
+        />
+        <StatCard
+          label="Missing requirements"
+          value={missingDocs.length}
+          icon={AlertTriangle}
+          tone="caution"
+          hint={docStatusFilter === "Missing" ? "Filtered — click to clear" : "Click to view"}
           onClick={() => setDocStatusFilter((f) => (f === "Missing" ? "all" : "Missing"))}
-          title={docStatusFilter === "Missing" ? "Clear missing filter" : "Show missing documents"}
-          className={`text-left rounded-xl outline-none transition-all cursor-pointer ${docStatusFilter === "Missing" ? "ring-2 ring-amber-500/70 dark:ring-amber-400/60" : ""}`}
-        >
-          <Card className={`border-border/70 shadow-xs transition-all group hover:-translate-y-0.5 hover:border-amber-500/50 dark:hover:border-amber-400/25 hover:shadow-md ${docStatusFilter === "Missing" ? "border-amber-500/50 dark:border-amber-400/25" : ""}`}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Action Needed</p>
-                <div className="rounded-lg bg-amber-500/10 dark:bg-amber-400/10 p-2 text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="h-4 w-4" />
-                </div>
-              </div>
-              <p className="mt-1 font-bold font-display text-amber-600 dark:text-amber-400">
-                <span className="text-4xl">{missingDocs.length}</span>{" "}
-                <span className="text-base">Missing</span>
-              </p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {docStatusFilter === "Missing" ? "Filtered — click to clear" : "Click to view"}
-              </p>
-            </CardContent>
-          </Card>
-        </button>
-        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Expiring Soon</p>
-              <div className="rounded-lg bg-sky-500/10 dark:bg-sky-400/10 p-2 text-sky-600 dark:text-sky-400">
-                <CalendarClock className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 font-bold font-display text-sky-600 dark:text-sky-400">
-              <span className="text-4xl">{expiringDocs.length}</span>{" "}
-              <span className="text-base">Within 60 days</span>
-            </p>
-          </CardContent>
-        </Card>
+        />
+        <StatCard
+          label="Expiring soon"
+          value={expiringDocs.length}
+          icon={CalendarClock}
+          tone="primary"
+          hint="Within the next 60 days"
+        />
       </div>
 
       {/* Employment Documents — TRY: grid cards + viewer modal, list = old table fallback */}
@@ -264,7 +271,7 @@ export function EssDocumentsTab() {
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {documents
                       .filter((d) => {
-                        if (docStatusFilter !== "all" && d.status !== docStatusFilter) return false;
+                        if (!matchesStatusFilter(d)) return false;
                         const q = docCardSearch.trim().toLowerCase();
                         if (!q) return true;
                         return (
@@ -291,7 +298,7 @@ export function EssDocumentsTab() {
                               setSelectedDoc(doc);
                               setViewerOpen(true);
                             }}
-                            className={`group/doc relative flex flex-col justify-between rounded-xl border bg-card p-4 text-left shadow-2xs cursor-pointer ${missing ? "border-dashed border-amber-500/50 dark:border-amber-400/25" : "border-border/70"}`}
+                            className={`group/doc relative flex flex-col justify-between rounded-xl border bg-card p-4 text-left shadow-2xs cursor-pointer ${missing ? "border-dashed border-amber-500/50" : "border-border/70"}`}
                           >
                             <div className="flex items-start justify-between gap-2">
                               {/* Doc icon like reference: white tile, folded corner, red doc glyph */}
@@ -303,7 +310,7 @@ export function EssDocumentsTab() {
                                 {missing && (
                                   <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
                                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white dark:ring-border" />
+                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white" />
                                   </span>
                                 )}
                               </div>
@@ -349,7 +356,7 @@ export function EssDocumentsTab() {
                 </TableHeader>
                 <TableBody>
                   {documents
-                    .filter((doc) => docStatusFilter === "all" || doc.status === docStatusFilter)
+                    .filter(matchesStatusFilter)
                     .map((doc) => (
                     <TableRow key={doc.id}>
                       <TableCell className="font-semibold text-xs text-foreground">{doc.title}</TableCell>
@@ -364,7 +371,7 @@ export function EssDocumentsTab() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 px-2 text-xs border-amber-500/40 dark:border-amber-400/20 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1 font-medium"
+                            className="h-6 px-2 text-xs border-amber-500/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1 font-medium"
                             onClick={() => openUploadForDoc(doc.title)}
                           >
                             <Upload className="h-3.5 w-3.5" /> Upload Now
