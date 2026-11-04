@@ -2720,6 +2720,14 @@ export interface ApiEssRequestItem {
   assignedTo?: string;
   assigned_to?: string;
   details: string;
+  /** Structured, type-specific payloads (e.g. loan amount and term). */
+  details_meta?: {
+    loan?: {
+      amount: number;
+      term_months: number | null;
+      monthly_amortization: number | null;
+    };
+  } | null;
   note?: string;
   review_note?: string | null;
   returnedCount?: number;

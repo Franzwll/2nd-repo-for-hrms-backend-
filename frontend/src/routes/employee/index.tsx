@@ -15,6 +15,9 @@ import {
   HeartHandshake,
   Shield,
   Share2,
+  CalendarDays,
+  CalendarClock,
+  MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,6 +31,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import {
   essApi,
   type ApiEssOverview,
@@ -138,11 +142,56 @@ function EmployeeDashboard() {
   const lmsDone = overview?.performance_summary?.lms_completed ?? 4;
   const lmsTotal = overview?.performance_summary?.lms_total ?? 4;
 
+  const vacationBalance =
+    overview?.leave_balances?.find((b) => /vacation|vl/i.test(b.type))?.available ?? availableLeaves;
+  const sickBalance =
+    overview?.leave_balances?.find((b) => /sick|sl/i.test(b.type))?.available ?? 0;
+  const nextPayout = overview?.payroll_summary?.next_payout ?? "—";
+  const coursesDue = Math.max(0, lmsTotal - lmsDone);
+  const presentDays = overview?.monthly_attendance?.present ?? 0;
+  const lateDays = overview?.monthly_attendance?.late ?? 0;
+  const todayShift = overview?.today_schedule;
+  const recentRequests = overview?.recent_requests ?? [];
+  const pendingRequests = overview?.pending_requests_count ?? 0;
+  const todayLabel = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const clockedIn = overview?.today_attendance?.status === "Clocked In";
+
   return (
     <div>
       <PageHeader
         title={`${greeting}, ${firstName}`}
-        description="Here's what's happening with your employment today."
+        description={`${position} · ${todayLabel}`}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild size="sm" className="cursor-pointer gap-1.5 shadow-xs">
+              <Link to="/employee/ess" search={{ category: "Clocking" }}>
+                <Clock className="h-4 w-4" />
+                {clockedIn ? "Clock out" : "Clock in"}
+                {overview?.today_attendance?.time_in &&
+                  overview.today_attendance.time_in !== "—" && (
+                    <span className="font-mono text-xs opacity-90">
+                      · {overview.today_attendance.time_in}
+                    </span>
+                  )}
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="cursor-pointer gap-1.5 shadow-xs"
+            >
+              <Link to="/employee/my-requests">
+                <ClipboardList className="h-4 w-4 text-primary" /> File request
+              </Link>
+            </Button>
+          </div>
+        }
       />
 
       {/* Onboarding Checklist Banner (Displays when employee has pending onboarding items) */}
@@ -198,27 +247,37 @@ function EmployeeDashboard() {
       ) : (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Leave Balance"
-          value={`${availableLeaves} days`}
+          label="Vacation leave"
+          value={`${vacationBalance} days`}
+          hint={`Sick leave: ${sickBalance} days`}
           icon={Clock}
           tone="primary"
           to="/employee/ess?category=Attendance"
         />
         <StatCard
-          label="Take-Home Pay"
+          label="Net pay"
           value={`₱${netPay.toLocaleString()}`}
+          hint={`Next payout ${nextPayout}`}
           icon={FileText}
           tone="success"
           to="/employee/ess?category=Payroll"
         />
         <StatCard
-          label="LMS Training"
-          value={`${lmsDone}/${lmsTotal}`}
+          label="Training"
+          value={`${lmsDone} of ${lmsTotal}`}
+          hint={coursesDue > 0 ? `${coursesDue} course${coursesDue > 1 ? "s" : ""} due` : "All courses complete"}
           icon={TrendingUp}
           tone="primary"
           to="/employee/ess?category=Performance"
         />
-        <StatCard label="Position" value={position} icon={ClipboardCheck} tone="gold" to="/employee/ess" />
+        <StatCard
+          label="Attendance"
+          value={`${presentDays} present`}
+          hint={`${lateDays} late this month`}
+          icon={ClipboardCheck}
+          tone="gold"
+          to="/employee/ess?category=Attendance"
+        />
         </div>
       )}
 
@@ -313,6 +372,115 @@ function EmployeeDashboard() {
                   AI Concierge
                 </span>
               </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Dashboard widgets: today's shift, requests, upcoming */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        {/* Today's shift */}
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 font-display text-base font-semibold">
+                <CalendarDays className="h-4 w-4 text-primary" /> Today&apos;s shift
+              </h2>
+              <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs text-primary">
+                <Link to="/employee/ess" search={{ category: "Schedule" }}>
+                  View <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+            {loadingOverview ? (
+              <ListSkeleton items={2} className="mt-3" />
+            ) : todayShift && todayShift.shift_name !== "No schedule assigned" ? (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">{todayShift.shift_name}</p>
+                  <Badge
+                    variant="outline"
+                    className={
+                      todayShift.is_rest_day
+                        ? "bg-slate-500/10 text-slate-600 border-slate-500/30 text-[10px]"
+                        : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]"
+                    }
+                  >
+                    {todayShift.is_rest_day ? "Rest day" : "On shift"}
+                  </Badge>
+                </div>
+                <p className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" /> {todayShift.time}
+                </p>
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5" /> {todayShift.location}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">No schedule assigned today.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* My requests */}
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 font-display text-base font-semibold">
+                <ClipboardList className="h-4 w-4 text-primary" /> My requests
+              </h2>
+              <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs text-primary">
+                <Link to="/employee/my-requests">
+                  View all <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+            {loadingOverview ? (
+              <ListSkeleton items={2} className="mt-3" />
+            ) : recentRequests.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">No recent requests.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {recentRequests.slice(0, 3).map((req: any, idx: number) => (
+                  <div
+                    key={req.id ?? idx}
+                    className="flex items-center justify-between gap-2 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{req.type}</p>
+                      <p className="text-[11px] text-muted-foreground">{req.filed}</p>
+                    </div>
+                    <EssStatusBadge status={req.status} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Upcoming */}
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="p-5">
+            <h2 className="flex items-center gap-2 font-display text-base font-semibold">
+              <CalendarClock className="h-4 w-4 text-primary" /> Upcoming
+            </h2>
+            <div className="mt-3 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Payday</span>
+                <span className="font-semibold text-foreground">{nextPayout}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Pending requests</span>
+                <span className="font-semibold text-foreground">{pendingRequests}</span>
+              </div>
+              {pendingTasks.length > 0 && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Onboarding tasks</span>
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                    {pendingTasks.length} left
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

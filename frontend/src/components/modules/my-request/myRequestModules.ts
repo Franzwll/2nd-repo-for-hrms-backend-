@@ -34,7 +34,7 @@ export const MY_REQUEST_MODULES: Record<MyRequestModuleId, MyRequestModuleConfig
     noun: "Attendance Request",
     description: "File a leave application or arrange a shift swap with a teammate.",
     submitLabel: "Submit Attendance Request",
-    categories: ["Leave", "Shift Schedule", "Attendance"],
+    categories: ["Leave", "Shift Schedule", "Attendance", "ESS-LEAVE", "ESS-ATT", "ESS-SCHED"],
     emptyMessage: "No attendance requests filed yet.",
   },
   promotion: {
@@ -43,7 +43,7 @@ export const MY_REQUEST_MODULES: Record<MyRequestModuleId, MyRequestModuleConfig
     noun: "Promotion Request",
     description: "Promotions, lateral transfers, reclassification, and salary grade reviews.",
     submitLabel: "Submit Promotion Request",
-    categories: ["Career & Position"],
+    categories: ["Career & Position", "Career", "Promotion", "ESS-CAREER"],
     emptyMessage: "No promotion or career requests filed yet.",
   },
   documents: {
@@ -52,7 +52,7 @@ export const MY_REQUEST_MODULES: Record<MyRequestModuleId, MyRequestModuleConfig
     noun: "Document Request",
     description: "Request certificates, government forms, and official company records.",
     submitLabel: "Submit Document Request",
-    categories: ["HR Document"],
+    categories: ["HR Document", "ESS-HRDOC", "Document"],
     emptyMessage: "No document requests filed yet.",
   },
 };

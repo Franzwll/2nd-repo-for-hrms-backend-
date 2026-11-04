@@ -84,7 +84,7 @@ export function MyRequestHistoryTable({
       .then((res) => {
         if (!alive) return;
         const rows = (res?.requests ?? []).filter((r) =>
-          allowed.has(String(r.category ?? "").toLowerCase()),
+          allowed.has(String(r.category ?? "").toLowerCase()) || allowed.has(String(r.category_code ?? "").toLowerCase()),
         );
         setRequests(rows);
       })

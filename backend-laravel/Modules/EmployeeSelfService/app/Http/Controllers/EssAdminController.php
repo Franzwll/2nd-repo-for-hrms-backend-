@@ -99,6 +99,7 @@ class EssAdminController extends Controller
                             ? 'Unassigned'
                             : ($r->routed_module ? $routing->label($r->routed_module) : 'HR Admin')),
                     'details' => $r->details,
+                    'details_meta' => $r->details_meta,
                     'note' => $r->review_note,
                     'returnedCount' => $r->returned_count,
                     'attachment_path' => $r->attachment_path,

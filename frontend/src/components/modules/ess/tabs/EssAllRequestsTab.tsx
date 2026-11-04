@@ -39,6 +39,43 @@ import { toast } from "sonner";
 // Dynamic Request Subtypes Mapping (shared categorized template)
 const CATEGORY_SUBTYPES = REQUEST_CATEGORY_SUBTYPES;
 
+/** "2026-10-22" -> "Oct 22, 2026" (falls back to the raw value). */
+function formatRequestDate(value: string) {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
+  if (!iso) return value || "—";
+  return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/** 20000 -> "₱20,000"; 3333.33 -> "₱3,333.33". */
+function formatMoney(value: number | null | undefined) {
+  if (value == null) return "—";
+  return `₱${value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
+}
+
+/** "₱20,000 · 6 months · ₱3,333.33/mo" */
+function loanSummary(meta: any): string | null {
+  const loan = meta?.loan;
+  if (!loan || loan.amount == null) return null;
+  const parts = [formatMoney(loan.amount)];
+  if (loan.term_months) parts.push(`${loan.term_months} months`);
+  if (loan.monthly_amortization) parts.push(`${formatMoney(loan.monthly_amortization)}/mo`);
+  return parts.join(" · ");
+}
+
+/**
+ * The form groups some request types under labels that do not exist in
+ * `ess_categories`. Without this map the backend stores category_id = null and
+ * HR cannot filter/report those requests by category.
+ */
+const STORED_CATEGORY: Record<string, { name: string; code: string }> = {
+  Loan: { name: "Benefits & Loans", code: "benefits" },
+  "Payroll Update": { name: "Payroll", code: "payroll" },
+};
+
 export function EssAllRequestsTab() {
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<any[]>([]);
@@ -53,6 +90,8 @@ export function EssAllRequestsTab() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [details, setDetails] = useState("");
+  const [loanAmount, setLoanAmount] = useState("");
+  const [loanTerm, setLoanTerm] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Timeline Modal State
@@ -85,6 +124,7 @@ export function EssAllRequestsTab() {
               ? 3
               : 4,
           details: r.details,
+          detailsMeta: r.details_meta ?? null,
           ...(r.db_id != null ? { dbId: r.db_id } : {}),
           ...(r.review_note ?? r.note
             ? { note: r.review_note ?? r.note }
@@ -134,6 +174,35 @@ export function EssAllRequestsTab() {
 
   const pagination = usePagination(filteredRequests);
 
+  // Flag a request when the same type was already filed within the last 7 days.
+  const duplicateIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const current of requests) {
+      const currentDate = Date.parse(current.isoDate);
+      if (Number.isNaN(currentDate)) continue;
+      const hasEarlier = requests.some((other) => {
+        if (other === current || other.type !== current.type) return false;
+        const otherDate = Date.parse(other.isoDate);
+        if (Number.isNaN(otherDate)) return false;
+        const diff = currentDate - otherDate;
+        return diff > 0 && diff <= 7 * 86400000;
+      });
+      if (hasEarlier) ids.add(current.id);
+    }
+    return ids;
+  }, [requests]);
+
+  const handleWithdraw = async (req: any) => {
+    if (!window.confirm(`Withdraw ${req.type} (${req.id})? This cannot be undone.`)) return;
+    try {
+      await essApi.cancelRequest(req.dbId ?? req.id);
+      toast.success(`Request ${req.id} withdrawn.`);
+      await loadRequests();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to withdraw request.");
+    }
+  };
+
   const handleRowClick = (req: any) => {
     setSelectedRequest({
       id: req.id,
@@ -158,22 +227,37 @@ export function EssAllRequestsTab() {
       return;
     }
 
+    const amount = Number(loanAmount);
+    const term = Number(loanTerm);
+    const hasLoanFigures = Number.isFinite(amount) && amount > 0;
+    const termMonths = Number.isFinite(term) && term > 0 ? Math.round(term) : null;
+
     try {
       setSubmitting(true);
+      const storedCategory = STORED_CATEGORY[category];
+      const storedName = storedCategory?.name ?? category;
+      const storedCode =
+        storedCategory?.code ?? category.toLowerCase().replace(/[^a-z0-9]+/g, "_");
       const res = await essApi.createRequest({
-        category_code: category.toLowerCase().replace(/\s+/g, "_"),
-        category_name: category,
+        category_code: storedCode,
+        category_name: storedName,
         request_type: requestType,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         details: details,
+        ...(hasLoanFigures
+          ? {
+              loan_amount: amount,
+              ...(termMonths ? { loan_term_months: termMonths } : {}),
+            }
+          : {}),
       });
 
       const todayStr = new Date().toISOString().slice(0, 10);
       const newReq = {
         id: res?.request?.request_code || `REQ-${Math.floor(1000 + Math.random() * 9000)}`,
         type: requestType,
-        category: category,
+        category: storedName,
         date: todayStr,
         isoDate: todayStr,
         assignedOfficer:
@@ -183,6 +267,15 @@ export function EssAllRequestsTab() {
         status: "Pending",
         statusRank: 0,
         details: details,
+        detailsMeta: res?.request?.details_meta ?? (hasLoanFigures
+          ? {
+              loan: {
+                amount,
+                term_months: termMonths,
+                monthly_amortization: termMonths ? Math.round((amount / termMonths) * 100) / 100 : null,
+              },
+            }
+          : null),
       };
 
       setRequests([newReq, ...requests]);
@@ -192,6 +285,8 @@ export function EssAllRequestsTab() {
       setDateFrom("");
       setDateTo("");
       setDetails("");
+      setLoanAmount("");
+      setLoanTerm("");
     } catch (err: any) {
       toast.error(err.message || "Failed to submit request to HR.");
     } finally {
@@ -200,6 +295,11 @@ export function EssAllRequestsTab() {
   };
 
   const availableSubtypes = CATEGORY_SUBTYPES[category] || ["General Request"];
+  const isLoanRequest = category === "Loan" || /loan|cash advance/i.test(requestType);
+  const estimatedMonthly =
+    Number(loanAmount) > 0 && Number(loanTerm) > 0
+      ? Number(loanAmount) / Number(loanTerm)
+      : null;
 
   return (
     <div className="space-y-6">
@@ -246,55 +346,120 @@ export function EssAllRequestsTab() {
         </CardHeader>
 
         <CardContent>
-          <Table>
+          <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Request ID</TableHead>
-                <TableHead>Request Type</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Date Filed</TableHead>
-                <TableHead>Assigned Officer</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                  Request
+                </TableHead>
+                <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                  Filed
+                </TableHead>
+                <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                  Details
+                </TableHead>
+                <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                  Currently with
+                </TableHead>
+                <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider">
+                  Status
+                </TableHead>
+                <TableHead className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider">
+                  Action
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRowsSkeleton cols={7} rows={5} />
+                <TableRowsSkeleton cols={6} rows={5} />
               ) : pagination.pageItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground text-xs">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground text-xs">
                     No matching requests found.
                   </TableCell>
                 </TableRow>
               ) : (
-                pagination.pageItems.map((r, idx) => (
-                  <TableRow
-                    key={idx}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => handleRowClick(r)}
-                  >
-                    <TableCell className="text-xs font-mono font-medium text-foreground">
-                      {r.id}
-                    </TableCell>
-                    <TableCell className="text-xs font-semibold text-foreground">
-                      {r.type}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{r.category}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground font-mono">{r.date}</TableCell>
-                    <TableCell className="text-xs font-medium text-foreground">
-                      {r.assignedOfficer}
-                    </TableCell>
-                    <TableCell>
-                      <EssStatusBadge status={r.status} />
-                    </TableCell>
-                    <TableCell className="text-right py-1">
-                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary font-medium">
-                        Timeline →
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+                pagination.pageItems.map((r, idx) => {
+                  const isDuplicate = duplicateIds.has(r.id);
+                  const canWithdraw = r.status === "Pending";
+
+                  return (
+                    <TableRow
+                      key={idx}
+                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => handleRowClick(r)}
+                    >
+                      <TableCell className="whitespace-nowrap px-4 py-3">
+                        <p className="text-sm font-semibold text-foreground">{r.type}</p>
+                        <p className="font-mono text-[11px] text-muted-foreground">{r.id}</p>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                        {formatRequestDate(r.date)}
+                      </TableCell>
+                      <TableCell className="max-w-[320px] px-4 py-3">
+                        {(() => {
+                          const summary = loanSummary(r.detailsMeta);
+                          if (summary) {
+                            return (
+                              <>
+                                <p className="text-xs font-semibold text-foreground">{summary}</p>
+                                <p
+                                  className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground"
+                                  title={r.details}
+                                >
+                                  {r.details}
+                                </p>
+                              </>
+                            );
+                          }
+                          return (
+                            <p className="line-clamp-2 text-xs text-muted-foreground" title={r.details}>
+                              {r.details || "—"}
+                            </p>
+                          );
+                        })()}
+                        {isDuplicate && (
+                          <p className="mt-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                            Possible duplicate
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
+                        {r.assignedOfficer || "HR Services"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap px-4 py-3">
+                        <EssStatusBadge status={r.status} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap px-4 py-3 text-right">
+                        {canWithdraw ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 cursor-pointer px-2 text-xs font-medium text-rose-600 hover:bg-rose-500/10 hover:text-rose-600"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleWithdraw(r);
+                            }}
+                          >
+                            Withdraw
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 cursor-pointer px-2 text-xs font-medium text-primary hover:bg-primary/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRowClick(r);
+                            }}
+                          >
+                            View →
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -385,6 +550,44 @@ export function EssAllRequestsTab() {
                 />
               </div>
             </div>
+
+            {/* Loan figures — stored in details_meta and rendered as a summary */}
+            {isLoanRequest && (
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Loan Amount (₱)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="20,000"
+                      value={loanAmount}
+                      onChange={(e) => setLoanAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Term (months)</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="120"
+                      step="1"
+                      placeholder="6"
+                      value={loanTerm}
+                      onChange={(e) => setLoanTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {estimatedMonthly
+                    ? `Estimated amortization: ${formatMoney(
+                        Math.round(estimatedMonthly * 100) / 100,
+                      )}/mo`
+                    : "Add an amount and term to preview the monthly amortization."}
+                </p>
+              </div>
+            )}
 
             {/* Details / Request Justification */}
             <div className="space-y-1.5">

@@ -1,5 +1,7 @@
 import { useState, Suspense, lazy } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { FileQuestion } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
@@ -134,7 +136,7 @@ export function EmployeeEss() {
         return "Live web clocking, weekly roster, and biometric records. File leave from My Request → Attendance.";
       case "Payroll":
       case "Payslip":
-        return "View net pay, released payslips, and statutory benefits. File payroll inquiries from My Request → Payroll.";
+        return "Net pay, payslips, and government contributions.";
       case "Performance":
       case "Promotion":
         return "Review your performance evaluation and learning progress. File career requests from My Request → Promotion.";
@@ -159,6 +161,7 @@ export function EmployeeEss() {
   const attendanceInitialTab = categoryParam === "Schedule" ? "roster" : "clocking";
 
   const isDocumentsPage = categoryParam === "Documents" || categoryParam === "RequestDoc";
+  const isPayrollPage = categoryParam === "Payroll" || categoryParam === "Payslip";
 
   return (
     <div className="space-y-6">
@@ -170,6 +173,17 @@ export function EmployeeEss() {
             <Suspense fallback={null}>
               <EssDocumentsExport />
             </Suspense>
+          ) : isPayrollPage ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="cursor-pointer gap-1.5 shadow-xs"
+              onClick={() =>
+                navigate({ to: "/employee/my-requests/$module", params: { module: "payroll" } })
+              }
+            >
+              <FileQuestion className="h-4 w-4 text-primary" /> File inquiry
+            </Button>
           ) : undefined
         }
       />

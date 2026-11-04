@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, ChevronLeft, ChevronRight, LayoutGrid, List, Search } from "lucide-react";
+import { CalendarCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,27 +8,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { TablePagination } from "@/components/ui/table-pagination";
-import { ListBody } from "@/components/portal/ListBody";
-import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
-import { usePagination } from "@/hooks/usePagination";
+import {
+  LEGEND,
+  STATUS_LABEL,
+  attendanceLabel,
+  statusOf,
+  type DayStatus,
+} from "@/components/modules/ess/shared/attendanceStatus";
 import { cn } from "@/lib/utils";
 import { DayButton } from "react-day-picker";
 
@@ -37,44 +24,9 @@ interface ScheduleRecordsModalProps {
   onOpenChange: (open: boolean) => void;
   dtrRecords: any[];
   weeklyRoster?: { day?: string; shift?: string; time?: string; location?: string }[];
-  onRowClick?: (row: any, category: string) => void;
 }
 
-// TRY: calendar trial — dots mark daily status, list toggle keeps the old table.
-// Delete the calendar block (or the list block) once scrum picks a winner.
-type DayStatus = "present" | "late" | "absent" | "leave" | "rest";
-
-const STATUS_LABEL: Record<DayStatus, string> = {
-  present: "Present",
-  late: "Late",
-  absent: "Absent",
-  leave: "Leave",
-  rest: "Off",
-};
-
-function statusOf(h: any): DayStatus | null {
-  const status = String(h?.status ?? "").toLowerCase();
-  const remark = String(h?.remark ?? h?.remarks ?? "").toLowerCase();
-  const text = `${status} ${remark}`;
-
-  // DTR rows often store the process state in `status` ("Completed") and the
-  // actual attendance verdict in `remark` ("Present", "Late 7 mins", ...).
-  if (/absent|awol|no[-\s]?show/.test(text)) return "absent";
-  if (/late|tardy/.test(text)) return "late";
-  if (/rest|off[-\s]?duty|day[-\s]?off/.test(text)) return "rest";
-  if (/leave|sick|vacation|maternity|paternity|bereavement/.test(text)) return "leave";
-  if (/present|on[-\s]?time|completed|regular/.test(text)) return "present";
-  if (Number(h?.lateMinutes ?? h?.late_minutes ?? 0) > 0) return "late";
-  if (Number(h?.workedHours ?? h?.hours_worked ?? 0) > 0) return "present";
-  return null;
-}
-
-function attendanceLabel(h: any): string {
-  const status = statusOf(h);
-  if (status) return STATUS_LABEL[status];
-  return h?.remark || h?.remarks || h?.status || "—";
-}
-
+// Daily status dots on the calendar; the paginated table lives on the page.
 function dayKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
@@ -166,14 +118,6 @@ function StatusDayButton({
   );
 }
 
-const LEGEND: { status: DayStatus; label: string }[] = [
-  { status: "present", label: "Present" },
-  { status: "late", label: "Late" },
-  { status: "absent", label: "Absent" },
-  { status: "leave", label: "Leave" },
-  { status: "rest", label: "Off" },
-];
-
 const NAV_BUTTON_CLASS =
   "pointer-events-auto inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground shadow-xs transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 
@@ -182,42 +126,10 @@ export function ScheduleRecordsModal({
   onOpenChange,
   dtrRecords,
   weeklyRoster = [],
-  onRowClick,
 }: ScheduleRecordsModalProps) {
-  const [view, setView] = useState<"calendar" | "list">("calendar");
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<DayStatus | "all">("all");
   const [yearView, setYearView] = useState(false);
 
-  const filteredAttendance = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const wanted = statusFilter === "all" ? null : statusFilter;
-    return dtrRecords.filter((h: any) => {
-      if (wanted && statusOf(h) !== wanted) return false;
-      if (!q) return true;
-      return (
-        String(h.date ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(h.status ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(h.remark ?? h.remarks ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(h.timeIn ?? "")
-          .toLowerCase()
-          .includes(q) ||
-        String(h.timeOut ?? "")
-          .toLowerCase()
-          .includes(q)
-      );
-    });
-  }, [dtrRecords, query, statusFilter]);
-
-  const attPage = usePagination(filteredAttendance, 5);
-
-  // Calendar trial: ISO-keyed map of day -> record + status modifier lists.
+  // ISO-keyed map of day -> record + status modifier lists.
   const byDate = useMemo(() => {
     const map = new Map<string, { record: any; date: Date; status: DayStatus | null }>();
     for (const h of dtrRecords) {
@@ -365,71 +277,19 @@ export function ScheduleRecordsModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center rounded-lg border border-border/70 bg-muted/20 p-0.5">
-            <button
-              type="button"
-              onClick={() => setView("calendar")}
-              aria-label="Calendar view"
-              className={`rounded-md p-1.5 transition-colors cursor-pointer ${view === "calendar" ? "bg-background shadow-xs text-primary" : "text-muted-foreground hover:text-foreground"}`}
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          {LEGEND.map((l) => (
+            <span
+              key={l.status}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-2 py-0.5 font-semibold tracking-wide"
             >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("list")}
-              aria-label="List view"
-              className={`rounded-md p-1.5 transition-colors cursor-pointer ${view === "list" ? "bg-background shadow-xs text-primary" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <List className="h-4 w-4" />
-            </button>
-          </div>
-          {view === "list" && (
-            <div className="flex w-full items-center gap-2 sm:w-auto">
-              <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search DTR records…"
-                  className="pl-8 h-9"
-                />
-              </div>
-              <Select
-                value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value as DayStatus | "all")}
-              >
-                <SelectTrigger className="h-9 w-36 shrink-0 sm:w-40" aria-label="Filter by status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  {LEGEND.map((l) => (
-                    <SelectItem key={l.status} value={l.status}>
-                      {l.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          {view === "calendar" && (
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-              {LEGEND.map((l) => (
-                <span
-                  key={l.status}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-2 py-0.5 font-semibold tracking-wide"
-                >
-                  <span className={cn("h-2 w-2 rounded-full", DOT_CLASS[l.status])} />
-                  {l.label}
-                </span>
-              ))}
-            </div>
-          )}
+              <span className={cn("h-2 w-2 rounded-full", DOT_CLASS[l.status])} />
+              {l.label}
+            </span>
+          ))}
         </div>
 
-        {view === "calendar" ? (
-          <>
+        <>
             <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
               <div className="rounded-xl border border-border/60 bg-card p-4 shadow-xs">
               <div className="w-full">
@@ -642,67 +502,6 @@ export function ScheduleRecordsModal({
               )}
           </div>
           </>
-        ) : (
-          <>
-            <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
-              <ListBody rows={5}>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time In</TableHead>
-                      <TableHead>Time Out</TableHead>
-                      <TableHead>Status &amp; Remark</TableHead>
-                      <TableHead className="text-right">Hours</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {attPage.pageItems.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5}>
-                          <ListEmptyState placeholder="Search DTR records…" subject="DTR records" />
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      attPage.pageItems.map((h: any, i: number) => (
-                        <TableRow
-                          key={i}
-                          className={onRowClick ? "cursor-pointer hover:bg-muted/50" : undefined}
-                          onClick={() => onRowClick?.(h, "Attendance")}
-                        >
-                          <TableCell className="font-medium text-xs text-foreground">
-                            {h.date}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">{h.timeIn}</TableCell>
-                          <TableCell className="text-xs font-mono">{h.timeOut}</TableCell>
-                          <TableCell>
-                            <EssStatusBadge status={attendanceLabel(h)} />
-                          </TableCell>
-                          <TableCell className="text-right text-xs font-semibold font-mono text-foreground">
-                            {h.workedHours} hrs
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </ListBody>
-            </div>
-
-            <div className="shrink-0 border-t border-border/60 pt-3">
-              <TablePagination
-                page={attPage.page}
-                pageCount={attPage.pageCount}
-                from={attPage.from}
-                to={attPage.to}
-                total={attPage.total}
-                label="records"
-                showRangeLabel={false}
-                onPageChange={attPage.setPage}
-              />
-            </div>
-          </>
-        )}
       </DialogContent>
     </Dialog>
   );

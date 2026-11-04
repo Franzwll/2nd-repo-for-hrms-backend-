@@ -24,6 +24,7 @@ class EssRequest extends Model
         'status',
         'assigned_to_user_id',
         'details',
+        'details_meta',
         'review_note',
         'returned_count',
         'attachment_path',
@@ -46,6 +47,7 @@ class EssRequest extends Model
         'routed_at' => 'datetime',
         'module_responded_at' => 'datetime',
         'released_at' => 'datetime',
+        'details_meta' => 'array',
     ];
 
     public function employee(): BelongsTo
