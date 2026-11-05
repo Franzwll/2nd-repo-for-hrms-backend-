@@ -4146,6 +4146,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   } | null>(null);
   /** AI checklist modal — the six prose blocks + per-block notes. */
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  /** Acknowledgement shown after a brand-new job post is persisted. */
+  const [createdPostNotice, setCreatedPostNotice] = useState<{
+    title: string;
+    status: "Draft" | "Open";
+  } | null>(null);
   const [aiChecked, setAiChecked] = useState<Record<string, boolean>>({
     description: true,
     responsibilities: true,
@@ -4680,17 +4685,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
       if (existing?.dbId) {
         await jobPostsApi.update(existing.dbId, basePayload);
+        toast.success(
+          keepPublished
+            ? `“${title}” saved${liveStatus === "Open" ? " — still live on " + livePlatforms.join(", ") : ""}`
+            : `Draft saved — “${title}” is in your postings as a draft`,
+        );
       } else {
         const created = await jobPostsApi.create(basePayload);
         setJobList((prev) =>
           prev.map((j) => (j.id === draftId ? { ...j, dbId: created.job_post_id } : j)),
         );
+        setCreatedPostNotice({ title, status: "Draft" });
       }
-      toast.success(
-        keepPublished
-          ? `“${title}” saved${liveStatus === "Open" ? " — still live on " + livePlatforms.join(", ") : ""}`
-          : `Draft saved — “${title}” is in your postings as a draft`,
-      );
     } catch (e) {
       console.warn("Could not persist draft to database API:", e);
       toast.error(`“${title}” was kept locally, but could not be saved to the database.`);
@@ -5478,11 +5484,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           await requisitionStore.markConverted(srcReq?.id ?? sourceReqId, jobDbId);
         }
       }
-      toast.success(
-        editingJobId
-          ? `“${jobPayload.title}” template updated`
-          : `“${jobPayload.title}” published to ${chosen.join(", ")}`,
-      );
+      if (editingJobId) {
+        toast.success(`“${jobPayload.title}” template updated`);
+      } else {
+        setCreatedPostNotice({ title: jobPayload.title, status: "Open" });
+      }
     } catch (e) {
       console.warn("Could not persist job post to database API:", e);
       const err = e as {
@@ -8391,6 +8397,30 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={createdPostNotice !== null}
+        onOpenChange={(open) => {
+          if (!open) setCreatedPostNotice(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {createdPostNotice?.status === "Open" ? "Job post published" : "Job post created"}
+            </DialogTitle>
+            <DialogDescription>
+              “{createdPostNotice?.title}” has been{" "}
+              {createdPostNotice?.status === "Open"
+                ? "created and published to the careers website."
+                : "created and saved as a draft. Publish it when the content is ready."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setCreatedPostNotice(null)}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={confirmLeaveOpen} onOpenChange={setConfirmLeaveOpen}>
         <DialogContent>
           <DialogHeader>
@@ -8975,7 +9005,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                               Upload a COE, certificate or credential in Step 2 (optional).
                             </p>
                           ) : (
-                            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            <div className="mt-3 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
                               {verificationDocs.map((d, i) => {
                                 const preview =
                                   detail?.preview_documents?.[i] ?? null;

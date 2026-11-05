@@ -5,8 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * Bidirectional files attached to an ESS request.
+ *
+ * Rows live in `ess_request_attachments`. Routing and status rows stay in
+ * `ess_request_events`.
+ */
 class EssRequestAttachment extends Model
 {
+    public const EVENT_TYPE = 'attachment';
+
     protected $table = 'ess_request_attachments';
     protected $primaryKey = 'ess_request_attachment_id';
 

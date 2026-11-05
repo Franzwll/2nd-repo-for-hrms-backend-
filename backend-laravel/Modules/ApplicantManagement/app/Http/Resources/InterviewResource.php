@@ -23,6 +23,10 @@ class InterviewResource extends JsonResource
             'fit_score'      => $applicant->fit_score !== null ? (float) $applicant->fit_score : null,
         ];
 
+        // Facility comes from the interview.facilities setting via the
+        // Interview::facility accessor (the facilities table is gone).
+        $facility = $this->facility;
+
         return [
             'interview_id'            => $this->interview_id,
             'interview_code'          => $this->interview_code,
@@ -33,13 +37,13 @@ class InterviewResource extends JsonResource
             'mode'                    => $this->mode,
             'facility_id'             => $this->facility_id,
             'facility_status'         => $this->facility_status,
-            'facility'                => $this->whenLoaded('facility') && $this->facility ? [
-                'facility_id' => $this->facility->facility_id,
-                'name'        => $this->facility->name,
-                'type'        => $this->facility->type,
-                'location'    => $this->facility->location,
-                'capacity'    => $this->facility->capacity,
-                'icon'        => $this->facility->icon,
+            'facility'                => $facility ? [
+                'facility_id' => $facility->facility_id,
+                'name'        => $facility->name,
+                'type'        => $facility->type,
+                'location'    => $facility->location,
+                'capacity'    => $facility->capacity,
+                'icon'        => $facility->icon,
             ] : null,
             'interviewer_employee_id' => $this->interviewer_employee_id,
             'interviewer_name'        => $this->interviewer_name,

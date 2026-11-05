@@ -113,7 +113,7 @@ class EmployeeOnboardingItemController extends Controller
 
     public function pendingReview(Request $request): JsonResponse
     {
-        $items = EmployeeOnboardingItem::with(['newHire', 'templateItem.template'])
+        $items = EmployeeOnboardingItem::with('newHire')
             ->whereNotNull('submitted_at')
             ->where('done', false)
             ->orderByDesc('submitted_at')
@@ -268,10 +268,10 @@ class EmployeeOnboardingItemController extends Controller
             'template_id'  => ['required', 'integer', 'exists:onboarding_checklist_templates,template_id'],
         ]);
 
-        $items = \Modules\NewHireOnboarding\Models\OnboardingChecklistItem
-            ::where('template_id', $data['template_id'])
-            ->orderBy('sort_order')
-            ->get();
+        // Phase 4a: template items are inlined in the template's items_json.
+        $template = \Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate
+            ::findOrFail($data['template_id']);
+        $items = $template->items;
 
         // Skip template items already applied to this new hire
         $existing = $model->onboardingItems()
@@ -311,7 +311,15 @@ class EmployeeOnboardingItemController extends Controller
         $model = NewHire::findOrFail($new_hire);
 
         $data = $request->validate([
-            'template_item_id' => ['required', 'integer', 'exists:onboarding_checklist_items,template_item_id'],
+            'template_item_id' => [
+                'required',
+                'integer',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if (\Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate::findItem((int) $value) === null) {
+                        $fail('The selected template item is invalid.');
+                    }
+                },
+            ],
         ]);
 
         $existing = $model->onboardingItems()
@@ -329,8 +337,8 @@ class EmployeeOnboardingItemController extends Controller
             ]);
         }
 
-        $templateItem = \Modules\NewHireOnboarding\Models\OnboardingChecklistItem
-            ::findOrFail($data['template_item_id']);
+        $templateItem = \Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate
+            ::findItem((int) $data['template_item_id']);
 
         $oi = EmployeeOnboardingItem::create([
             'employee_id'      => $model->employee_id,

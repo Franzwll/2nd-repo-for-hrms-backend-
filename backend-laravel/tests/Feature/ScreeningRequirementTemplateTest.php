@@ -83,15 +83,16 @@ class ScreeningRequirementTemplateTest extends TestCase
             ->json('data');
 
         $this->assertCount(2, $updated['items']);
-        $this->assertDatabaseMissing('screening_requirement_template_items', [
-            'template_id' => $templateId,
-            'value' => 'Guest Relations',
-        ]);
-        $this->assertDatabaseHas('screening_requirement_template_items', [
-            'template_id' => $templateId,
-            'entity_type' => 'job_role',
-            'value' => 'Front Desk Receptionist',
-        ]);
+        // Phase 3h: entities live in screening_requirement_templates.items_json.
+        $itemsJson = DB::table('screening_requirement_templates')
+            ->where('template_id', $templateId)
+            ->value('items_json');
+        $items = json_decode((string) $itemsJson, true) ?: [];
+        $values = array_column($items, 'value');
+        $this->assertNotContains('Guest Relations', $values);
+        $this->assertContains('Front Desk Receptionist', $values);
+        $roles = array_column($items, 'entity_type', 'value');
+        $this->assertSame('job_role', $roles['Front Desk Receptionist'] ?? null);
 
         // Toggle hides the template from the builder picker without deleting it.
         $this->withToken($token)
@@ -110,7 +111,10 @@ class ScreeningRequirementTemplateTest extends TestCase
             ->assertOk();
 
         $this->assertDatabaseMissing('screening_requirement_templates', ['template_id' => $templateId]);
-        $this->assertDatabaseMissing('screening_requirement_template_items', ['template_id' => $templateId]);
+        $this->assertNull(
+            DB::table('screening_requirement_templates')->where('template_id', $templateId)->value('items_json'),
+            'Deleting a template removes its inlined items with it.'
+        );
     }
 
     public function test_seeded_starter_templates_carry_requirement_entities(): void

@@ -361,17 +361,8 @@ class EmployeeController extends Controller
             // Core HCM owns the status change; Employee Records owns the exit
             // paperwork (clearance / COE). ERM fills those in via its own
             // endpoint once it receives EmployeeStatusChanged.
-            EmployeeExitRecord::updateOrCreate(
-                ['employee_id' => $employee->employee_id],
-                [
-                    'exit_type' => $exitType,
-                    'exit_date' => $request->date('exit_date'),
-                    'clearance_status' => 'Pending',
-                    'coe_status' => 'Pending',
-                    'notes' => $request->string('notes'),
-                ]
-            );
-
+            // Phase 3g: exit facts live on the employees row itself, so the
+            // status change and the exit columns are written in one save.
             EmployeePositionHistory::create([
                 'employee_id' => $employee->employee_id,
                 'effective_date' => $request->date('effective_date')->toDateString(),
@@ -383,10 +374,25 @@ class EmployeeController extends Controller
 
             Position::where('position_id', $employee->position_id)->decrement('filled_count');
 
+            // Keep the per-cycle exit paperwork, not only the current cache.
+            EmployeeExitRecord::create([
+                'employee_id' => $employee->employee_id,
+                'exit_type' => $exitType,
+                'exit_date' => $request->date('exit_date')->toDateString(),
+                'clearance_status' => 'Pending',
+                'coe_status' => 'Pending',
+                'notes' => $request->string('notes')->toString() ?: null,
+            ]);
+
             ActivityObserver::withoutLogging(fn () => $employee->forceFill([
                 'status' => $exitType,
                 'supervisor_employee_id' => null,
                 'employee_record_last_updated_at' => now()->toDateString(),
+                'exit_type' => $exitType,
+                'exit_date' => $request->date('exit_date')->toDateString(),
+                'clearance_status' => 'Pending',
+                'coe_status' => 'Pending',
+                'exit_notes' => $request->string('notes')->toString(),
             ])->save());
         });
 
@@ -437,12 +443,22 @@ class EmployeeController extends Controller
 
             Position::where('position_id', $employee->position_id)->increment('filled_count');
 
-            $employee->exitRecord?->delete();
+            // Close the open separation cycle before clearing the cache columns.
+            EmployeeExitRecord::where('employee_id', $employee->employee_id)
+                ->whereNull('rehire_date')
+                ->orderByDesc('exit_date')
+                ->first()
+                ?->update(['rehire_date' => $request->date('effective_date')->toDateString()]);
 
             ActivityObserver::withoutLogging(fn () => $employee->forceFill([
                 'status' => 'Active',
                 'employment_type' => $employmentType,
                 'employee_record_last_updated_at' => now()->toDateString(),
+                'exit_type' => null,
+                'exit_date' => null,
+                'clearance_status' => null,
+                'coe_status' => null,
+                'exit_notes' => null,
             ])->save());
         });
 

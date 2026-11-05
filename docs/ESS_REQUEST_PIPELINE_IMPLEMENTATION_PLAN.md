@@ -4,6 +4,11 @@
 
 **Status:** Implemented on this branch (schema, workflow, adapters, ESS Management gate/release UI, module queues, tests). Migrations and PHPUnit have not been executed in this environment because no PHP runtime is available.
 
+> **Consolidation update (Nov 1, 2026):** the three append-only ESS trails now share
+> the `ess_request_events` table (`event_type = 'routing' | 'status' | 'attachment'`).
+> The table names in sections 4.3–4.4 below describe the original design; the
+> model classes and API payloads are unchanged.
+
 ---
 
 ## 1. Target pipeline

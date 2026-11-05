@@ -28,7 +28,7 @@ class EmployeeLifecycleService
      */
     public function generateEmployeeCode(): string
     {
-        $row = DB::table('employee_code_sequences')->where('id', 1)->lockForUpdate()->first();
+        $row = DB::table('code_sequences')->where('seq_key', 'employee_code')->lockForUpdate()->first();
 
         // Floor the sequence against whatever already exists so seeded / legacy
         // records (inserted after the migration seeded the sequence) can never
@@ -40,13 +40,13 @@ class EmployeeLifecycleService
 
         if (! $row) {
             // Self-heal on legacy databases where the seed row is missing.
-            DB::table('employee_code_sequences')->insert(['id' => 1, 'next_val' => $floor]);
+            DB::table('code_sequences')->insert(['seq_key' => 'employee_code', 'next_val' => $floor]);
             $row = (object) ['next_val' => $floor];
         }
 
         $next = max((int) $row->next_val, $floor) + 1;
 
-        DB::table('employee_code_sequences')->where('id', 1)->update(['next_val' => $next]);
+        DB::table('code_sequences')->where('seq_key', 'employee_code')->update(['next_val' => $next]);
 
         return 'EMP-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
     }

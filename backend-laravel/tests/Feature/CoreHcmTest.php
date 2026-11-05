@@ -116,7 +116,7 @@ class CoreHcmTest extends TestCase
             'employee_id' => $id,
             'change_type' => 'Regularization',
         ]);
-        $this->assertDatabaseHas('employee_exit_records', [
+        $this->assertDatabaseHas('employees', [
             'employee_id' => $id,
             'exit_type' => 'Resigned',
         ]);

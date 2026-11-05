@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Employee;
-use App\Models\EmployeeEmergencyContact;
 use App\Models\SystemUser;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -96,7 +95,9 @@ class ErmDossierTest extends TestCase
     public function test_emergency_contact_lifecycle(): void
     {
         $employee = Employee::orderBy('employee_id')->firstOrFail();
-        DB::table('employee_emergency_contacts')->where('employee_id', $employee->employee_id)->delete();
+        // Phase 3i: contacts live in employees.emergency_contacts_json.
+        $employee->emergency_contacts_json = [];
+        $employee->save();
 
         $created = $this->postJson(
             "/api/v1/erm/employees/{$employee->employee_id}/emergency-contacts",
@@ -113,10 +114,12 @@ class ErmDossierTest extends TestCase
             $this->authHeaders($this->recordsToken())
         )->assertOk()->assertJsonPath('contact.name', 'Jane A. Doe');
 
-        $this->assertDatabaseHas('employee_emergency_contacts', [
-            'emergency_contact_id' => $contactId,
-            'name' => 'Jane A. Doe',
-        ]);
+        $updated = $employee->fresh()->emergency_contacts_json;
+        $this->assertNotEmpty($updated, 'Expected the contact stored on the employee JSON.');
+        $first = $updated[0] ?? null;
+        $this->assertNotNull($first);
+        $this->assertSame($contactId, $first['emergency_contact_id']);
+        $this->assertSame('Jane A. Doe', $first['name']);
 
         $this->deleteJson(
             "/api/v1/erm/employees/{$employee->employee_id}/emergency-contacts/{$contactId}",
@@ -124,7 +127,11 @@ class ErmDossierTest extends TestCase
             $this->authHeaders($this->recordsToken())
         )->assertOk();
 
-        $this->assertDatabaseMissing('employee_emergency_contacts', ['emergency_contact_id' => $contactId]);
+        $remaining = $employee->fresh()->emergency_contacts_json;
+        $this->assertTrue(
+            empty($remaining) || collect($remaining)->every(fn ($c) => $c['emergency_contact_id'] !== $contactId),
+            'Deleting a contact removes it from the employee JSON.'
+        );
     }
 
     public function test_document_upload_verify_and_delete(): void

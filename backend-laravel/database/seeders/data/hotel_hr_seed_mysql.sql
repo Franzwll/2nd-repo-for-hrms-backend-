@@ -144,18 +144,17 @@ UPDATE `employees` SET `supervisor_employee_id` = 28 WHERE `employee_id` IN (29,
 UPDATE `employees` SET `supervisor_employee_id` = 32 WHERE `employee_id` IN (31);
 UPDATE `employees` SET `supervisor_employee_id` = 36 WHERE `employee_id` IN (33, 34, 35, 37);
 
--- employee_emergency_contacts
-INSERT INTO `employee_emergency_contacts` (`employee_id`, `name`, `relationship`, `phone`, `address`, `is_primary`) VALUES
-(5,  'Liza Santos',       'Spouse',  '0918 222 4410', '14 Kalayaan Ave, Makati City', 1),
-(1,  'Daniel Ramos',      'Spouse',  '0917 555 1212', 'Makati City',                   1),
-(4,  'Lorna Ortega',      'Mother',  '0917 888 2323', 'San Fernando, Pampanga',        1),
-(6,  'Fely Devera',       'Mother',  '0917 777 3434', 'Pasay City',                    1),
-(8,  'Ramon Aquino',      'Spouse',  '0917 666 4545', 'Taguig City',                   1),
-(13, 'Nelia Soriano',     'Mother',  '0912 345 6789', 'Manila',                        1),
-(14, 'Bert Berdugo',      'Father',  '0933 552 1180', 'Parañaque City',                1),
-(15, 'Sonia Torres',      'Mother',  '0917 220 5541', 'Makati City',                   1),
-(16, 'Mario Santos',      'Spouse',  '0918 663 2201', 'Caloocan City',                 1),
-(22, 'Teresa Torres',     'Mother',  '0917 442 1177', 'Makati City',                   1);
+-- employee_emergency_contacts (inlined into employees.emergency_contacts_json since Phase 3i)
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":1,"employee_id":5,"name":"Liza Santos","relationship":"Spouse","phone":"0918 222 4410","address":"14 Kalayaan Ave, Makati City","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 5;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":2,"employee_id":1,"name":"Daniel Ramos","relationship":"Spouse","phone":"0917 555 1212","address":"Makati City","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 1;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":3,"employee_id":4,"name":"Lorna Ortega","relationship":"Mother","phone":"0917 888 2323","address":"San Fernando, Pampanga","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 4;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":4,"employee_id":6,"name":"Fely Devera","relationship":"Mother","phone":"0917 777 3434","address":"Pasay City","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 6;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":5,"employee_id":8,"name":"Ramon Aquino","relationship":"Spouse","phone":"0917 666 4545","address":"Taguig City","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 8;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":6,"employee_id":13,"name":"Nelia Soriano","relationship":"Mother","phone":"0912 345 6789","address":"Manila","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 13;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":7,"employee_id":14,"name":"Bert Berdugo","relationship":"Father","phone":"0933 552 1180","address":"Parañaque City","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 14;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":8,"employee_id":15,"name":"Sonia Torres","relationship":"Mother","phone":"0917 220 5541","address":"Makati City","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 15;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":9,"employee_id":16,"name":"Mario Santos","relationship":"Spouse","phone":"0918 663 2201","address":"Caloocan City","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 16;
+UPDATE `employees` SET `emergency_contacts_json` = '[{"emergency_contact_id":10,"employee_id":22,"name":"Teresa Torres","relationship":"Mother","phone":"0917 442 1177","address":"Makati City","is_primary":true,"created_at":"2026-10-18 17:06:13","updated_at":"2026-10-18 17:06:13"}]' WHERE `employee_id` = 22;
 
 -- employee_position_history (initial employment event per employee)
 INSERT INTO `employee_position_history` (`employee_id`, `effective_date`, `change_type`, `old_position_id`, `new_position_id`, `old_salary_grade_id`, `new_salary_grade_id`, `notes`) VALUES
@@ -284,30 +283,17 @@ INSERT INTO `job_posts` (
  '["TESDA NC II in Electrical, Refrigeration, or equivalent.","At least 1 year hotel or building maintenance experience.","Willing to be on-call for emergencies."]',
   '["HVAC","Plumbing","Electrical","Preventive Maintenance"]');
 
--- job_post_platforms
-INSERT INTO `job_post_platforms` (`job_post_id`, `platform`, `published_at`, `status`) VALUES
-(1, 'Company Website', '2026-05-22 08:00:00', 'published'),
-(1, 'Facebook',        '2026-05-22 08:15:00', 'published'),
-(1, 'Indeed',          '2026-05-22 09:00:00', 'published'),
-(2, 'Company Website', '2026-05-18 08:00:00', 'published'),
-(2, 'Indeed',          '2026-05-18 09:30:00', 'published'),
-(3, 'Company Website', '2026-05-10 08:00:00', 'published'),
-(3, 'Facebook',        '2026-05-10 08:20:00', 'published'),
-(4, 'Company Website', '2026-05-20 08:00:00', 'published'),
-(4, 'Facebook',        '2026-05-20 08:30:00', 'published'),
-(4, 'Instagram',       '2026-05-20 09:00:00', 'published'),
-(5, 'Company Website', '2026-05-15 08:00:00', 'published'),
-(5, 'Instagram',       '2026-05-15 08:45:00', 'published'),
-(6, 'Company Website', '2026-05-08 08:00:00', 'published'),
-(6, 'Indeed',          '2026-05-08 09:15:00', 'published'),
-(7, 'Company Website', '2026-05-25 08:00:00', 'published'),
-(7, 'Facebook',        '2026-05-25 08:20:00', 'published'),
-(8, 'Company Website', '2026-05-26 08:00:00', 'published'),
-(8, 'Facebook',        '2026-05-26 08:30:00', 'published'),
-(9, 'Company Website', '2026-05-27 08:00:00', 'published'),
-(9, 'Indeed',          '2026-05-27 09:00:00', 'published'),
-(10, 'Company Website', '2026-05-28 08:00:00', 'published'),
-(10, 'Indeed',          '2026-05-28 09:15:00', 'published');
+-- job_post_platforms (inlined into job_posts.platforms_json)
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 1, "job_post_id": 1, "platform": "Website", "published_at": "2026-10-26 16:10:14", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 2, "job_post_id": 1, "platform": "Facebook", "published_at": "2026-05-22 08:15:00", "status": "unpublished", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 3, "job_post_id": 1, "platform": "Indeed", "published_at": "2026-05-22 09:00:00", "status": "unpublished", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 1;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 4, "job_post_id": 2, "platform": "Website", "published_at": "2026-10-21 07:19:52", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 5, "job_post_id": 2, "platform": "Indeed", "published_at": "2026-05-18 09:30:00", "status": "unpublished", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 2;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 6, "job_post_id": 3, "platform": "Website", "published_at": "2026-05-10 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 7, "job_post_id": 3, "platform": "Facebook", "published_at": "2026-05-10 08:20:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 3;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 8, "job_post_id": 4, "platform": "Website", "published_at": "2026-05-20 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 9, "job_post_id": 4, "platform": "Facebook", "published_at": "2026-05-20 08:30:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 10, "job_post_id": 4, "platform": "Instagram", "published_at": "2026-05-20 09:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 4;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 11, "job_post_id": 5, "platform": "Website", "published_at": "2026-05-15 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 12, "job_post_id": 5, "platform": "Instagram", "published_at": "2026-05-15 08:45:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 5;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 13, "job_post_id": 6, "platform": "Website", "published_at": "2026-05-08 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 14, "job_post_id": 6, "platform": "Indeed", "published_at": "2026-05-08 09:15:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 6;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 15, "job_post_id": 7, "platform": "Website", "published_at": "2026-05-25 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 16, "job_post_id": 7, "platform": "Facebook", "published_at": "2026-05-25 08:20:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 7;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 17, "job_post_id": 8, "platform": "Website", "published_at": "2026-05-26 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 18, "job_post_id": 8, "platform": "Facebook", "published_at": "2026-05-26 08:30:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 8;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 19, "job_post_id": 9, "platform": "Website", "published_at": "2026-05-27 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 20, "job_post_id": 9, "platform": "Indeed", "published_at": "2026-05-27 09:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 9;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 21, "job_post_id": 10, "platform": "Website", "published_at": "2026-05-28 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 22, "job_post_id": 10, "platform": "Indeed", "published_at": "2026-05-28 09:15:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 10;
 
 -- applicants (ids 1-10)
 INSERT INTO `applicants` (`applicant_id`, `applicant_code`, `job_post_id`, `name`, `email`, `phone`, `applied_at`, `fit_score`, `status`, `stage`, `source`, `resume_file_path`, `summary`, `flags_json`) VALUES
@@ -322,53 +308,25 @@ INSERT INTO `applicants` (`applicant_id`, `applicant_code`, `job_post_id`, `name
 (9,  'APP-1040', 4, 'Marjun Devera',      'marjun.devera@email.com',      '0917 664 2219', '2026-07-25 22:40:00', 88.00, 'fit',        'Screened',           'Referral',     '/uploads/resumes/marjun_devera_resume.pdf',    'Strong dining-room service background with banquet exposure.', '[]'),
 (10, 'APP-1041', 1, 'Bianca Soriano',     'bianca.soriano@email.com',     '0912 345 6789', '2026-07-25 23:15:00', 96.00, 'fit',        'Interview Scheduled', 'Online Portal', '/uploads/resumes/bianca_soriano_resume.pdf',   'Three years front office experience at a 4-star property, PMS proficient, complete credentials.', '[]');
 
--- applicant_screening_entities
-INSERT INTO `applicant_screening_entities` (`applicant_id`, `label`, `value`) VALUES
-(1,  'SKILL', 'Guest Relations'),
-(1,  'CERT',  'TESDA Front Office NC II'),
-(1,  'EDU',   'BS Tourism'),
-(2,  'SKILL', 'Recruitment'),
-(2,  'EDU',   'BS Psychology'),
-(2,  'ORG',   'Metro Staffing'),
-(3,  'SKILL', 'Maintenance'),
-(3,  'SKILL', 'Laundry Operations'),
-(4,  'SKILL', 'Mixology'),
-(4,  'CERT',  'TESDA Bartending NC II'),
-(4,  'ORG',   'Sky Lounge BGC'),
-(5,  'SKILL', 'Hot Kitchen'),
-(5,  'CERT',  'TESDA Cookery NC II'),
-(5,  'CERT',  'Food Handler'),
-(5,  'ORG',   'Seaside Grill'),
-(6,  'SKILL', 'Data Entry'),
-(6,  'EDU',   'BS Accountancy'),
-(7,  'SKILL', 'Room Turnover'),
-(7,  'ORG',   'Sunrise Inn'),
-(8,  'SKILL', 'Cash Handling'),
-(8,  'SKILL', 'Inventory'),
-(8,  'ORG',   'Cafe Verde'),
-(8,  'EDU',   'College Level'),
-(9,  'SKILL', 'Table Service'),
-(9,  'SKILL', 'POS Systems'),
-(9,  'ORG',   'Bistro Manila'),
-(9,  'EDU',   'HRM Vocational'),
-(10, 'SKILL', 'Guest Relations'),
-(10, 'SKILL', 'Opera PMS'),
-(10, 'ORG',   'Grand Horizon Hotel'),
-(10, 'EDU',   'BS Hospitality Management'),
-(10, 'CERT',  'TESDA Front Office NC II');
+-- applicant_screenings (consolidated screening entities and scores inlined)
+INSERT INTO `applicant_screenings` (`screening_id`, `applicant_id`, `job_post_id`, `processing_status`, `screening_result`, `match_score`, `resume_match_score`, `score_breakdown_json`, `entities_json`, `processed_at`) VALUES
+(1,  1,  1, 'PROCESSED', 'fit',        93.00, 93.00, '{"skills":{"weight":0.4,"earned":37,"max":40},"experience":{"weight":0.3,"earned":28,"max":30},"education":{"weight":0.2,"earned":19,"max":20},"certifications":{"weight":0.1,"earned":9,"max":10}}',  '[{"label":"SKILL","value":"Guest Relations"},{"label":"CERT","value":"TESDA Front Office NC II"},{"label":"EDU","value":"BS Tourism"}]',                                                                                                                 '2026-07-22 15:47:00'),
+(2,  2,  6, 'PROCESSED', 'fit',        76.00, 76.00, '{"skills":{"weight":0.4,"earned":28,"max":40},"experience":{"weight":0.3,"earned":23,"max":30},"education":{"weight":0.2,"earned":18,"max":20},"certifications":{"weight":0.1,"earned":7,"max":10}}',  '[{"label":"SKILL","value":"Recruitment"},{"label":"EDU","value":"BS Psychology"},{"label":"ORG","value":"Metro Staffing"}]',                                                                                                                          '2026-07-23 09:31:00'),
+(3,  3,  3, 'PROCESSED', 'other-role', 69.00, 69.00, '{"skills":{"weight":0.4,"earned":24,"max":40},"experience":{"weight":0.3,"earned":21,"max":30},"education":{"weight":0.2,"earned":14,"max":20},"certifications":{"weight":0.1,"earned":10,"max":10}}', '[{"label":"SKILL","value":"Maintenance"},{"label":"SKILL","value":"Laundry Operations"}]',                                                                                                                        '2026-07-24 11:05:00'),
+(4,  4,  5, 'PROCESSED', 'fit',        84.00, 84.00, '{"skills":{"weight":0.4,"earned":32,"max":40},"experience":{"weight":0.3,"earned":25,"max":30},"education":{"weight":0.2,"earned":17,"max":20},"certifications":{"weight":0.1,"earned":10,"max":10}}', '[{"label":"SKILL","value":"Mixology"},{"label":"CERT","value":"TESDA Bartending NC II"},{"label":"ORG","value":"Sky Lounge BGC"}]',                                                                                     '2026-07-24 14:22:00'),
+(5,  5,  2, 'PROCESSED', 'fit',        91.00, 91.00, '{"skills":{"weight":0.4,"earned":36,"max":40},"experience":{"weight":0.3,"earned":27,"max":30},"education":{"weight":0.2,"earned":18,"max":20},"certifications":{"weight":0.1,"earned":10,"max":10}}', '[{"label":"SKILL","value":"Hot Kitchen"},{"label":"CERT","value":"TESDA Cookery NC II"},{"label":"CERT","value":"Food Handler"},{"label":"ORG","value":"Seaside Grill"}]',                                      '2026-07-24 16:48:00'),
+(6,  6,  2, 'PROCESSED', 'not-fit',    22.00, 22.00, '{"skills":{"weight":0.4,"earned":8,"max":40},"experience":{"weight":0.3,"earned":6,"max":30},"education":{"weight":0.2,"earned":6,"max":20},"certifications":{"weight":0.1,"earned":2,"max":10}}',     '[{"label":"SKILL","value":"Data Entry"},{"label":"EDU","value":"BS Accountancy"}]',                                                                                                                                     '2026-07-25 19:02:00'),
+(7,  7,  3, 'PROCESSED', 'credential', 58.00, 58.00, '{"skills":{"weight":0.4,"earned":24,"max":40},"experience":{"weight":0.3,"earned":18,"max":30},"education":{"weight":0.2,"earned":10,"max":20},"certifications":{"weight":0.1,"earned":6,"max":10}}',  '[{"label":"SKILL","value":"Room Turnover"},{"label":"ORG","value":"Sunrise Inn"}]',                                                                                                                                    '2026-07-25 20:10:00'),
+(8,  8,  4, 'PROCESSED', 'other-role', 74.00, 74.00, '{"skills":{"weight":0.4,"earned":26,"max":40},"experience":{"weight":0.3,"earned":22,"max":30},"education":{"weight":0.2,"earned":16,"max":20},"certifications":{"weight":0.1,"earned":10,"max":10}}', '[{"label":"SKILL","value":"Cash Handling"},{"label":"SKILL","value":"Inventory"},{"label":"ORG","value":"Cafe Verde"},{"label":"EDU","value":"College Level"}]',                                                     '2026-07-25 21:12:00'),
+(9,  9,  4, 'PROCESSED', 'fit',        88.00, 88.00, '{"skills":{"weight":0.4,"earned":34,"max":40},"experience":{"weight":0.3,"earned":26,"max":30},"education":{"weight":0.2,"earned":18,"max":20},"certifications":{"weight":0.1,"earned":10,"max":10}}', '[{"label":"SKILL","value":"Table Service"},{"label":"SKILL","value":"POS Systems"},{"label":"ORG","value":"Bistro Manila"},{"label":"EDU","value":"HRM Vocational"}]',                                               '2026-07-25 22:40:00'),
+(10, 10, 1, 'PROCESSED', 'fit',        96.00, 96.00, '{"skills":{"weight":0.4,"earned":38,"max":40},"experience":{"weight":0.3,"earned":28,"max":30},"education":{"weight":0.2,"earned":20,"max":20},"certifications":{"weight":0.1,"earned":10,"max":10}}', '[{"label":"SKILL","value":"Guest Relations"},{"label":"SKILL","value":"Opera PMS"},{"label":"ORG","value":"Grand Horizon Hotel"},{"label":"EDU","value":"BS Hospitality Management"},{"label":"CERT","value":"TESDA Front Office NC II"}]', '2026-07-25 23:15:00');
 
--- applicant_screening_scores (Skills 40 / Work Experience 30 / Education 20 / Certifications 10)
-INSERT INTO `applicant_screening_scores` (`applicant_id`, `criterion`, `score`) VALUES
-(1,  'Skills', 37), (1,  'Work Experience', 28), (1,  'Educational Background', 19), (1,  'Certifications', 9),
-(2,  'Skills', 28), (2,  'Work Experience', 23), (2,  'Educational Background', 18), (2,  'Certifications', 7),
-(3,  'Skills', 24), (3,  'Work Experience', 21), (3,  'Educational Background', 14), (3,  'Certifications', 10),
-(4,  'Skills', 32), (4,  'Work Experience', 25), (4,  'Educational Background', 17), (4,  'Certifications', 10),
-(5,  'Skills', 36), (5,  'Work Experience', 27), (5,  'Educational Background', 18), (5,  'Certifications', 10),
-(6,  'Skills', 8),  (6,  'Work Experience', 6),  (6,  'Educational Background', 6),  (6,  'Certifications', 2),
-(7,  'Skills', 24), (7,  'Work Experience', 18), (7,  'Educational Background', 10), (7,  'Certifications', 6),
-(8,  'Skills', 26), (8,  'Work Experience', 22), (8,  'Educational Background', 16), (8,  'Certifications', 10),
-(9,  'Skills', 34), (9,  'Work Experience', 26), (9,  'Educational Background', 18), (9,  'Certifications', 10),
-(10, 'Skills', 38), (10, 'Work Experience', 28), (10, 'Educational Background', 20), (10, 'Certifications', 10);
+-- facilities (restored table)
+INSERT IGNORE INTO `facilities` (`facility_id`, `name`, `type`, `location`, `capacity`, `icon`, `description`, `is_active`) VALUES
+(1, 'Room 1', 'On-site', 'Oxford Suites Makati, HR Office, 3rd Floor', 1, 'room', 'Primary on-site interview room with guest-facing setup.', 1),
+(2, 'Room 2', 'On-site', 'Oxford Suites Makati, HR Office, 3rd Floor', 1, 'room', 'Secondary on-site interview room for panel interviews.', 1),
+(3, 'Room 3', 'On-site', 'Oxford Suites Makati, HR Office, 3rd Floor', 2, 'room', 'Practical demonstration room for hands-on assessments.', 1),
+(4, 'Online Interview', 'Virtual', 'meet.oxfordsuites.ph/interview-room', 5, 'online', 'Virtual interview room hosted on the company meeting platform.', 1);
 
 -- interviews
 INSERT INTO `interviews` (`interview_id`, `interview_code`, `applicant_id`, `scheduled_date`, `scheduled_time`, `mode`, `interviewer_employee_id`, `interviewer_name`, `status`) VALUES
@@ -378,11 +336,11 @@ INSERT INTO `interviews` (`interview_id`, `interview_code`, `applicant_id`, `sch
 (4, 'INT-204', 5,  '2026-07-30', '10:00:00', 'On-site',  2, 'Chef Gabriel Mendoza', 'Completed'),
 (5, 'INT-205', 9,  '2026-07-31', '14:00:00', 'On-site',  1, 'Ana Ramos',            'Scheduled');
 
--- applicant_assessments (5 criteria, /100)
-INSERT INTO `applicant_assessments` (`assessment_id`, `applicant_id`, `assessor_user_id`, `assessment_date`, `scores_json`, `total_score`, `outcome`, `remarks`) VALUES
-(1, 1, 2, '2026-07-23', '{"Guest Service Orientation":19,"Communication Skills":18,"Technical / Practical Skill":20,"Grooming & Professionalism":18,"Availability & Flexibility":19}', 94.00, 'Recommended', 'Practical front desk simulation passed with 94%. Advanced to job offer.'),
-(2, 5, 2, '2026-07-26', '{"Guest Service Orientation":16,"Communication Skills":17,"Technical / Practical Skill":18,"Grooming & Professionalism":16,"Availability & Flexibility":15}', 82.00, 'Recommended', 'Cook test assessment passed; solid knife skills and station timing.'),
-(3, 4, 2, '2026-07-27', '{"Guest Service Orientation":17,"Communication Skills":18,"Technical / Practical Skill":19,"Grooming & Professionalism":17,"Availability & Flexibility":17}', 88.00, 'Recommended', 'Mixology practical assessment passed with 88%.');
+-- applicant_evaluations (interview_assessment)
+INSERT INTO `applicant_evaluations` (`evaluation_id`, `eval_type`, `original_id`, `applicant_id`, `assessor_user_id`, `evaluation_date`, `scores_json`, `total_score`, `outcome`, `remarks`) VALUES
+(1, 'interview_assessment', 1, 1, 2, '2026-07-23', '{"Guest Service Orientation":19,"Communication Skills":18,"Technical / Practical Skill":20,"Grooming & Professionalism":18,"Availability & Flexibility":19}', 94.00, 'Recommended', 'Practical front desk simulation passed with 94%. Advanced to job offer.'),
+(2, 'interview_assessment', 2, 5, 2, '2026-07-26', '{"Guest Service Orientation":16,"Communication Skills":17,"Technical / Practical Skill":18,"Grooming & Professionalism":16,"Availability & Flexibility":15}', 82.00, 'Recommended', 'Cook test assessment passed; solid knife skills and station timing.'),
+(3, 'interview_assessment', 3, 4, 2, '2026-07-27', '{"Guest Service Orientation":17,"Communication Skills":18,"Technical / Practical Skill":19,"Grooming & Professionalism":17,"Availability & Flexibility":17}', 88.00, 'Recommended', 'Mixology practical assessment passed with 88%.');
 
 -- ---------------------------------------------------------------------------
 -- Domain 3: Hiring & Onboarding
@@ -419,32 +377,11 @@ INSERT INTO `new_hires` (`new_hire_id`, `new_hire_code`, `applicant_id`, `employ
 (11, 'NH-11', NULL, 20, 'Grace Panganiban', 'grace.panganiban@email.com',    '0917 332 8890', 2, 1, 'Regular',        '2025-11-10'),
 (12, 'NH-12', NULL, 21, 'Noel Fajardo',     'noel.fajardo@email.com',        '0918 774 3320', 8, 5, 'Regular',        '2025-01-27');
 
--- onboarding_checklist_templates (ids 1-3)
-INSERT INTO `onboarding_checklist_templates` (`template_id`, `template_code`, `title`, `phase`, `position_scope_json`, `status`) VALUES
-(1, 'TPL-001', 'Pre-Employment Requirements', 'Pre-onboarding', '["all"]', 'Active'),
-(2, 'TPL-002', 'Standard Probationary Checklist', 'Probationary', '["all"]', 'Active'),
-(3, 'TPL-003', 'Regularization Checklist', 'Regular', '["all"]', 'Active');
-
--- onboarding_checklist_items (ids 1-8 = TPL-001, 9-14 = TPL-002, 15-18 = TPL-003)
-INSERT INTO `onboarding_checklist_items` (`template_item_id`, `template_id`, `item_text`, `sort_order`) VALUES
-(1,  1, 'Signed employment contract', 1),
-(2,  1, 'NBI / Police clearance', 2),
-(3,  1, 'Pre-employment medical exam', 3),
-(4,  1, 'SSS / PhilHealth / Pag-IBIG / TIN', 4),
-(5,  1, 'Birth certificate (PSA)', 5),
-(6,  1, 'Company orientation attended', 6),
-(7,  1, 'Uniform & ID issued', 7),
-(8,  1, 'Department on-the-job training', 8),
-(9,  2, 'Department orientation completed', 1),
-(10, 2, 'Job description acknowledged', 2),
-(11, 2, '1st month performance evaluation', 3),
-(12, 2, '3rd month performance evaluation', 4),
-(13, 2, '5th month performance evaluation', 5),
-(14, 2, 'Training hours completed', 6),
-(15, 3, 'Regularization contract signed', 1),
-(16, 3, 'HMO enrollment submitted', 2),
-(17, 3, 'Leave credits activated', 3),
-(18, 3, 'Performance goals set', 4);
+-- onboarding_checklist_templates (ids 1-3; items inlined since Phase 4a)
+INSERT INTO `onboarding_checklist_templates` (`template_id`, `template_code`, `title`, `phase`, `position_scope_json`, `status`, `items_json`) VALUES
+(1, 'TPL-001', 'Pre-Employment Requirements', 'Pre-onboarding', '["all"]', 'Active', '[{"template_item_id":1,"template_id":1,"item_text":"Signed employment contract","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":1,"created_at":"2026-10-18 17:06:13"},{"template_item_id":2,"template_id":1,"item_text":"NBI / Police clearance","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":2,"created_at":"2026-10-18 17:06:13"},{"template_item_id":3,"template_id":1,"item_text":"Pre-employment medical exam","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":3,"created_at":"2026-10-18 17:06:13"},{"template_item_id":4,"template_id":1,"item_text":"SSS / PhilHealth / Pag-IBIG / TIN","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":4,"created_at":"2026-10-18 17:06:13"},{"template_item_id":5,"template_id":1,"item_text":"Birth certificate (PSA)","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":5,"created_at":"2026-10-18 17:06:13"},{"template_item_id":6,"template_id":1,"item_text":"Company orientation attended","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":6,"created_at":"2026-10-18 17:06:13"},{"template_item_id":7,"template_id":1,"item_text":"Uniform & ID issued","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":7,"created_at":"2026-10-18 17:06:13"},{"template_item_id":8,"template_id":1,"item_text":"Department on-the-job training","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":8,"created_at":"2026-10-18 17:06:13"}]'),
+(2, 'TPL-002', 'Standard Probationary Checklist', 'Probationary', '["all"]', 'Active', '[{"template_item_id":9,"template_id":2,"item_text":"Department orientation completed","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":1,"created_at":"2026-10-18 17:06:13"},{"template_item_id":10,"template_id":2,"item_text":"Job description acknowledged","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":2,"created_at":"2026-10-18 17:06:13"},{"template_item_id":11,"template_id":2,"item_text":"1st month performance evaluation","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":3,"created_at":"2026-10-18 17:06:13"},{"template_item_id":12,"template_id":2,"item_text":"3rd month performance evaluation","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":4,"created_at":"2026-10-18 17:06:13"},{"template_item_id":13,"template_id":2,"item_text":"5th month performance evaluation","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":5,"created_at":"2026-10-18 17:06:13"},{"template_item_id":14,"template_id":2,"item_text":"Training hours completed","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":6,"created_at":"2026-10-18 17:06:13"}]'),
+(3, 'TPL-003', 'Regularization Checklist', 'Regular', '["all"]', 'Active', '[{"template_item_id":15,"template_id":3,"item_text":"Regularization contract signed","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":1,"created_at":"2026-10-18 17:06:13"},{"template_item_id":16,"template_id":3,"item_text":"HMO enrollment submitted","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":2,"created_at":"2026-10-18 17:06:13"},{"template_item_id":17,"template_id":3,"item_text":"Leave credits activated","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":3,"created_at":"2026-10-18 17:06:13"},{"template_item_id":18,"template_id":3,"item_text":"Performance goals set","instructions":null,"requires_upload":false,"upload_placeholder":null,"sort_order":4,"created_at":"2026-10-18 17:06:13"}]');
 
 -- employee_onboarding_items (per-employee snapshots + done flags from fixture)
 INSERT INTO `employee_onboarding_items` (`employee_id`, `new_hire_id`, `template_item_id`, `item_text`, `done`, `completed_at`, `completed_by_user_id`) VALUES
@@ -578,115 +515,35 @@ INSERT INTO `attendance_records` (`employee_id`, `work_date`, `time_in`, `time_o
 (6, '2026-07-24', '2026-07-24 09:58:00', '2026-07-24 18:02:00', '2026-07-24 12:00:00', '2026-07-24 12:45:00', 8.10,  0, 0, 0.00, 'Present',     'Completed'),
 (6, '2026-07-25', '2026-07-25 09:55:00', '2026-07-25 18:05:00', '2026-07-25 12:02:00', '2026-07-25 12:50:00', 8.20,  0, 0, 0.00, 'Present',     'Completed');
 
--- work_schedules (Kevin Dela Cruz; day_of_week 0 = Monday ... 6 = Sunday)
-INSERT INTO `work_schedules` (`employee_id`, `day_of_week`, `shift_name`, `start_time`, `end_time`, `location`, `is_rest_day`, `effective_from`, `effective_to`) VALUES
-(5, 0, 'AM Shift', '07:00:00', '16:00:00', 'Main Kitchen', 0, '2026-07-01', NULL),
-(5, 1, 'AM Shift', '07:00:00', '16:00:00', 'Main Kitchen', 0, '2026-07-01', NULL),
-(5, 2, 'Mid Shift', '11:00:00', '20:00:00', 'Banquet',      0, '2026-07-01', NULL),
-(5, 3, 'Mid Shift', '11:00:00', '20:00:00', 'Banquet',      0, '2026-07-01', NULL),
-(5, 4, 'PM Shift', '14:00:00', '23:00:00', 'Main Kitchen', 0, '2026-07-01', NULL),
-(5, 5, NULL,        NULL,        NULL,        NULL,          1, '2026-07-01', NULL),
-(5, 6, NULL,        NULL,        NULL,        NULL,          1, '2026-07-01', NULL);
+-- work_schedules (inlined into employees.schedule_json since Phase 5d)
+UPDATE `employees` SET `schedule_json` = '[{"work_schedule_id":1,"employee_id":5,"day_of_week":0,"shift_name":"AM Shift","start_time":"07:00:00","end_time":"16:00:00","location":"Main Kitchen","is_rest_day":false,"effective_from":"2026-07-01","effective_to":null},{"work_schedule_id":2,"employee_id":5,"day_of_week":1,"shift_name":"AM Shift","start_time":"07:00:00","end_time":"16:00:00","location":"Main Kitchen","is_rest_day":false,"effective_from":"2026-07-01","effective_to":null},{"work_schedule_id":3,"employee_id":5,"day_of_week":2,"shift_name":"Mid Shift","start_time":"11:00:00","end_time":"20:00:00","location":"Banquet","is_rest_day":false,"effective_from":"2026-07-01","effective_to":null},{"work_schedule_id":4,"employee_id":5,"day_of_week":3,"shift_name":"Mid Shift","start_time":"11:00:00","end_time":"20:00:00","location":"Banquet","is_rest_day":false,"effective_from":"2026-07-01","effective_to":null},{"work_schedule_id":5,"employee_id":5,"day_of_week":4,"shift_name":"PM Shift","start_time":"14:00:00","end_time":"23:00:00","location":"Main Kitchen","is_rest_day":false,"effective_from":"2026-07-01","effective_to":null},{"work_schedule_id":6,"employee_id":5,"day_of_week":5,"shift_name":null,"start_time":null,"end_time":null,"location":null,"is_rest_day":true,"effective_from":"2026-07-01","effective_to":null},{"work_schedule_id":7,"employee_id":5,"day_of_week":6,"shift_name":null,"start_time":null,"end_time":null,"location":null,"is_rest_day":true,"effective_from":"2026-07-01","effective_to":null}]' WHERE `employee_id` = 5;
 
 -- ---------------------------------------------------------------------------
 -- Domain 5: Payroll & Benefits
 -- ---------------------------------------------------------------------------
 
--- payroll_periods (ids 1-4)
-INSERT INTO `payroll_periods` (`payroll_period_id`, `period_code`, `period_name`, `period_start`, `period_end`, `payout_date`, `status`) VALUES
-(1, 'PAY-2026-06-1C', '1st Cut-off June 2026', '2026-06-01', '2026-06-15', '2026-06-20', 'Closed'),
-(2, 'PAY-2026-06-2C', '2nd Cut-off June 2026', '2026-06-16', '2026-06-30', '2026-07-05', 'Closed'),
-(3, 'PAY-2026-07-1C', '1st Cut-off July 2026', '2026-07-01', '2026-07-15', '2026-07-20', 'Closed'),
-(4, 'PAY-2026-07-2C', '2nd Cut-off July 2026', '2026-07-16', '2026-07-31', '2026-08-05', 'Open');
+-- payroll_periods (restored table)
+INSERT IGNORE INTO `payroll_periods` (`payroll_period_id`, `period_code`, `period_name`, `period_start`, `period_end`, `payout_date`, `status`) VALUES
+(1, '2026-06-A', 'June 1–15, 2026',  '2026-06-01', '2026-06-15', '2026-06-20', 'Closed'),
+(2, '2026-06-B', 'June 16–30, 2026', '2026-06-16', '2026-06-30', '2026-07-05', 'Closed'),
+(3, '2026-07-A', 'July 1–15, 2026',  '2026-07-01', '2026-07-15', '2026-07-20', 'Closed'),
+(4, '2026-07-B', 'July 16–31, 2026', '2026-07-16', '2026-07-31', '2026-08-05', 'Open');
 
--- payroll_records
-INSERT INTO `payroll_records` (`payroll_record_id`, `employee_id`, `payroll_period_id`, `pay_period_start`, `pay_period_end`, `payout_date`, `gross_pay`, `net_pay`, `status`) VALUES
-(1, 5, 1, '2026-06-01', '2026-06-15', '2026-06-20', 10600.00,  8975.00,  'Released'),
-(2, 5, 2, '2026-06-16', '2026-06-30', '2026-07-05', 10650.00,  9040.00,  'Released'),
-(3, 5, 3, '2026-07-01', '2026-07-15', '2026-07-20', 10750.00,  9120.00,  'Released'),
-(4, 5, 4, '2026-07-16', '2026-07-31', '2026-08-05', 21500.00, 18240.00,  'Draft'),
-(5, 6, 3, '2026-07-01', '2026-07-15', '2026-07-20', 17400.00, 15120.00,  'Released'),
-(6, 1, 3, '2026-07-01', '2026-07-15', '2026-07-20', 48000.00, 41300.00,  'Finalized'),
-(7, 8, 3, '2026-07-01', '2026-07-15', '2026-07-20', 26000.00, 22800.00,  'Released');
+-- payroll_records (inlined items_json)
+INSERT INTO `payroll_records` (`payroll_record_id`, `employee_id`, `payroll_period_id`, `pay_period_start`, `pay_period_end`, `payout_date`, `gross_pay`, `net_pay`, `items_json`, `status`) VALUES
+(1, 5, 1, '2026-06-01', '2026-06-15', '2026-06-20', 10600.00, 8975.00, '[{"item_type": "Earning", "label": "Basic Pay", "amount": 8000.0}, {"item_type": "Earning", "label": "Overtime Pay", "amount": 950.0}, {"item_type": "Earning", "label": "Night Differential", "amount": 400.0}, {"item_type": "Earning", "label": "Meal Allowance", "amount": 750.0}, {"item_type": "Earning", "label": "Service Charge", "amount": 500.0}, {"item_type": "Deduction", "label": "SSS", "amount": 450.0}, {"item_type": "Deduction", "label": "PhilHealth", "amount": 275.0}, {"item_type": "Deduction", "label": "Pag-IBIG", "amount": 100.0}, {"item_type": "Deduction", "label": "Withholding Tax", "amount": 575.0}, {"item_type": "Deduction", "label": "Company Loan", "amount": 225.0}]', 'Released'),
+(2, 5, 2, '2026-06-16', '2026-06-30', '2026-07-05', 10650.00, 9040.00, '[{"item_type": "Earning", "label": "Basic Pay", "amount": 8000.0}, {"item_type": "Earning", "label": "Overtime Pay", "amount": 1000.0}, {"item_type": "Earning", "label": "Night Differential", "amount": 400.0}, {"item_type": "Earning", "label": "Meal Allowance", "amount": 750.0}, {"item_type": "Earning", "label": "Service Charge", "amount": 500.0}, {"item_type": "Deduction", "label": "SSS", "amount": 450.0}, {"item_type": "Deduction", "label": "PhilHealth", "amount": 275.0}, {"item_type": "Deduction", "label": "Pag-IBIG", "amount": 100.0}, {"item_type": "Deduction", "label": "Withholding Tax", "amount": 560.0}, {"item_type": "Deduction", "label": "Company Loan", "amount": 225.0}]', 'Released'),
+(3, 5, 3, '2026-07-01', '2026-07-15', '2026-07-20', 10750.00, 9120.00, '[{"item_type": "Earning", "label": "Basic Pay", "amount": 8000.0}, {"item_type": "Earning", "label": "Overtime Pay", "amount": 1050.0}, {"item_type": "Earning", "label": "Night Differential", "amount": 450.0}, {"item_type": "Earning", "label": "Meal Allowance", "amount": 750.0}, {"item_type": "Earning", "label": "Service Charge", "amount": 500.0}, {"item_type": "Deduction", "label": "SSS", "amount": 450.0}, {"item_type": "Deduction", "label": "PhilHealth", "amount": 275.0}, {"item_type": "Deduction", "label": "Pag-IBIG", "amount": 100.0}, {"item_type": "Deduction", "label": "Withholding Tax", "amount": 580.0}, {"item_type": "Deduction", "label": "Company Loan", "amount": 225.0}]', 'Released'),
+(4, 5, 4, '2026-07-16', '2026-07-31', '2026-08-05', 21500.00, 18240.00, '[{"item_type": "Earning", "label": "Basic Pay", "amount": 16000.0}, {"item_type": "Earning", "label": "Overtime Pay", "amount": 2100.0}, {"item_type": "Earning", "label": "Night Differential", "amount": 900.0}, {"item_type": "Earning", "label": "Meal Allowance", "amount": 1500.0}, {"item_type": "Earning", "label": "Service Charge", "amount": 1000.0}, {"item_type": "Deduction", "label": "SSS", "amount": 900.0}, {"item_type": "Deduction", "label": "PhilHealth", "amount": 550.0}, {"item_type": "Deduction", "label": "Pag-IBIG", "amount": 200.0}, {"item_type": "Deduction", "label": "Withholding Tax", "amount": 1160.0}, {"item_type": "Deduction", "label": "Company Loan", "amount": 450.0}]', 'Draft'),
+(5, 6, 3, '2026-07-01', '2026-07-15', '2026-07-20', 17400.00, 15120.00, '[{"item_type": "Earning", "label": "Basic Pay", "amount": 14000.0}, {"item_type": "Earning", "label": "Service Charge", "amount": 1800.0}, {"item_type": "Earning", "label": "Meal Allowance", "amount": 1600.0}, {"item_type": "Deduction", "label": "SSS", "amount": 700.0}, {"item_type": "Deduction", "label": "PhilHealth", "amount": 400.0}, {"item_type": "Deduction", "label": "Pag-IBIG", "amount": 200.0}, {"item_type": "Deduction", "label": "Withholding Tax", "amount": 980.0}]', 'Released'),
+(6, 1, 3, '2026-07-01', '2026-07-15', '2026-07-20', 48000.00, 41300.00, '[{"item_type": "Earning", "label": "Basic Pay", "amount": 42000.0}, {"item_type": "Earning", "label": "Service Charge", "amount": 4000.0}, {"item_type": "Earning", "label": "Meal Allowance", "amount": 2000.0}, {"item_type": "Deduction", "label": "SSS", "amount": 1125.0}, {"item_type": "Deduction", "label": "PhilHealth", "amount": 750.0}, {"item_type": "Deduction", "label": "Pag-IBIG", "amount": 300.0}, {"item_type": "Deduction", "label": "Withholding Tax", "amount": 4525.0}]', 'Finalized'),
+(7, 8, 3, '2026-07-01', '2026-07-15', '2026-07-20', 26000.00, 22800.00, '[{"item_type": "Earning", "label": "Basic Pay", "amount": 23500.0}, {"item_type": "Earning", "label": "Service Charge", "amount": 1800.0}, {"item_type": "Earning", "label": "Meal Allowance", "amount": 700.0}, {"item_type": "Deduction", "label": "SSS", "amount": 800.0}, {"item_type": "Deduction", "label": "PhilHealth", "amount": 450.0}, {"item_type": "Deduction", "label": "Pag-IBIG", "amount": 200.0}, {"item_type": "Deduction", "label": "Withholding Tax", "amount": 1750.0}]', 'Released');
 
--- payroll_items (earnings sum to gross_pay; deductions sum to gross-net)
-INSERT INTO `payroll_items` (`payroll_record_id`, `item_type`, `label`, `amount`) VALUES
-(1, 'Earning',   'Basic Pay',            8000.00),
-(1, 'Earning',   'Overtime Pay',          950.00),
-(1, 'Earning',   'Night Differential',    400.00),
-(1, 'Earning',   'Meal Allowance',        750.00),
-(1, 'Earning',   'Service Charge',        500.00),
-(1, 'Deduction', 'SSS',                   450.00),
-(1, 'Deduction', 'PhilHealth',            275.00),
-(1, 'Deduction', 'Pag-IBIG',              100.00),
-(1, 'Deduction', 'Withholding Tax',       575.00),
-(1, 'Deduction', 'Company Loan',          225.00),
-(2, 'Earning',   'Basic Pay',            8000.00),
-(2, 'Earning',   'Overtime Pay',         1000.00),
-(2, 'Earning',   'Night Differential',    400.00),
-(2, 'Earning',   'Meal Allowance',        750.00),
-(2, 'Earning',   'Service Charge',        500.00),
-(2, 'Deduction', 'SSS',                   450.00),
-(2, 'Deduction', 'PhilHealth',            275.00),
-(2, 'Deduction', 'Pag-IBIG',              100.00),
-(2, 'Deduction', 'Withholding Tax',       560.00),
-(2, 'Deduction', 'Company Loan',          225.00),
-(3, 'Earning',   'Basic Pay',            8000.00),
-(3, 'Earning',   'Overtime Pay',         1050.00),
-(3, 'Earning',   'Night Differential',    450.00),
-(3, 'Earning',   'Meal Allowance',        750.00),
-(3, 'Earning',   'Service Charge',        500.00),
-(3, 'Deduction', 'SSS',                   450.00),
-(3, 'Deduction', 'PhilHealth',            275.00),
-(3, 'Deduction', 'Pag-IBIG',              100.00),
-(3, 'Deduction', 'Withholding Tax',       580.00),
-(3, 'Deduction', 'Company Loan',          225.00),
-(4, 'Earning',   'Basic Pay',           16000.00),
-(4, 'Earning',   'Overtime Pay',         2100.00),
-(4, 'Earning',   'Night Differential',    900.00),
-(4, 'Earning',   'Meal Allowance',       1500.00),
-(4, 'Earning',   'Service Charge',       1000.00),
-(4, 'Deduction', 'SSS',                   900.00),
-(4, 'Deduction', 'PhilHealth',            550.00),
-(4, 'Deduction', 'Pag-IBIG',              200.00),
-(4, 'Deduction', 'Withholding Tax',      1160.00),
-(4, 'Deduction', 'Company Loan',          450.00),
-(5, 'Earning',   'Basic Pay',           14000.00),
-(5, 'Earning',   'Service Charge',       1800.00),
-(5, 'Earning',   'Meal Allowance',       1600.00),
-(5, 'Deduction', 'SSS',                   700.00),
-(5, 'Deduction', 'PhilHealth',            400.00),
-(5, 'Deduction', 'Pag-IBIG',              200.00),
-(5, 'Deduction', 'Withholding Tax',       980.00),
-(6, 'Earning',   'Basic Pay',           42000.00),
-(6, 'Earning',   'Service Charge',       4000.00),
-(6, 'Earning',   'Meal Allowance',       2000.00),
-(6, 'Deduction', 'SSS',                  1125.00),
-(6, 'Deduction', 'PhilHealth',            750.00),
-(6, 'Deduction', 'Pag-IBIG',              300.00),
-(6, 'Deduction', 'Withholding Tax',      4525.00),
-(7, 'Earning',   'Basic Pay',           23500.00),
-(7, 'Earning',   'Service Charge',       1800.00),
-(7, 'Earning',   'Meal Allowance',        700.00),
-(7, 'Deduction', 'SSS',                   800.00),
-(7, 'Deduction', 'PhilHealth',            450.00),
-(7, 'Deduction', 'Pag-IBIG',              200.00),
-(7, 'Deduction', 'Withholding Tax',      1750.00);
-
--- employee_benefits
-INSERT INTO `employee_benefits` (`employee_id`, `benefit_name`, `reference_value`, `note`, `effective_date`, `end_date`, `status`) VALUES
-(5, 'SSS',          '34-1234567-8',     'Active contributions',              '2026-04-15', NULL,          'Active'),
-(5, 'PhilHealth',   '12-345678901-2',   'Active',                            '2026-04-15', NULL,          'Active'),
-(5, 'Pag-IBIG',     '1234-5678-9012',   'Active + MP2',                      '2026-04-15', NULL,          'Active'),
-(5, 'BIR Tax Status', 'S — Single',     'TIN 123-456-789',                   '2026-04-15', NULL,          'Active'),
-(5, 'HMO',          'iCare Platinum',   'Effective after regularization',     '2026-08-15', NULL,          'Inactive'),
-(5, 'Insurance',    'Group Life',       'PHP 500,000 coverage',              '2026-04-15', NULL,          'Active'),
-(1, 'SSS',          '34-2233445-6',     'Active contributions',              '2019-02-11', NULL,          'Active'),
-(1, 'HMO',          'iCare Gold',       'Executive plan',                    '2019-03-01', NULL,          'Active'),
-(6, 'SSS',          '34-5566778-9',     'Active contributions',              '2025-09-16', NULL,          'Active'),
-(6, 'HMO',          'iCare Silver',     'Effective after regularization',    '2026-03-15', NULL,          'Active'),
-(8, 'SSS',          '34-7788990-1',     'Active contributions',              '2021-05-03', NULL,          'Active'),
-(8, 'Insurance',    'Group Life',       'PHP 300,000 coverage',              '2021-05-03', NULL,          'Active');
+-- employee_benefits (inlined into employees.benefits_json since Phase 5f)
+UPDATE `employees` SET `benefits_json` = '[{"employee_benefit_id":1,"employee_id":5,"benefit_name":"SSS","reference_value":"34-1234567-8","note":"Active contributions","effective_date":"2026-04-15","end_date":null,"status":"Active"},{"employee_benefit_id":2,"employee_id":5,"benefit_name":"PhilHealth","reference_value":"12-345678901-2","note":"Active","effective_date":"2026-04-15","end_date":null,"status":"Active"},{"employee_benefit_id":3,"employee_id":5,"benefit_name":"Pag-IBIG","reference_value":"1234-5678-9012","note":"Active + MP2","effective_date":"2026-04-15","end_date":null,"status":"Active"},{"employee_benefit_id":4,"employee_id":5,"benefit_name":"BIR Tax Status","reference_value":"S — Single","note":"TIN 123-456-789","effective_date":"2026-04-15","end_date":null,"status":"Active"},{"employee_benefit_id":5,"employee_id":5,"benefit_name":"HMO","reference_value":"iCare Platinum","note":"Effective after regularization","effective_date":"2026-08-15","end_date":null,"status":"Inactive"},{"employee_benefit_id":6,"employee_id":5,"benefit_name":"Insurance","reference_value":"Group Life","note":"PHP 500,000 coverage","effective_date":"2026-04-15","end_date":null,"status":"Active"}]' WHERE `employee_id` = 5;
+UPDATE `employees` SET `benefits_json` = '[{"employee_benefit_id":7,"employee_id":1,"benefit_name":"SSS","reference_value":"34-2233445-6","note":"Active contributions","effective_date":"2019-02-11","end_date":null,"status":"Active"},{"employee_benefit_id":8,"employee_id":1,"benefit_name":"HMO","reference_value":"iCare Gold","note":"Executive plan","effective_date":"2019-03-01","end_date":null,"status":"Active"}]' WHERE `employee_id` = 1;
+UPDATE `employees` SET `benefits_json` = '[{"employee_benefit_id":9,"employee_id":6,"benefit_name":"SSS","reference_value":"34-5566778-9","note":"Active contributions","effective_date":"2025-09-16","end_date":null,"status":"Active"},{"employee_benefit_id":10,"employee_id":6,"benefit_name":"HMO","reference_value":"iCare Silver","note":"Effective after regularization","effective_date":"2026-03-15","end_date":null,"status":"Active"}]' WHERE `employee_id` = 6;
+UPDATE `employees` SET `benefits_json` = '[{"employee_benefit_id":11,"employee_id":8,"benefit_name":"SSS","reference_value":"34-7788990-1","note":"Active contributions","effective_date":"2021-05-03","end_date":null,"status":"Active"},{"employee_benefit_id":12,"employee_id":8,"benefit_name":"Insurance","reference_value":"Group Life","note":"PHP 300,000 coverage","effective_date":"2021-05-03","end_date":null,"status":"Active"}]' WHERE `employee_id` = 8;
 
 -- ---------------------------------------------------------------------------
 -- Domain 6: Learning & Performance
@@ -756,16 +613,16 @@ INSERT INTO `notifications` (`system_user_id`, `type`, `title`, `body`, `module_
 (7, 'ess_request',  'COE request assigned',         'Certificate of Employment request REQ-4409 assigned to you.',              'ESS Management', 'ess_request', 'REQ-4409', 0, NULL),
 (8, 'ess_request',  'Loan application under review','Company loan application REQ-4405 assigned to you.',                       'ESS Management', 'ess_request', 'REQ-4405', 0, NULL);
 
--- user_login_activity
-INSERT INTO `user_login_activity` (`system_user_id`, `login_at`, `ip_address`, `device_info`, `user_agent`, `status`) VALUES
-(4, '2026-07-31 08:12:00', '10.0.4.88',  'Chrome · Windows',      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'success'),
-(4, '2026-07-30 18:45:00', '10.0.4.88',  'Mobile App · Android',  'OxfordSuitesHR/1.0 (Android 14)',                                'success'),
-(4, '2026-07-25 09:30:00', '10.0.4.88',  'Edge · Windows',        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/126.0',           'success'),
-(1, '2026-07-26 08:12:00', '192.168.10.4', 'Chrome · Windows',    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0',        'success'),
-(2, '2026-07-26 07:58:00', '192.168.10.22', 'Edge · Windows',     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/126.0',           'success'),
-(5, '2026-07-25 20:41:00', '10.0.4.101', 'Chrome · Android',       'Mozilla/5.0 (Linux; Android 13; Chrome/126.0)',                 'failed'),
-(5, '2026-07-25 20:40:00', '10.0.4.101', 'Chrome · Android',       'Mozilla/5.0 (Linux; Android 13; Chrome/126.0)',                 'failed'),
-(5, '2026-07-20 19:11:00', '10.0.4.101', 'Chrome · Android',       'Mozilla/5.0 (Linux; Android 13; Chrome/126.0)',                 'success');
+-- login activity (stored in audit_logs: module_name = 'Auth', action = 'Login')
+INSERT INTO `audit_logs` (`system_user_id`, `occurred_at`, `action`, `module_name`, `target_type`, `target_id`, `details`, `severity`, `ip_address`, `device_info`, `user_agent`, `status`) VALUES
+(4, '2026-07-31 08:12:00', 'Login', 'Auth', 'user', '4', NULL, 'Info', '10.0.4.88',  'Chrome · Windows',      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'success'),
+(4, '2026-07-30 18:45:00', 'Login', 'Auth', 'user', '4', NULL, 'Info', '10.0.4.88',  'Mobile App · Android',  'OxfordSuitesHR/1.0 (Android 14)',                                'success'),
+(4, '2026-07-25 09:30:00', 'Login', 'Auth', 'user', '4', NULL, 'Info', '10.0.4.88',  'Edge · Windows',        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/126.0',           'success'),
+(1, '2026-07-26 08:12:00', 'Login', 'Auth', 'user', '1', NULL, 'Info', '192.168.10.4', 'Chrome · Windows',    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0',        'success'),
+(2, '2026-07-26 07:58:00', 'Login', 'Auth', 'user', '2', NULL, 'Info', '192.168.10.22', 'Edge · Windows',     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/126.0',           'success'),
+(5, '2026-07-25 20:41:00', 'Login', 'Auth', 'user', '5', NULL, 'Info', '10.0.4.101', 'Chrome · Android',       'Mozilla/5.0 (Linux; Android 13; Chrome/126.0)',                 'failed'),
+(5, '2026-07-25 20:40:00', 'Login', 'Auth', 'user', '5', NULL, 'Info', '10.0.4.101', 'Chrome · Android',       'Mozilla/5.0 (Linux; Android 13; Chrome/126.0)',                 'failed'),
+(5, '2026-07-20 19:11:00', 'Login', 'Auth', 'user', '5', NULL, 'Info', '10.0.4.101', 'Chrome · Android',       'Mozilla/5.0 (Linux; Android 13; Chrome/126.0)',                 'success');
 
 -- audit_logs (system-user activity log + applicant-management audit trail)
 INSERT INTO `audit_logs` (`system_user_id`, `actor_role`, `actor_department`, `occurred_at`, `action`, `module_name`, `target_type`, `target_id`, `details`, `severity`, `ip_address`, `device_info`) VALUES
@@ -817,12 +674,13 @@ INSERT INTO `social_recognitions` (`recognition_id`, `sender_employee_id`, `reci
 (3, 5, NULL, 'Kevin Dela Cruz', 'Chef Marco Rossi', 'Line Cook · Kitchen / Culinary', 'Executive Chef · F&B', 'Going the Extra Mile', 'Thank you for mentoring the team through the new seasonal tasting menu prep and always looking out for kitchen crew welfare!', 11, 7, 5, 2, '2026-08-19 17:00:00', '2026-08-19 17:00:00'),
 (4, NULL, 7, 'Elena Torres', 'Ricardo Gomez', 'Housekeeping Supervisor · Housekeeping', 'Housekeeping Attendant · Housekeeping', 'Operational Excellence', 'Maintained a 100% spotless inspection pass rate across all 30 deluxe executive suites on Floor 8 with zero guest callbacks.', 9, 5, 8, 3, '2026-08-18 11:20:00', '2026-08-18 11:20:00');
 
--- recognition_reactions
-INSERT INTO `recognition_reactions` (`reaction_id`, `recognition_id`, `employee_id`, `reaction_type`, `created_at`, `updated_at`) VALUES
-(1, 1, 1, 'clap', '2026-08-21 10:00:00', '2026-08-21 10:00:00'),
-(2, 1, 1, 'star', '2026-08-21 10:00:00', '2026-08-21 10:00:00'),
-(3, 2, 1, 'heart', '2026-08-20 15:00:00', '2026-08-20 15:00:00'),
-(4, 4, 1, 'fire', '2026-08-18 12:00:00', '2026-08-18 12:00:00');
+
+-- reactions_json updates (Phase 3e)
+UPDATE `social_recognitions` SET `reactions_json` = '{"1": ["clap", "star"]}' WHERE `recognition_id` = 1;
+UPDATE `social_recognitions` SET `reactions_json` = '{"1": ["heart"]}' WHERE `recognition_id` = 2;
+UPDATE `social_recognitions` SET `reactions_json` = '{"1": ["fire"]}' WHERE `recognition_id` = 4;
+
+-- recognition_reactions (inlined into social_recognitions.reactions_json via migration)
 
 -- announcements
 INSERT INTO `announcements` (`published_date`, `title`, `body`, `audience`, `created_by_user_id`, `status`) VALUES
@@ -838,5 +696,10 @@ INSERT INTO `system_settings` (`setting_key`, `setting_value`, `updated_by_user_
 ('default_password', '{"password": "Oxford@2026"}', 1),
 ('recruitment.screening.enabled', '{"value": true}', 1),
 ('ess.default_processing_role', '{"value": "Admin"}', 1);
+
+-- interview facilities (Phase 4b inlined the facilities table into this key).
+-- IGNORE keeps the rows written by the consolidation migration on migrate:fresh.
+INSERT IGNORE INTO `system_settings` (`setting_key`, `setting_value`, `updated_by_user_id`) VALUES
+('interview.facilities', '[{"facility_id":1,"name":"Room 1","type":"On-site","location":"Oxford Suites Makati, HR Office, 3rd Floor","capacity":1,"icon":"room","description":"Primary on-site interview room with guest-facing setup.","is_active":true,"created_at":"2026-10-18 17:06:12","updated_at":"2026-10-18 17:06:12"},{"facility_id":2,"name":"Room 2","type":"On-site","location":"Oxford Suites Makati, HR Office, 3rd Floor","capacity":1,"icon":"room","description":"Secondary on-site interview room for panel interviews.","is_active":true,"created_at":"2026-10-18 17:06:12","updated_at":"2026-10-18 17:06:12"},{"facility_id":3,"name":"Room 3","type":"On-site","location":"Oxford Suites Makati, HR Office, 3rd Floor","capacity":2,"icon":"room","description":"Practical demonstration room for hands-on assessments.","is_active":true,"created_at":"2026-10-18 17:06:12","updated_at":"2026-10-18 17:06:12"},{"facility_id":4,"name":"Online Interview","type":"Virtual","location":"meet.oxfordsuites.ph/interview-room","capacity":5,"icon":"online","description":"Virtual interview room hosted on the company meeting platform.","is_active":true,"created_at":"2026-10-18 17:06:12","updated_at":"2026-10-18 17:06:12"}]', 1);
 
 SET FOREIGN_KEY_CHECKS=1;

@@ -97,7 +97,7 @@ hrms-root/
 
 ### 1. Authentication & Security (`Modules/Auth`)
 - **Login with 2FA OTP**: Authenticates users with username/email and password. If OTP is enabled, a secure 6-digit one-time PIN is emailed to the user before granting access.
-- **Session & Device Tracking**: Logs IP address, device type, and user-agent on every login attempt (tracked in `user_login_activity`).
+- **Session & Device Tracking**: Logs IP address, device type, and user-agent on every login attempt (stored in `audit_logs` with `module_name = 'Auth'`, `action = 'Login'`).
 - **Password Policies**: Configurable password strength rules (min length, special characters, uppercase, numbers) enforced across all portals.
 
 ### 2. Recruitment Management (`Modules/RecruitmentManagement`)
@@ -269,8 +269,7 @@ erDiagram
     employees ||--o{ work_schedules : assigned
     system_roles ||--o{ system_users : assigns
     system_roles ||--o{ role_permissions : configures
-    system_users ||--o{ user_login_activity : tracks
-    system_users ||--o{ audit_logs : generates
+    system_users ||--o{ audit_logs : logs_in_and_generates
 ```
 
 ### Table Index & Descriptions
@@ -279,7 +278,7 @@ erDiagram
 1. **`system_roles`**: System role definitions (`Super Admin`, `Admin`, `Employee`) with flags for system protection and super-admin privileges.
 2. **`role_permissions`**: Granular role-to-module capability mapping (e.g. `Recruitment Management`, `User Management`, `Full`, `View`, `Edit`).
 3. **`system_users`**: Portal accounts containing credentials, email, password hash, role foreign key, 2FA OTP toggle, and status (`Active`, `Suspended`).
-4. **`user_login_activity`**: Audit trail of all authentication events, IP addresses, client devices, user-agents, and success/failure statuses.
+4. **`audit_logs`** (login rows: `module_name = 'Auth'`, `action = 'Login'`): Audit trail of all authentication events, IP addresses, client devices, user-agents, and success/failure statuses.
 5. **`personal_access_tokens`**: Laravel Sanctum bearer token storage for API authorization.
 6. **`password_reset_tokens`**: Temporary security hashes for password recovery flows.
 
@@ -328,7 +327,7 @@ erDiagram
 
 #### F. Platform Operations, Chatbot & Audits
 42. **`chatbot_faqs`**: Knowledge base storing questions, answers, categories, and keyword triggers.
-43. **`chatbot_unanswered`**: Log of candidate questions that failed to find an answer, enabling continuous FAQ improvement.
+43. **`chatbot_messages` (rows with `source = 'unanswered'`)**: Log of candidate questions that failed to find an answer, enabling continuous FAQ improvement.
 44. **`announcements`**: System announcements targeted by audience role or department with expiry dates.
 45. **`notifications`**: User-specific in-app notification alerts with read/unread statuses.
 46. **`audit_logs`**: System audit trail capturing user IDs, module name, action event, payload changes (old/new values), and IP addresses.

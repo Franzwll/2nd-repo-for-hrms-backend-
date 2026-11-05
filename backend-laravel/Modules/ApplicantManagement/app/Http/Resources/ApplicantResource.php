@@ -86,8 +86,8 @@ class ApplicantResource extends JsonResource
                     $this->jobPost->position,
                 ),
             ]),
-            'screening_entities'  => ScreeningEntityResource::collection($this->whenLoaded('screeningEntities')),
-            'screening_scores'    => ScreeningScoreResource::collection($this->whenLoaded('screeningScores')),
+            'screening_entities'  => ScreeningEntityResource::collection($this->screeningEntities),
+            'screening_scores'    => ScreeningScoreResource::collection($this->screeningScores),
             'latest_screening'    => $this->when($this->relationLoaded('latestScreening') && $this->latestScreening, fn () => [
                 'screening_id'       => $this->latestScreening->screening_id,
                 'processing_status'  => $this->latestScreening->processing_status,

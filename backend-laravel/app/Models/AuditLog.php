@@ -25,11 +25,15 @@ class AuditLog extends Model
         'severity',
         'ip_address',
         'device_info',
+        'user_agent',
+        'status',
+        'extra_json',
         'url',
     ];
 
     protected $casts = [
         'occurred_at' => 'datetime',
+        'extra_json' => 'array',
     ];
 
     public function user(): BelongsTo

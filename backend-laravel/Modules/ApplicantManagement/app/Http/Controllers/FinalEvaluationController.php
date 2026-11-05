@@ -33,7 +33,7 @@ class FinalEvaluationController extends Controller
 
         $query = FinalEvaluation::with(['applicant.jobPost.department', 'recommendedJobPost'])
             ->orderByDesc('evaluation_date')
-            ->orderByDesc('final_evaluation_id');
+            ->orderByDesc('evaluation_id');
 
         if ($applicantId = $request->query('applicant_id')) {
             $query->where('applicant_id', $applicantId);
@@ -311,7 +311,7 @@ class FinalEvaluationController extends Controller
             ], 422);
         }
 
-        $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+        $final = $model->finalEvaluation()->latest('evaluation_id')->first();
         if (! $final) {
             return response()->json([
                 'message' => 'Complete the final evaluation before sending an offer.',
@@ -443,7 +443,7 @@ class FinalEvaluationController extends Controller
                     ], 422);
                 }
 
-                $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+                $final = $model->finalEvaluation()->latest('evaluation_id')->first();
                 if (! $final || $final->recommendation === 'Not Recommended') {
                     return response()->json([
                         'message' => 'A final evaluation recommending this candidate is required before accepting.',

@@ -13,9 +13,11 @@ class ApplicantScreeningScore extends Model
     public $timestamps = false; // only created_at in schema
 
     protected $fillable = [
+        'score_id',
         'applicant_id',
         'criterion',
         'score',
+        'created_at',
     ];
 
     protected $casts = [

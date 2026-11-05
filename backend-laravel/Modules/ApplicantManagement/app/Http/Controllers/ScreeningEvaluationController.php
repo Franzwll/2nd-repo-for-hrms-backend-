@@ -7,6 +7,7 @@ use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\ApplicantManagement\Models\Applicant;
+use Modules\ApplicantManagement\Models\ApplicantScreening;
 use Modules\ApplicantManagement\Models\ScreeningGroundTruth;
 use Modules\ApplicantManagement\Services\EvaluationService;
 
@@ -35,17 +36,29 @@ class ScreeningEvaluationController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $truth = ScreeningGroundTruth::updateOrCreate(
-            ['applicant_id' => $model->applicant_id],
-            [
-                'job_post_id' => $validated['job_post_id'] ?? $model->job_post_id,
-                'true_screening_result' => $validated['true_screening_result'],
-                'true_qualification_score' => $validated['true_qualification_score'] ?? null,
-                'true_missing_information_json' => $validated['true_missing_information'] ?? null,
-                'true_unrecognized_skills_json' => $validated['true_unrecognized_skills'] ?? null,
-                'notes' => $validated['notes'] ?? null,
-            ]
-        );
+        $jobPostId = $validated['job_post_id'] ?? $model->job_post_id;
+
+        $screening = ApplicantScreening::where('applicant_id', $model->applicant_id)
+            ->where('job_post_id', $jobPostId)
+            ->orderByDesc('screening_id')
+            ->first();
+
+        if (! $screening) {
+            $screening = ApplicantScreening::create([
+                'applicant_id' => $model->applicant_id,
+                'job_post_id' => $jobPostId,
+                'processing_status' => 'PENDING',
+            ]);
+        }
+
+        $screening->update([
+            'true_screening_result' => $validated['true_screening_result'],
+            'true_qualification_score' => $validated['true_qualification_score'] ?? null,
+            'true_missing_information_json' => $validated['true_missing_information'] ?? null,
+            'true_unrecognized_skills_json' => $validated['true_unrecognized_skills'] ?? null,
+            'ground_truth_notes' => $validated['notes'] ?? null,
+            'ground_truth_recorded_at' => now(),
+        ]);
 
         AuditLogger::log(
             action: 'Screening Ground Truth Recorded',
@@ -53,10 +66,10 @@ class ScreeningEvaluationController extends Controller
             severity: 'Info',
             targetType: 'Applicant',
             targetId: (string) $model->applicant_id,
-            details: "Expert screening label '{$truth->true_screening_result}' recorded for {$model->name}."
+            details: "Expert screening label '{$screening->true_screening_result}' recorded for {$model->name}."
         );
 
-        return response()->json(['data' => $truth], 201);
+        return response()->json(['data' => $screening], 201);
     }
 
     /* ------------------------------------------------------------------ */

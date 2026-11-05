@@ -24,7 +24,7 @@ class EmployeeDocumentCodeGenerator
     public function create(Employee $employee, array $attributes): EmployeeDocument
     {
         return DB::transaction(function () use ($employee, $attributes) {
-            $row = DB::table('document_code_sequences')->where('id', 1)->lockForUpdate()->first();
+            $row = DB::table('code_sequences')->where('seq_key', 'document_code')->lockForUpdate()->first();
 
             // Floor against existing rows so seeded / legacy documents (which
             // may use their own codes) can never be re-issued.
@@ -32,13 +32,13 @@ class EmployeeDocumentCodeGenerator
 
             if (! $row) {
                 // Self-heal on legacy databases where the seed row is missing.
-                DB::table('document_code_sequences')->insert(['id' => 1, 'next_val' => $floor]);
+                DB::table('code_sequences')->insert(['seq_key' => 'document_code', 'next_val' => $floor]);
                 $row = (object) ['next_val' => $floor];
             }
 
             $next = max((int) $row->next_val, $floor) + 1;
 
-            DB::table('document_code_sequences')->where('id', 1)->update(['next_val' => $next]);
+            DB::table('code_sequences')->where('seq_key', 'document_code')->update(['next_val' => $next]);
 
             return EmployeeDocument::create([
                 'employee_id' => $employee->employee_id,

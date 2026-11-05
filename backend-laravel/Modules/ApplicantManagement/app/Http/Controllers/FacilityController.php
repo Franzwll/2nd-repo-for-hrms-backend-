@@ -17,13 +17,11 @@ class FacilityController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Facility::query()->where('is_active', true)->orderBy('facility_id');
-
-        if ($type = $request->query('type')) {
-            $query->where('type', $type);
-        }
-
-        $facilities = $query->get();
+        $facilities = Facility::query()
+            ->where('is_active', true)
+            ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
+            ->orderBy('facility_id')
+            ->get();
 
         return response()->json([
             'data' => FacilityResource::collection($facilities),

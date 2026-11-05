@@ -52,10 +52,22 @@ class AuthFlowTest extends TestCase
         $this->assertEquals('Super Admin', $verify['user']['role']);
         $this->assertEquals('bullseur@oxfordsuites.com.ph', $verify['user']['email']);
 
-        $this->assertDatabaseHas('user_login_activity', [
+        $this->assertDatabaseHas('audit_logs', [
             'system_user_id' => $verify['user']['system_user_id'],
+            'module_name' => 'Auth',
+            'action' => 'Login',
             'status' => 'success',
         ]);
+
+        $history = $this->getJson(
+            "/api/v1/users/{$verify['user']['system_user_id']}/login-activity",
+            $this->authHeaders($verify['token'])
+        )->assertOk()->json();
+
+        $this->assertArrayHasKey('login_activity_id', $history['data'][0]);
+        $this->assertArrayHasKey('login_at', $history['data'][0]);
+        $this->assertSame($verify['user']['system_user_id'], $history['data'][0]['system_user_id']);
+        $this->assertSame('success', $history['data'][0]['status']);
 
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'User logged in',

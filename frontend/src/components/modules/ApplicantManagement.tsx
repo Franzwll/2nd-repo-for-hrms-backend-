@@ -38,6 +38,7 @@ import {
   Download,
   Eye,
   ExternalLink,
+  FileCheck,
   FileCheck2,
   FileText,
   Flag,
@@ -567,6 +568,14 @@ function transformApiInterview(i: ApiInterview): Interview {
     id: i.interview_code || `INT-${i.interview_id}`,
     dbId: i.interview_id,
     applicant: i.applicant?.name ?? `Applicant #${i.applicant_id}`,
+    ...((() => {
+      const appCode = i.applicant?.applicant_code ?? (i.applicant_id ? `APP-${i.applicant_id}` : null);
+      const appDbId = i.applicant_id ?? i.applicant?.applicant_id;
+      return {
+        ...(appCode != null ? { applicantId: appCode } : {}),
+        ...(appDbId != null ? { applicantDbId: appDbId } : {}),
+      };
+    })()),
     position: i.applicant?.position || "Front Desk Receptionist",
     date: i.scheduled_date,
     time: formatApiTime(i.scheduled_time),
@@ -584,6 +593,19 @@ function transformApiInterview(i: ApiInterview): Interview {
     zoomPassword: (i as unknown as Record<string, string | null>)["zoom_password"] ?? null,
     interview_notes: (i as unknown as Record<string, string | null>)["interview_notes"] ?? null,
   };
+}
+
+function matchesInterviewApplicant(
+  interview: { applicant?: string; applicantId?: string; applicantDbId?: number },
+  applicant: { id?: string; dbId?: number; name?: string }
+): boolean {
+  if (interview.applicantDbId !== undefined && applicant.dbId !== undefined) {
+    return interview.applicantDbId === applicant.dbId;
+  }
+  if (interview.applicantId && applicant.id) {
+    return interview.applicantId === applicant.id;
+  }
+  return !!interview.applicant && interview.applicant === applicant.name;
 }
 
 /** Maps an API assessment test into the local row shape. */
@@ -811,6 +833,7 @@ const DEFAULT_SCHEDULABLE_DAYS = [
 
 type AssessmentResult = {
   applicantId: string;
+  applicantDbId?: number;
   dbId?: number;
   name: string;
   position: string;
@@ -3070,8 +3093,6 @@ function ScreeningSupportDocsGrid({
   onOverride?: ((d: ApiApplicantDocument) => void) | undefined;
   title?: string;
   subtitle?: string;
-  /** The resume card belongs to "Resume & Documents"; the Supporting Document
-   *  Verification section only lists the uploaded proof papers. */
   showResume?: boolean;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -3086,40 +3107,59 @@ function ScreeningSupportDocsGrid({
         : d.doc_type === "Credential"
           ? "ID / Government ID"
           : "Supporting Document";
+
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-          <ShieldCheck className="h-4.5 w-4.5 text-primary" /> {title}
-        </h3>
-        <span className="rounded-full bg-secondary px-2 py-0.5 text-[0.68rem] font-semibold text-secondary-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="flex items-center gap-2 font-display text-base font-semibold">
+            <ShieldCheck className="h-4.5 w-4.5 text-primary" /> {title}
+          </h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+        </div>
+        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
           {docs.length} document{docs.length === 1 ? "" : "s"}
         </span>
       </div>
-      <p className="mt-0.5 text-[0.7rem] text-muted-foreground">{subtitle}</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(270px,1fr))]">
         {showResume && (
-          <div className="flex flex-col rounded-lg border border-border/70 p-4">
-            <div className="flex items-start gap-2.5">
-              <ScreeningDocIcon docType="resume" />
-              <div className="min-w-0">
-                <p className="truncate text-xs font-semibold" title={resumeName}>
-                  Resume
-                </p>
-                <p className="truncate text-[0.7rem] text-muted-foreground" title={resumeSub}>
-                  {resumeSub}
-                </p>
+          <div className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm">
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <ScreeningDocIcon docType="resume" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm leading-snug break-words text-foreground" title={resumeName}>
+                    Resume / CV
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground truncate" title={resumeSub}>
+                    {resumeSub}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center">
+                <ScreeningDocStatusPill status="SCREENED" />
               </div>
             </div>
-            <div className="mt-3">
-              <ScreeningDocStatusPill status="SCREENED" />
-            </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button size="sm" variant="outline" onClick={onOpenResume}>
-                View
+            <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 flex-1 min-w-[75px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                onClick={onOpenResume}
+              >
+                <Eye className="h-3.5 w-3.5 shrink-0" />
+                <span>View</span>
               </Button>
-              <Button size="sm" onClick={onOpenResume}>
-                Download
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                className="h-8 flex-1 min-w-[90px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                onClick={onOpenResume}
+              >
+                <Download className="h-3.5 w-3.5 shrink-0" />
+                <span>Download</span>
               </Button>
             </div>
           </div>
@@ -3138,100 +3178,109 @@ function ScreeningSupportDocsGrid({
             return (
               <div
                 key={d.applicant_document_id}
-                className="flex flex-col rounded-lg border border-border/70 p-4"
+                className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
               >
-                <button
-                  type="button"
-                  className="flex items-start gap-2.5 text-left"
-                  onClick={() => (detailed ? setExpandedId(expanded ? null : id) : undefined)}
-                  aria-expanded={detailed ? expanded : undefined}
-                  title={docTitleOf(d)}
-                >
-                  <ScreeningDocIcon docType={d.doc_type} label={screeningDocCaption(d.doc_type)} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold" title={docTitleOf(d)}>
-                      {docKindLabel(d)}
-                    </p>
-                    <p className="truncate text-[0.7rem] text-muted-foreground">
-                      {screeningDocCaption(d.doc_type)} · {d.doc_type}
-                    </p>
-                  </div>
-                  {detailed && (
-                    <span
-                      className="flex h-7 w-6 shrink-0 items-center justify-center text-muted-foreground"
-                      aria-hidden="true"
-                    >
-                      {expanded ? (
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5" />
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div
+                      className={cn(
+                        "flex items-start gap-3 min-w-0 flex-1",
+                        detailed && "cursor-pointer select-none"
                       )}
-                    </span>
-                  )}
-                </button>
-                <div className="mt-3">
-                  <ScreeningDocStatusPill status={d.verification_status} />
+                      onClick={() => (detailed ? setExpandedId(expanded ? null : id) : undefined)}
+                    >
+                      <ScreeningDocIcon docType={d.doc_type} label={screeningDocCaption(d.doc_type)} />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-sm leading-snug break-words text-foreground" title={docTitleOf(d)}>
+                          {docKindLabel(d)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground truncate" title={docTitleOf(d)}>
+                          {d.title || d.original_name || `${screeningDocCaption(d.doc_type)} · ${d.doc_type}`}
+                        </p>
+                      </div>
+                    </div>
+                    {detailed && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setExpandedId(expanded ? null : id)}
+                        className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                        title={expanded ? "Collapse details" : "Expand details"}
+                        aria-expanded={expanded}
+                      >
+                        {expanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <ScreeningDocStatusPill status={d.verification_status} />
+                    {checks.length > 0 && (
+                      <span className="text-[0.68rem] font-medium text-muted-foreground">
+                        {checks.filter(([, c]) => (c as any).match === true || (c as any).match === "MATCH" || (c as any).result === "MATCH").length}/{checks.length} verified
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className={cn("mt-3 grid gap-2", detailed ? "grid-cols-3" : "grid-cols-2")}>
+
+                <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
                   <Button
+                    type="button"
                     size="sm"
                     variant="outline"
-                    className={cn(detailed && "h-7 min-w-0 px-1 text-[0.68rem]")}
+                    className="h-8 flex-1 min-w-[75px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
                     onClick={() => onView(d)}
                   >
-                    {detailed ? (
-                      <>
-                        <Eye className="mr-1 h-3 w-3 shrink-0" /> View
-                      </>
-                    ) : (
-                      "View"
-                    )}
+                    <Eye className="h-3.5 w-3.5 shrink-0" />
+                    <span>View</span>
                   </Button>
                   <Button
+                    type="button"
                     size="sm"
                     variant={detailed ? "outline" : "default"}
-                    className={cn(detailed && "h-7 min-w-0 px-1 text-[0.68rem]")}
+                    className="h-8 flex-1 min-w-[90px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
                     onClick={() => onDownload(d)}
                   >
-                    {detailed ? (
-                      <>
-                        <Download className="mr-1 h-3 w-3 shrink-0" /> Download
-                      </>
-                    ) : (
-                      "Download"
-                    )}
+                    <Download className="h-3.5 w-3.5 shrink-0" />
+                    <span>Download</span>
                   </Button>
                   {detailed && onReverify && (
                     <Button
+                      type="button"
                       size="sm"
                       variant="outline"
-                      className="h-7 min-w-0 px-1 text-[0.68rem]"
+                      className="h-8 flex-1 min-w-[85px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
                       disabled={busy}
                       onClick={() => onReverify(d)}
                     >
                       {busy ? (
-                        <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                       ) : (
-                        <>
-                          <RefreshCw className="mr-1 h-3 w-3 shrink-0" /> Reverify
-                        </>
+                        <RefreshCw className="h-3.5 w-3.5 shrink-0" />
                       )}
+                      <span>Reverify</span>
                     </Button>
                   )}
                 </div>
                 {detailed && expanded && (
-                  <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+                  <div className="mt-3.5 space-y-2.5 border-t border-border/60 pt-3">
                     {d.verification_result?.summary && (
-                      <p className="text-xs leading-relaxed text-muted-foreground">
+                      <div className="rounded-lg bg-muted/40 p-2.5 text-xs leading-relaxed text-muted-foreground">
                         {d.verification_result.summary}
-                      </p>
+                      </div>
                     )}
                     {onOverride && d.verification_status === "DISCREPANCY_FOUND" && (
                       <div className="pt-1">
                         <Button
+                          type="button"
                           size="sm"
                           variant="outline"
-                          className="w-full h-7 text-[0.7rem] border-primary/40 text-primary hover:bg-primary/10"
+                          className="w-full h-8 text-xs font-medium border-primary/40 text-primary hover:bg-primary/10 cursor-pointer"
                           disabled={busy}
                           onClick={() => onOverride(d)}
                         >
@@ -3240,13 +3289,15 @@ function ScreeningSupportDocsGrid({
                       </div>
                     )}
                     {checks.length === 0 ? (
-                      <p className="text-xs italic text-muted-foreground">
+                      <p className="text-xs italic text-muted-foreground py-1">
                         No field-by-field comparison available for this document yet.
                       </p>
                     ) : (
-                      checks.map(([key, check]) => (
-                        <DocVerificationCheckRow key={key} labelKey={key} check={check} />
-                      ))
+                      <div className="space-y-1.5">
+                        {checks.map(([key, check]) => (
+                          <DocVerificationCheckRow key={key} labelKey={key} check={check} />
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
@@ -3339,37 +3390,36 @@ function ScreeningSupportDocsList({
                 <div className="px-3 pt-1.5">
                   <ScreeningDocStatusPill status={d.verification_status} />
                 </div>
-                <div className="grid grid-cols-3 gap-1.5 px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-1.5 px-3 py-2.5 border-t border-border/60">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 min-w-0 px-1 text-[0.68rem]"
+                    className="h-8 flex-1 min-w-[70px] gap-1 px-2 text-xs font-medium cursor-pointer"
                     onClick={() => onView(d)}
                   >
-                    <Eye className="mr-1 h-3 w-3 shrink-0" /> View
+                    <Eye className="h-3.5 w-3.5 shrink-0" /> View
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 min-w-0 px-1 text-[0.68rem]"
+                    className="h-8 flex-1 min-w-[85px] gap-1 px-2 text-xs font-medium cursor-pointer"
                     onClick={() => onDownload(d)}
                   >
-                    <Download className="mr-1 h-3 w-3 shrink-0" /> Download
+                    <Download className="h-3.5 w-3.5 shrink-0" /> Download
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 min-w-0 px-1 text-[0.68rem]"
+                    className="h-8 flex-1 min-w-[85px] gap-1 px-2 text-xs font-medium cursor-pointer"
                     disabled={busy}
                     onClick={() => onReverify(d)}
                   >
                     {busy ? (
-                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                     ) : (
-                      <>
-                        <RefreshCw className="mr-1 h-3 w-3 shrink-0" /> Reverify
-                      </>
+                      <RefreshCw className="h-3.5 w-3.5 shrink-0" />
                     )}
+                    Reverify
                   </Button>
                 </div>
                 {expanded && (
@@ -6496,7 +6546,7 @@ function ApplicantViewScreen({
                               recomputing={recomputingRanking}
                             />
 
-                            <div className="grid items-stretch gap-4 lg:grid-cols-2">
+                            <div className="grid items-stretch gap-5 grid-cols-1 xl:grid-cols-2">
                               <ResumeInfoPanel
                                 title="Key Information Extracted"
                                 variant="modal"
@@ -6811,6 +6861,13 @@ function ApplicantViewScreen({
                                     <Button size="sm" onClick={onStartInterview}>
                                       <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start
                                       Interview
+                                    </Button>
+                                  );
+                                }
+                                if (!assessment && interview.status !== "Cancelled" && (windowState === "ended" || windowState === "past-day")) {
+                                  return (
+                                    <Button size="sm" onClick={onStartInterview}>
+                                      <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Record Evaluation
                                     </Button>
                                   );
                                 }
@@ -7241,6 +7298,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         setAssessments(
           (asmRes.value ?? []).map((a) => ({
             applicantId: a.applicant?.applicant_code ?? `APP-${a.applicant_id}`,
+            applicantDbId: a.applicant_id,
             dbId: a.assessment_id,
             name: a.applicant?.name ?? `Applicant #${a.applicant_id}`,
             position: a.applicant?.position ?? "—",
@@ -7411,8 +7469,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  no Accept & schedule / Reject / Refer / Schedule actions are shown.
    *  Ranking list entries keep the full decision footer. */
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
+  const [reviewTab, setReviewTab] = useState<"match" | "verification" | "technical">("match");
   const openReview = (a: Applicant, readOnly = false) => {
     setReviewReadOnly(readOnly);
+    setReviewTab("match");
     setReview(a);
   };
   const closeReview = () => {
@@ -8401,20 +8461,24 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   ];
   const isActionLocked = (a: Applicant) => LOCKED_ACTION_STAGES.includes(a.stage);
 
-  /** Interviews can be rescheduled while the applicant is still within the
-   *  interview phase (not yet assessed / offered / hired / rejected) and no
-   *  assessment is recorded. The assessment record — not the raw status
-   *  string — decides "done": a stale "Completed" without an assessment is
-   *  still an open booking (reschedulable / cancellable).
-   *  Cancelled interviews stay re-bookable (reschedule reactivates them). */
-  const isInterviewLocked = (i: { status: string; applicant: string }): boolean => {
+  /** Interviews can be rescheduled only while they are still open: not yet
+   *  completed and not yet assessed. A completed interview is final — HR moves
+   *  the applicant on by sending the assessment test. Cancelled interviews stay
+   *  re-bookable (reschedule reactivates them). */
+  const isInterviewLocked = (i: { status: string; applicant: string; applicantId?: string; applicantDbId?: number }): boolean => {
     if (i.status === "Cancelled") return false;
+    // Completed is final, whether or not an assessment record exists yet.
+    if (i.status === "Completed") return true;
     // An assessment record means the interview is truly done — locking it
     // protects the saved scorecard from being orphaned.
-    if (assessments.some((x) => x.name === i.applicant)) return true;
-    // Stale "Completed" without an assessment is still actionable.
-    if (i.status === "Completed") return false;
-    const src = rows.find((r) => r.name === i.applicant);
+    if (assessments.some((x) =>
+      (i.applicantDbId !== undefined && x.applicantDbId !== undefined)
+        ? i.applicantDbId === x.applicantDbId
+        : (i.applicantId && x.applicantId)
+          ? i.applicantId === x.applicantId
+          : x.name === i.applicant
+    )) return true;
+    const src = rows.find((r) => matchesInterviewApplicant(i, r));
     if (!src) return false;
     return [
       "Assessed",
@@ -8623,8 +8687,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  interview's date (and reserved room, when one exists). */
   const viewScheduledInCalendar = (a: Applicant) => {
     const booked =
-      interviews.find((i) => i.applicant === a.name && i.status !== "Cancelled") ??
-      interviews.find((i) => i.applicant === a.name);
+      interviews.find((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled") ??
+      interviews.find((i) => matchesInterviewApplicant(i, a));
     const date = booked?.date ?? TODAY_ISO;
     const d = new Date(`${date}T00:00:00`);
     setTab("scheduling");
@@ -8887,14 +8951,32 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   };
 
   /* Function 2: Move to Specific Stage */
-  const openMoveToStage = (a: Applicant) => {
+  const openMoveToStage = async (a: Applicant) => {
     if (!isSuperAdmin) {
       toast.error("Only a Super Admin may move an applicant across stages.");
       return;
     }
-    setMoveToStageFor(a);
+    // Read the applicant fresh: the list is refreshed in the background, so a
+    // stale row can still say "Screened" after an interview was scheduled.
+    let current = a;
+    if (a.dbId) {
+      try {
+        current = transformApiApplicant(await applicantsApi.get(a.dbId));
+        setRows((prev) => prev.map((r) => (r.dbId === current.dbId ? current : r)));
+      } catch (e) {
+        console.warn("Could not refresh applicant before moving stage:", e);
+      }
+    }
+    setMoveToStageFor(current);
     setMoveToStageReason("");
-    setMoveToStageTarget((a.stage as ReturnTargetStage) || "Screened");
+    // Prefill an option that actually exists in the target list.
+    setMoveToStageTarget(
+      RETURN_TARGET_STAGES.some((s) => s.value === current.stage)
+        ? (current.stage as ReturnTargetStage)
+        : current.stage === "Offer" || current.stage === "Hired"
+          ? "Final Evaluation"
+          : "Screened",
+    );
   };
 
   const confirmMoveToStage = async () => {
@@ -9173,7 +9255,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  existing record when confirmed. */
   const rescheduleInterview = (i: Interview) => {
     if (isInterviewLocked(i)) return;
-    const src = rows.find((r) => r.name === i.applicant);
+    const src = rows.find((r) => matchesInterviewApplicant(i, r));
     const dept = src
       ? (displayPositions.find((p) => p.title === src.position)?.department ??
         positions.find((p) => p.title === src.position)?.department ??
@@ -9279,8 +9361,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setEvalResult(null);
     setEvalRemarks("");
     const iv =
-      interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
-      interviews.find((x) => x.applicant === a.name);
+      interviews.find((x) => matchesInterviewApplicant(x, a) && x.status !== "Cancelled") ??
+      interviews.find((x) => matchesInterviewApplicant(x, a));
     setEvalAssessor(loggedInAssessorId || assessorIdForInterviewer(iv?.interviewer));
     setEvalDateTime(isoOf(new Date()));
   };
@@ -9316,8 +9398,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  collapsible interview-notes drawer (persisted to the interview record). */
   const openZoomRoom = (a: Applicant) => {
     const iv =
-      interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
-      interviews.find((x) => x.applicant === a.name);
+      interviews.find((x) => matchesInterviewApplicant(x, a) && x.status !== "Cancelled") ??
+      interviews.find((x) => matchesInterviewApplicant(x, a));
     if (!iv) {
       toast.error("No interview found for this applicant");
       return;
@@ -9620,7 +9702,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  applicant stage to Interview Scheduled so confirming the new slot
    *  resumes the pipeline. */
   const rebookInterview = (i: Interview) => {
-    const src = rows.find((r) => r.name === i.applicant);
+    const src = rows.find((r) => matchesInterviewApplicant(i, r));
     const dept = src
       ? (displayPositions.find((p) => p.title === src.position)?.department ??
         positions.find((p) => p.title === src.position)?.department ??
@@ -9732,8 +9814,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // When the applicant already has a live interview booked, this booking acts
     // as a reschedule of that interview instead of blocking the action.
     // Cancelled interviews don't count — they're re-bookable.
+    const schedTargetApplicant = rows.find((a) => a.name === schedule.applicant);
     const existingInterview = interviews.find(
-      (i) => i.applicant === schedule.applicant && i.status !== "Cancelled",
+      (i) => (schedTargetApplicant ? matchesInterviewApplicant(i, schedTargetApplicant) : i.applicant === schedule.applicant) && i.status !== "Cancelled",
     );
     const updateTarget = rescheduling ?? existingInterview ?? null;
     const taken = interviews.filter(
@@ -9790,7 +9873,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         setStage(srcForStage.id, "Interview Scheduled");
         try {
           if (srcForStage.dbId)
-            applicantsApi.update(srcForStage.dbId, { stage: "Interview Scheduled" });
+            await applicantsApi.update(srcForStage.dbId, { stage: "Interview Scheduled" });
         } catch (e) {
           console.warn("Could not advance applicant stage on database API:", e);
         }
@@ -9842,6 +9925,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       } catch (e) {
         console.warn("Could not persist interview reschedule to database API:", e);
       }
+      // Re-read the saved stage so the pipeline row cannot lag behind the
+      // interview that was just rescheduled.
+      void syncAfterStageChange();
       setRescheduling(null);
       setBookingFocus(false);
       return;
@@ -9893,6 +9979,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const newInt = {
       id: `INT-${300 + interviews.length}`,
       applicant: schedule.applicant,
+      ...(src?.id != null ? { applicantId: src.id } : {}),
+      ...(src?.dbId != null ? { applicantDbId: src.dbId } : {}),
       position: src?.position ?? "—",
       date: schedule.date,
       time: schedule.time,
@@ -10004,6 +10092,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         );
       }
     }
+    // The backend advances the applicant to Interview Scheduled on create;
+    // re-read it so the pipeline shows the true stage immediately.
+    void syncAfterStageChange();
     setBookingFocus(false);
   };
 
@@ -10077,9 +10168,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const performCancelInterview = async () => {
     const i = cancelInterview;
     if (!i) return;
-    // Only a truly-done interview (assessment recorded) is uncancellable.
-    // A stale "Completed" without an assessment is still an open booking.
-    if (i.status === "Completed" && assessments.some((x) => x.name === i.applicant)) {
+    // A completed interview is final — it can no longer be cancelled.
+    if (i.status === "Completed") {
       toast.error("Completed interviews can no longer be cancelled.");
       setCancelInterview(null);
       return;
@@ -10087,7 +10177,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // Keep the record, but flag it as Cancelled so it stays visible in the
     // calendar with its label.
     setInterviews((prev) => prev.map((x) => (x.id === i.id ? { ...x, status: "Cancelled" } : x)));
-    const src = rows.find((a) => a.name === i.applicant);
+    const src = rows.find((a) => matchesInterviewApplicant(i, a));
     if (src) setStage(src.id, "Screened");
     addAudit({
       actionType: "Interview Cancelled",
@@ -10177,7 +10267,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const stampedTime = `${String(nowHour % 12 === 0 ? 12 : nowHour % 12).padStart(2, "0")}:${String(
       now.getMinutes(),
     ).padStart(2, "0")} ${nowHour >= 12 ? "PM" : "AM"}`;
-    const completedInterview = interviews.find((i) => i.applicant === evaluating.name);
+    const completedInterview = interviews.find((i) => matchesInterviewApplicant(i, evaluating));
 
     // Persist FIRST: a refused save must never be reported as saved.
     if (evaluating.dbId) {
@@ -10222,7 +10312,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setAssessments((prev) => [
       {
         applicantId: evaluating.id,
-        ...(evaluating.dbId !== undefined ? { dbId: evaluating.dbId } : {}),
+        ...(evaluating.dbId !== undefined ? { applicantDbId: evaluating.dbId, dbId: evaluating.dbId } : {}),
         name: evaluating.name,
         position: evaluating.position,
         scores: evalScores,
@@ -10249,7 +10339,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
     setInterviews((prev) =>
       prev.map((i) =>
-        i.applicant === evaluating.name
+        matchesInterviewApplicant(i, evaluating)
           ? { ...i, time: stampedTime, status: "Completed" as Interview["status"] }
           : i,
       ),
@@ -11609,7 +11699,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       !assessments.some((x) => x.applicantId === a.id) &&
       // An interview that was cancelled must never leave the candidate in the
       // assessment queue — there must be a live (non-cancelled) booking.
-      interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled"),
+      interviews.some((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled"),
   );
 
   type AssessmentRow =
@@ -11642,7 +11732,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           .map((a) => ({
             kind: "ready" as const,
             a,
-            iv: interviews.find((i) => i.applicant === a.name),
+            iv: interviews.find((i) => matchesInterviewApplicant(i, a)),
           }))
       : []),
     ...(assessmentFilter !== "ready"
@@ -11723,8 +11813,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const base = rows;
     return base
       .map((a) => {
-        const live = interviews.find((i) => i.applicant === a.name && i.status !== "Cancelled");
-        const anyInterview = live ?? interviews.find((i) => i.applicant === a.name) ?? undefined;
+        const live = interviews.find((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled");
+        const anyInterview = live ?? interviews.find((i) => matchesInterviewApplicant(i, a)) ?? undefined;
         const assessment = assessments.find((x) => x.applicantId === a.id);
         const test = assessmentTests.find((t) => t.applicantId === a.id);
         const practical = practicalTests.find((t) => t.applicantId === a.id);
@@ -11733,7 +11823,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         const requiresTest = requiresAssessment(a.position, a.requiresAssessment);
         const needsSchedule =
           a.stage === "Accepted" &&
-          !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled");
+          !interviews.some((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled");
         const readyForTest =
           requiresTest && (a.stage === "Assessment Test" || (a.stage === "Assessed" && assessment?.result === "Passed"));
         const readyForPractical =
@@ -11869,7 +11959,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       a.stage === "Accepted" &&
       // Cancelled interviews don't count as booked — the applicant is
       // selectable again for re-booking.
-      !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled") &&
+      !interviews.some((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled") &&
       !["Assessed", "Offer", "Hired", "Rejected"].includes(a.stage) &&
       (scheduleDept === "all" ||
         displayPositions.find((p) => p.title === a.position)?.department === scheduleDept) &&
@@ -12046,7 +12136,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           key={viewedApplicant.id}
           a={viewedApplicant}
           docs={applicantDocs[viewedApplicant.id] ?? []}
-          interviews={interviews.filter((i) => i.applicant === viewedApplicant.name)}
+          interviews={interviews.filter((i) => matchesInterviewApplicant(i, viewedApplicant))}
           assessments={assessments.filter((x) => x.applicantId === viewedApplicant.id)}
           assessmentTests={assessmentTests.filter((t) => t.applicantId === viewedApplicant.id)}
           practicalTests={practicalTests.filter((t) => t.applicantId === viewedApplicant.id)}
@@ -12071,8 +12161,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           onStartInterview={() => {
             const iv =
               interviews.find(
-                (x) => x.applicant === viewedApplicant.name && x.status !== "Cancelled",
-              ) ?? interviews.find((x) => x.applicant === viewedApplicant.name);
+                (x) => matchesInterviewApplicant(x, viewedApplicant) && x.status !== "Cancelled",
+              ) ?? interviews.find((x) => matchesInterviewApplicant(x, viewedApplicant));
             if (iv?.mode === "Virtual") openZoomRoom(viewedApplicant);
             else startInterviewFor(viewedApplicant);
           }}
@@ -12088,18 +12178,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           }}
           showAcceptInterview={
             viewedApplicant.stage === "Screened" &&
-            !interviews.some((i) => i.applicant === viewedApplicant.name) &&
+            !interviews.some((i) => matchesInterviewApplicant(i, viewedApplicant)) &&
             !assessments.some((x) => x.applicantId === viewedApplicant.id)
           }
           showScheduleInterview={
             viewedApplicant.stage === "Accepted" &&
             !interviews.some(
-              (i) => i.applicant === viewedApplicant.name && i.status !== "Cancelled",
+              (i) => matchesInterviewApplicant(i, viewedApplicant) && i.status !== "Cancelled",
             )
           }
           showRescheduleInterview={(() => {
             const live = interviews.find(
-              (i) => i.applicant === viewedApplicant.name && i.status !== "Cancelled",
+              (i) => matchesInterviewApplicant(i, viewedApplicant) && i.status !== "Cancelled",
             );
             return (
               !!live &&
@@ -12548,12 +12638,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       )}
                     </div>
                     <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
-                      <Input
-                        placeholder="Search applicant—"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="w-full sm:w-56"
-                      />
+                      <div className="relative w-full sm:w-60">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          placeholder="Search applicant name, ID..."
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          className="w-full pl-8"
+                        />
+                      </div>
                       <Select value={positionFilter} onValueChange={setPositionFilter}>
                         <SelectTrigger className="w-full sm:w-52">
                           <SelectValue />
@@ -15108,26 +15201,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   (facilityStatuses[bookingForFacility.id] ??
                                     bookingForFacility.facilityStatus) ===
                                     "Waiting for Facility Approval";
-                                // 2 · Reschedule — any live booking that is not done
-                                // yet (no assessment record) can be moved to a new
-                                // slot. A stale "Completed" without an assessment
-                                // counts as still open.
+                                // 2 · Reschedule — only a still-open booking can
+                                // move to a new slot. A completed interview is
+                                // final; the assessment test comes next.
                                 const showReschedule =
                                   !!liveInterview &&
                                   !assessment &&
                                   canProgress &&
                                   liveInterview.status !== "Cancelled" &&
                                   !isInterviewLocked(liveInterview);
-                                // Cancel — only while still Scheduled (or stale
-                                // "Completed" with no assessment) and not yet
-                                // interviewed. Cancelled / No Show / truly-done
-                                // rows never show Cancel.
+                                // Cancel — only while still Scheduled and not
+                                // yet interviewed. Cancelled / No Show /
+                                // completed rows never show Cancel.
                                 const showCancel =
                                   !!liveInterview &&
                                   !assessment &&
                                   canProgress &&
-                                  (liveInterview.status === "Scheduled" ||
-                                    liveInterview.status === "Completed") &&
+                                  liveInterview.status === "Scheduled" &&
                                   !isInterviewLocked(liveInterview);
                                 const startWindow = showStart
                                   ? getInterviewWindow(
@@ -15375,9 +15465,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 ? "Cancelled"
                                                 : interview.status === "No Show"
                                                   ? "No Show"
-                                                  : isToday
-                                                    ? "Scheduled Today"
-                                                    : "Scheduled";
+                                                  : interview.status === "Completed"
+                                                    ? "Completed"
+                                                    : isToday
+                                                      ? "Scheduled Today"
+                                                      : "Scheduled";
                                             const tone = done
                                               ? assessment.result === "Passed"
                                                 ? "text-success"
@@ -15385,7 +15477,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                               : interview.status === "Cancelled" ||
                                                   interview.status === "No Show"
                                                 ? "text-destructive"
-                                                : "text-primary";
+                                                : interview.status === "Completed"
+                                                  ? "text-amber-600 dark:text-amber-400"
+                                                  : "text-primary";
                                             return (
                                               <>
                                                 <p
@@ -15646,37 +15740,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 title={
                                                   facilityPending
                                                     ? "Waiting for facility approval — the interview can start once the facility request is approved"
-                                                    : startWindow === "live"
-                                                      ? undefined
-                                                      : startWindow === "upcoming"
-                                                        ? `Starts at ${liveInterview?.time ?? interview?.time} (${interviewDurationMinutes(
-                                                            liveInterview?.time ??
-                                                              interview?.time ??
-                                                              "",
-                                                            liveInterview?.endTime ??
-                                                              interview?.endTime,
-                                                            slotSettings.intervalMinutes,
-                                                          )} min)`
-                                                        : startWindow === "future-day"
-                                                          ? "Available on interview day"
-                                                          : "Interview window has passed"
+                                                    : startWindow === "upcoming"
+                                                      ? `Starts at ${liveInterview?.time ?? interview?.time} (${interviewDurationMinutes(
+                                                          liveInterview?.time ??
+                                                            interview?.time ??
+                                                            "",
+                                                          liveInterview?.endTime ??
+                                                            interview?.endTime,
+                                                          slotSettings.intervalMinutes,
+                                                        )} min)`
+                                                      : startWindow === "future-day"
+                                                        ? "Available on interview day"
+                                                        : undefined
                                                 }
                                               >
                                                 <DropdownMenuItem
-                                                  disabled={!startToday || facilityPending}
+                                                  disabled={(startWindow === "upcoming" || startWindow === "future-day") || facilityPending}
                                                   onClick={
-                                                    startToday && !facilityPending
+                                                    !facilityPending && startWindow !== "upcoming" && startWindow !== "future-day"
                                                       ? () =>
-                                                          interview?.mode === "Virtual"
+                                                          interview?.mode === "Virtual" && startWindow === "live"
                                                             ? openZoomRoom(a)
                                                             : startInterviewFor(a)
                                                       : undefined
                                                   }
                                                 >
-                                                  {interview?.mode === "Virtual" ? (
+                                                  {interview?.mode === "Virtual" && startWindow === "live" ? (
                                                     <span className="flex items-center gap-1.5">
                                                       <Video className="h-3.5 w-3.5" /> Start Zoom
                                                       interview
+                                                    </span>
+                                                  ) : startWindow === "ended" || startWindow === "past-day" ? (
+                                                    <span className="flex items-center gap-1.5">
+                                                      <ClipboardCheck className="h-3.5 w-3.5" /> Record
+                                                      interview evaluation
                                                     </span>
                                                   ) : (
                                                     "Start interview"
@@ -16366,8 +16463,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <p className="font-display text-lg font-semibold leading-tight">
                       {review.name}
                     </p>
-                    <Badge variant="outline" className={statusMeta[review.status].className}>
-                      {statusMeta[review.status].label}
+                    <Badge variant="outline" className={statusMeta[review.status]?.className}>
+                      {statusMeta[review.status]?.label ?? review.status}
                     </Badge>
                   </div>
                   <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -16419,118 +16516,160 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   const detail = vm.detail;
 
                   return (
-                    <>
-                      <ScreeningModalSummary
-                        status={review.status}
-                        score={vm.score}
-                        matchedCount={vm.matched.length}
-                        missingCount={vm.missing.length}
-                        yearsExperience={vm.yearsExperience}
-                        educationLabel={vm.educationLabel}
-                      />
+                    <Tabs defaultValue="match" value={reviewTab} onValueChange={(v) => setReviewTab(v as any)} className="w-full space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-2">
+                        <TabsList className="bg-muted/70 p-1">
+                          <TabsTrigger
+                            value="match"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+                          >
+                            <Target className="h-3.5 w-3.5" /> Match &amp; Requirements
+                          </TabsTrigger>
+                          <TabsTrigger
+                            value="verification"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+                          >
+                            <FileCheck className="h-3.5 w-3.5" /> Document Verification
+                            {reviewDocVerifications && Object.keys(reviewDocVerifications).length > 0 && (
+                              <Badge
+                                variant="secondary"
+                                className="ml-1 px-1.5 py-0 text-[0.65rem] data-[state=active]:bg-primary-foreground/25 data-[state=active]:text-primary-foreground"
+                              >
+                                {Object.keys(reviewDocVerifications).length}
+                              </Badge>
+                            )}
+                          </TabsTrigger>
+                          <TabsTrigger
+                            value="technical"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+                          >
+                            <Sliders className="h-3.5 w-3.5" /> Technical Breakdown
+                          </TabsTrigger>
+                        </TabsList>
 
-                      {/* Resume screening + supporting-document verification =
-                          the ranking percentage this candidate is ordered by. */}
-                      <ScreeningVerificationImpact
-                        verification={vm.verification}
-                        resumeScore={vm.resumeScore}
-                        score={vm.score}
-                        onRecompute={() => recomputeRanking(review)}
-                        recomputing={recomputingRanking}
-                      />
-
-                      <div className="grid items-stretch gap-4 lg:grid-cols-3">
-                        <ResumeInfoPanel
-                          title="Key Information Extracted"
-                          variant="modal"
-                          skills={vm.skills}
-                          recognizedRoles={vm.recognizedRoles}
-                          unrecognizedRoles={vm.unrecognizedRoles}
-                          workExperience={vm.workExperience}
-                          education={vm.education}
-                          experienceYears={vm.yearsExperience}
-                          certifications={vm.certifications}
-                          personalInfo={vm.personalInfo}
-                          skillsRecognized={vm.skillsRecognized}
-                          unrecognizedCertifications={vm.unrecognizedCertifications}
-                        />
-                        <RequirementMatchPanel
-                          rows={vm.rows}
-                          experienceMinYears={vm.experienceMinYears}
-                        />
-                        <ScreeningResumeDocsMatchDetail
-                          docs={Object.values(reviewDocVerifications)}
-                          loading={reviewDocsLoading}
-                          resumeName={vm.personalInfo.name ?? review.name}
-                          resumeEducation={vm.education}
-                          resumeCertifications={vm.certifications}
-                        />
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            Score Weight: <strong className="text-foreground">{Math.round(vm.score)}%</strong>
+                          </span>
+                        </div>
                       </div>
 
-                      <ScreeningSupportDocsGrid
-                        key={review.id}
-                        title="Supporting Document Verification"
-                        subtitle="Uploaded documents compared field-by-field against the claims in the applicant's resume."
-                        showResume={false}
-                        resumeName={review.resumeOriginalName || "Resume / CV"}
-                        resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
-                        onOpenResume={
-                          review.resumeUrl
-                            ? () => window.open(review.resumeUrl!, "_blank", "noopener")
-                            : undefined
-                        }
-                        docs={Object.values(reviewDocVerifications)}
-                        loading={reviewDocsLoading}
-                        reverifyingId={reverifyingDocId}
-                        onView={(d) =>
-                          window.open(
-                            applicantDocumentsApi.fileUrl(d.applicant_document_id),
-                            "_blank",
-                            "noopener",
-                          )
-                        }
-                        onDownload={(d) =>
-                          window.open(
-                            applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
-                            "_blank",
-                            "noopener",
-                          )
-                        }
-                        onReverify={reverifyDocument}
-                        onOverride={(d) => {
-                          setOverrideDocFor(d);
-                          setOverrideDocReason("Manually reviewed and verified by HR.");
-                        }}
-                      />
+                      {/* TAB 1: Match & Requirements */}
+                      <TabsContent value="match" className="mt-0 space-y-4">
+                        <ScreeningModalSummary
+                          status={review.status}
+                          score={vm.score}
+                          matchedCount={vm.matched.length}
+                          missingCount={vm.missing.length}
+                          yearsExperience={vm.yearsExperience}
+                          educationLabel={vm.educationLabel}
+                        />
 
-                      <ScreeningDetailsAccordion
-                        detail={detail}
-                        variant="modal"
-                        position={review.position}
-                        score={vm.score}
-                        vm={vm}
-                      />
-
-                      {detail?.alternative_job && (
-                        <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
-                          <p className="font-medium text-warning-foreground">
-                            Recommended alternative: {detail.alternative_job.title} (
-                            {Math.round(detail.alternative_job.alternative_match_score ?? 0)}
-                            %)
-                          </p>
-                          {detail.alternative_job.reason && (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {detail.alternative_job.reason}
-                            </p>
-                          )}
+                        <div className="grid items-stretch gap-5 grid-cols-1 xl:grid-cols-2">
+                          <RequirementMatchPanel
+                            rows={vm.rows}
+                            experienceMinYears={vm.experienceMinYears}
+                          />
+                          <ResumeInfoPanel
+                            title="Key Information Extracted"
+                            variant="modal"
+                            skills={vm.skills}
+                            recognizedRoles={vm.recognizedRoles}
+                            unrecognizedRoles={vm.unrecognizedRoles}
+                            workExperience={vm.workExperience}
+                            education={vm.education}
+                            experienceYears={vm.yearsExperience}
+                            certifications={vm.certifications}
+                            personalInfo={vm.personalInfo}
+                            skillsRecognized={vm.skillsRecognized}
+                            unrecognizedCertifications={vm.unrecognizedCertifications}
+                          />
                         </div>
-                      )}
+                      </TabsContent>
 
-                      {/* No recommendation box here by design: recommendations
-                          belong to the Final Evaluation stage. Screening ends
-                          with the details accordion above; Accept / Reject /
-                          Refer actions live in the dialog footer below. */}
-                    </>
+                      {/* TAB 2: Document Verification */}
+                      <TabsContent value="verification" className="mt-0 space-y-4">
+                        <ScreeningVerificationImpact
+                          verification={vm.verification}
+                          resumeScore={vm.resumeScore}
+                          score={vm.score}
+                          onRecompute={() => recomputeRanking(review)}
+                          recomputing={recomputingRanking}
+                        />
+
+                        <div className="grid items-start gap-5 grid-cols-1 xl:grid-cols-2">
+                          <ScreeningResumeDocsMatchDetail
+                            docs={Object.values(reviewDocVerifications || {})}
+                            loading={reviewDocsLoading}
+                            resumeName={vm.personalInfo.name ?? review.name}
+                            resumeEducation={vm.education}
+                            resumeCertifications={vm.certifications}
+                          />
+
+                          <ScreeningSupportDocsGrid
+                            key={review.id}
+                            title="Supporting Document Verification"
+                            subtitle="Uploaded documents compared field-by-field against the claims in the applicant's resume."
+                            showResume={false}
+                            resumeName={review.resumeOriginalName || "Resume / CV"}
+                            resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
+                            onOpenResume={
+                              review.resumeUrl
+                                ? () => window.open(review.resumeUrl!, "_blank", "noopener")
+                                : undefined
+                            }
+                            docs={Object.values(reviewDocVerifications || {})}
+                            loading={reviewDocsLoading}
+                            reverifyingId={reverifyingDocId}
+                            onView={(d) =>
+                              window.open(
+                                applicantDocumentsApi.fileUrl(d.applicant_document_id),
+                                "_blank",
+                                "noopener",
+                              )
+                            }
+                            onDownload={(d) =>
+                              window.open(
+                                applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
+                                "_blank",
+                                "noopener",
+                              )
+                            }
+                            onReverify={reverifyDocument}
+                            onOverride={(d) => {
+                              setOverrideDocFor(d);
+                              setOverrideDocReason("Manually reviewed and verified by HR.");
+                            }}
+                          />
+                        </div>
+                      </TabsContent>
+
+                      {/* TAB 3: Technical Breakdown */}
+                      <TabsContent value="technical" className="mt-0 space-y-4">
+                        {detail?.alternative_job && (
+                          <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
+                            <p className="font-medium text-warning-foreground">
+                              Recommended alternative: {detail.alternative_job.title} (
+                              {Math.round(detail.alternative_job.alternative_match_score ?? 0)}
+                              %)
+                            </p>
+                            {detail.alternative_job.reason && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {detail.alternative_job.reason}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        <ScreeningDetailsAccordion
+                          detail={detail}
+                          variant="modal"
+                          position={review.position}
+                          score={vm.score}
+                          vm={vm}
+                        />
+                      </TabsContent>
+                    </Tabs>
                   );
                 })()}
               </div>
@@ -18654,6 +18793,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         "Practical Test": 5,
                         "Final Evaluation": 6,
                         Offer: 7,
+                        Hired: 8,
                       };
                       const curIdx = STAGE_ORDER_MAP[moveToStageFor?.stage ?? ""] ?? 0;
                       const tgtIdx = STAGE_ORDER_MAP[s.value] ?? 0;
@@ -18678,6 +18818,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   "Practical Test": 5,
                   "Final Evaluation": 6,
                   Offer: 7,
+                  Hired: 8,
                 };
                 const curIdx = STAGE_ORDER_MAP[moveToStageFor?.stage ?? ""] ?? 0;
                 const tgtIdx = STAGE_ORDER_MAP[moveToStageTarget] ?? 0;

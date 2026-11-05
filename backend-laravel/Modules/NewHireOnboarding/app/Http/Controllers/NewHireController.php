@@ -27,7 +27,7 @@ class NewHireController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = NewHire::with(['department', 'position', 'onboardingItems.templateItem.template'])
+        $query = NewHire::with(['department', 'position', 'onboardingItems'])
             ->orderByDesc('start_date');
 
         if ($search = $request->query('search')) {
@@ -136,7 +136,7 @@ class NewHireController extends Controller
         HcmCache::flush();
 
         return response()->json(
-            new NewHireResource($newHire->load(['department', 'position', 'onboardingItems.templateItem.template'])),
+            new NewHireResource($newHire->load(['department', 'position', 'onboardingItems'])),
             201
         );
     }
@@ -147,7 +147,7 @@ class NewHireController extends Controller
 
     public function show(int $new_hire): JsonResponse
     {
-        $model = NewHire::with(['department', 'position', 'onboardingItems.templateItem.template'])
+        $model = NewHire::with(['department', 'position', 'onboardingItems'])
             ->findOrFail($new_hire);
 
         return response()->json(new NewHireResource($model));
@@ -205,7 +205,7 @@ class NewHireController extends Controller
         );
 
         return response()->json(
-            new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))
+            new NewHireResource($model->load(['department', 'position', 'onboardingItems']))
         );
     }
 
@@ -344,7 +344,7 @@ class NewHireController extends Controller
         HcmCache::flush();
 
         return response()->json(
-            new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))
+            new NewHireResource($model->load(['department', 'position', 'onboardingItems']))
         );
     }
 
@@ -464,7 +464,7 @@ class NewHireController extends Controller
 
     public function complete(Request $request, int $new_hire): JsonResponse
     {
-        $model = NewHire::with('onboardingItems.templateItem.template')->findOrFail($new_hire);
+        $model = NewHire::with('onboardingItems')->findOrFail($new_hire);
 
         $force = $request->boolean('force');
 
@@ -512,7 +512,7 @@ class NewHireController extends Controller
 
         return response()->json([
             'message' => 'Onboarding completion sent to Core HCM.',
-            'data' => new NewHireResource($model->fresh()->load(['department', 'position', 'onboardingItems.templateItem.template'])),
+            'data' => new NewHireResource($model->fresh()->load(['department', 'position', 'onboardingItems'])),
             'recommendation' => $recommendation,
         ]);
     }

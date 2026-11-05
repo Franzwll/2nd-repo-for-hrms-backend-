@@ -72,14 +72,14 @@ class EssRequest extends Model
     public function statusHistory(): HasMany
     {
         return $this->hasMany(EssRequestStatusHistory::class, 'ess_request_id', 'ess_request_id')
-            ->orderBy('ess_request_status_history_id');
+            ->orderBy('ess_request_event_id');
     }
 
     public function routings(): HasMany
     {
         return $this->hasMany(EssRequestRouting::class, 'ess_request_id', 'ess_request_id')
             ->orderBy('leg')
-            ->orderBy('ess_request_routing_id');
+            ->orderBy('ess_request_event_id');
     }
 
     public function releasedBy(): BelongsTo

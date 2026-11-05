@@ -6,15 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\AttendanceRecord;
 use App\Models\Department;
 use App\Models\Employee;
-use App\Models\EmployeeBenefit;
 use App\Models\EmployeeDocument;
+use App\Models\EmployeeLearningAttempt;
 use App\Models\EssCategory;
 use App\Models\EssRequest;
 use App\Models\EssRequestAttachment;
 use App\Models\EssRequestStatusHistory;
 use App\Models\LeaveBalance;
 use App\Models\Position;
-use App\Models\WorkSchedule;
 use App\Services\AuditLogger;
 use App\Services\HandbookTextCleaner;
 use App\Services\LmsQuizGenerator;
@@ -23,6 +22,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\PersonalAccessToken;
 use App\Models\SystemUser;
@@ -93,7 +93,7 @@ class EssPortalController extends Controller
     {
         $user = $request->user();
         $isStaff = $user && in_array((int) $user->role_id, [1, 2], true);
-        $relations = ['department', 'position.salaryGrade', 'salaryGrade', 'supervisor', 'emergencyContacts'];
+        $relations = ['department', 'position.salaryGrade', 'salaryGrade', 'supervisor'];
 
         if ($user?->employee_id) {
             $emp = Employee::with($relations)->find($user->employee_id);
@@ -344,12 +344,9 @@ class EssPortalController extends Controller
         $dayOfWeek = ($today->dayOfWeekIso) % 7; // 0=Sunday..6=Saturday or standard index
 
         // Today's work schedule
-        $todaySchedule = WorkSchedule::where('employee_id', $employee->employee_id)
-            ->where(function ($q) use ($dayOfWeek) {
-                $q->where('day_of_week', $dayOfWeek)
-                  ->orWhere('day_of_week', $dayOfWeek === 0 ? 7 : $dayOfWeek);
-            })
-            ->first();
+        $todaySchedule = $employee->work_schedules
+            ->first(fn ($s) => $s->day_of_week === $dayOfWeek
+                || $s->day_of_week === ($dayOfWeek === 0 ? 7 : $dayOfWeek));
 
         // Today's attendance record
         $todayAttendance = AttendanceRecord::where('employee_id', $employee->employee_id)
@@ -538,7 +535,7 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'Employee not found.'], 404);
         }
 
-        $schedules = WorkSchedule::where('employee_id', $employee->employee_id)->get();
+        $schedules = $employee->work_schedules;
 
         $dayMap = [
             1 => 'Monday',
@@ -644,7 +641,7 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'Employee not found.'], 404);
         }
 
-        $benefits = EmployeeBenefit::where('employee_id', $employee->employee_id)->get();
+        $benefits = $employee->benefits;
 
         return response()->json([
             'benefits' => $benefits,
@@ -989,11 +986,26 @@ class EssPortalController extends Controller
                 ->get();
 
             if ($dbPayslips->isNotEmpty()) {
-                // All item lines in one query, grouped per record.
-                $recordIds = $dbPayslips->pluck('payroll_record_id')->all();
-                $itemsByRecord = $recordIds
-                    ? DB::table('payroll_items')->whereIn('payroll_record_id', $recordIds)->get()->groupBy('payroll_record_id')
-                    : collect();
+                // All item lines grouped per record from inlined items_json or legacy payroll_items.
+                $itemsByRecord = collect();
+                if (Schema::hasTable('payroll_items')) {
+                    $recordIds = $dbPayslips->pluck('payroll_record_id')->all();
+                    $itemsByRecord = $recordIds
+                        ? DB::table('payroll_items')->whereIn('payroll_record_id', $recordIds)->get()->groupBy('payroll_record_id')
+                        : collect();
+                } else {
+                    $itemsByRecord = $dbPayslips->mapWithKeys(function ($pr) {
+                        $raw = is_string($pr->items_json ?? null)
+                            ? json_decode($pr->items_json, true)
+                            : ($pr->items_json ?? []);
+                        $mapped = collect($raw ?? [])->map(fn ($it) => (object) [
+                            'item_type' => $it['item_type'] ?? $it['type'] ?? '',
+                            'label'     => $it['label'] ?? '',
+                            'amount'    => (float) ($it['amount'] ?? 0),
+                        ]);
+                        return [$pr->payroll_record_id => $mapped];
+                    });
+                }
                 $endById = $dbPayslips->mapWithKeys(fn ($pr) => [
                     $pr->payroll_record_id => Carbon::parse($pr->pay_period_end),
                 ]);
@@ -1535,13 +1547,7 @@ class EssPortalController extends Controller
 
         // A failed attempt is final, so the card needs to know about it even
         // though employee_learning.status stays 'In Progress'.
-        $failedCourseIds = DB::table('employee_learning_attempts')
-            ->where('employee_id', $employee->employee_id)
-            ->where('passed', false)
-            ->pluck('course_id')
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->all();
+        $failedCourseIds = $this->failedCourseIdsFromAttemptsJson($userLearning);
 
         // Real curriculum: every catalog course with this employee's progress
         // joined in ("Not Assigned" when no employee_learning row exists yet).
@@ -1680,17 +1686,16 @@ class EssPortalController extends Controller
         $employee = $this->resolveEmployee($request);
         $empId = $employee?->employee_id;
 
-        $posts = SocialRecognition::with('reactions')
-            ->orderByDesc('created_at')
+        // Reactions live in social_recognitions.reactions_json (Phase 3e),
+        // so there is no child table to eager-load here. The feed's reaction
+        // counts come from the count columns and `userReactions` is resolved
+        // separately via RecognitionReaction::byEmployee().
+        $posts = SocialRecognition::orderByDesc('created_at')
             ->get();
 
         $userReactions = [];
         if ($empId) {
-            $userReactions = RecognitionReaction::where('employee_id', $empId)
-                ->get()
-                ->groupBy('recognition_id')
-                ->map(fn ($group) => $group->pluck('reaction_type')->all())
-                ->all();
+            $userReactions = RecognitionReaction::byEmployee($empId);
         }
 
         $badgeColorMap = [
@@ -1783,11 +1788,7 @@ class EssPortalController extends Controller
         ]);
 
         if ($employee) {
-            RecognitionReaction::create([
-                'recognition_id' => $post->recognition_id,
-                'employee_id' => $employee->employee_id,
-                'reaction_type' => 'clap',
-            ]);
+            RecognitionReaction::record($post, $employee->employee_id, 'clap');
         }
 
         AuditLogger::log(
@@ -1823,21 +1824,11 @@ class EssPortalController extends Controller
         $empId = $employee?->employee_id;
 
         if ($empId) {
-            $existing = RecognitionReaction::where('recognition_id', $rec->recognition_id)
-                ->where('employee_id', $empId)
-                ->where('reaction_type', $type)
-                ->first();
-
-            if ($existing) {
-                $existing->delete();
-                $rec->decrement($column);
-            } else {
-                RecognitionReaction::create([
-                    'recognition_id' => $rec->recognition_id,
-                    'employee_id' => $empId,
-                    'reaction_type' => $type,
-                ]);
+            $toggle = RecognitionReaction::toggle($rec, $empId, $type);
+            if ($toggle['delta'] > 0) {
                 $rec->increment($column);
+            } else {
+                $rec->decrement($column);
             }
         } else {
             $rec->increment($column);
@@ -2090,12 +2081,35 @@ class EssPortalController extends Controller
      */
     private function failedQuizAttempt(int $employeeId, int $courseId): ?object
     {
-        return DB::table('employee_learning_attempts')
+        return EmployeeLearningAttempt::query()
             ->where('employee_id', $employeeId)
             ->where('course_id', $courseId)
             ->where('passed', false)
             ->orderByDesc('attempt_id')
             ->first();
+    }
+
+    /**
+     * Course IDs whose quiz has a failed attempt for the employee.
+     *
+     * @param  iterable<object>  $learningRows
+     * @return int[]
+     */
+    private function failedCourseIdsFromAttemptsJson(iterable $learningRows): array
+    {
+        $employeeIds = collect($learningRows)->pluck('employee_id')->unique()->all();
+        if ($employeeIds === []) {
+            return [];
+        }
+
+        return EmployeeLearningAttempt::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->where('passed', false)
+            ->pluck('course_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
@@ -2486,14 +2500,15 @@ class EssPortalController extends Controller
                 ]);
         }
 
-        DB::table('employee_learning_attempts')->insert([
-            'employee_id' => $employee->employee_id,
-            'course_id' => $course->course_id,
+        // Persist the attempt as its own row.
+        EmployeeLearningAttempt::create([
+            'employee_id' => (int) $employee->employee_id,
+            'course_id' => (int) $course->course_id,
             'score' => $score,
             'correct_count' => $correct,
             'total_count' => $total,
             'passed' => $passed,
-            'answers_json' => json_encode($answered),
+            'answers_json' => $answered,
             'submitted_at' => now(),
         ]);
 
@@ -2615,7 +2630,7 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'No linked employee record found.'], 404);
         }
 
-        $hire = \Modules\NewHireOnboarding\Models\NewHire::with(['position', 'onboardingItems.templateItem.template'])
+        $hire = \Modules\NewHireOnboarding\Models\NewHire::with(['position', 'onboardingItems'])
             ->where(function ($outer) use ($employee) {
                 $outer->where('employee_id', $employee->employee_id)
                     ->orWhere(function ($q) use ($employee) {

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ChatbotFaq;
 use App\Models\ChatbotMessage;
+use App\Models\ChatbotUnanswered;
 use App\Services\GeminiChatService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -127,6 +128,29 @@ class ChatbotSecurityTest extends TestCase
         // Frontend renders via React text nodes (no dangerouslySetInnerHTML),
         // so raw payload must survive untouched for safe display.
         $this->assertDatabaseHas('chatbot_messages', ['message' => $payload]);
+    }
+
+    public function test_unanswered_question_is_stored_with_unanswered_source(): void
+    {
+        $this->noAi();
+        $message = 'zzzz qqqq unresolved gibberish';
+
+        $this->chatAs(['message' => $message, 'session_id' => 'sess-unanswered-1'])->assertOk();
+
+        $this->assertDatabaseHas('chatbot_messages', [
+            'session_id' => 'sess-unanswered-1',
+            'message' => $message,
+            'source' => 'unanswered',
+            'role' => 'guest',
+            'reply' => '',
+        ]);
+
+        $this->assertSame(1, ChatbotUnanswered::query()->where('message', $message)->count());
+
+        // The fallback exchange stays in the transcript; only the queue row is hidden.
+        $this->assertSame(1, ChatbotMessage::realConversations()
+            ->where('session_id', 'sess-unanswered-1')->count());
+        $this->assertSame(2, ChatbotMessage::where('session_id', 'sess-unanswered-1')->count());
     }
 
     public function test_chat_endpoint_is_rate_limited(): void

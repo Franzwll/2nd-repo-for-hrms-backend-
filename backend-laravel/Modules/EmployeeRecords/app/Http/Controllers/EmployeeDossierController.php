@@ -31,7 +31,6 @@ class EmployeeDossierController extends Controller
         $employee->load(
             'department',
             'position',
-            'emergencyContacts',
             'documents',
             'positionHistory',
             'exitRecord',
@@ -91,7 +90,7 @@ class EmployeeDossierController extends Controller
     {
         return response()->json([
             'contacts' => \Modules\EmployeeRecords\Http\Resources\EmergencyContactResource::collection(
-                $employee->emergencyContacts()->orderByDesc('is_primary')->get()
+                $employee->emergencyContacts->sortByDesc('is_primary')->values()
             )->resolve(),
         ]);
     }
@@ -103,15 +102,38 @@ class EmployeeDossierController extends Controller
 
         $contact = DB::transaction(function () use ($employee, $validated) {
             $isPrimary = $validated['is_primary'] ?? false;
+            $contacts = $this->contactsArray($employee);
 
-            if ($isPrimary) {
-                $employee->emergencyContacts()->update(['is_primary' => false]);
+            // Phase 3i: contacts live in employees.emergency_contacts_json.
+            // New contacts get a stable id (max existing + 1) so the payload
+            // keeps the old emergency_contact_id shape.
+            $nextId = 1;
+            foreach ($contacts as $existing) {
+                $nextId = max($nextId, ((int) ($existing['emergency_contact_id'] ?? 0)) + 1);
             }
 
-            return $employee->emergencyContacts()->create([
-                ...$validated,
-                'is_primary' => $isPrimary,
-            ]);
+            if ($isPrimary) {
+                foreach ($contacts as &$existing) {
+                    $existing['is_primary'] = false;
+                }
+                unset($existing);
+            }
+
+            $contact = [
+                'emergency_contact_id' => $nextId,
+                'employee_id'          => $employee->employee_id,
+                'name'                 => $validated['name'],
+                'relationship'         => $validated['relationship'] ?? null,
+                'phone'                => $validated['phone'] ?? null,
+                'address'              => $validated['address'] ?? null,
+                'is_primary'           => $isPrimary,
+                'created_at'           => now()->toDateTimeString(),
+                'updated_at'           => now()->toDateTimeString(),
+            ];
+            $contacts[] = $contact;
+            $this->persistContacts($employee, $contacts);
+
+            return $contact;
         });
 
         $this->touchRecord($employee);
@@ -119,40 +141,77 @@ class EmployeeDossierController extends Controller
 
         return response()->json([
             'message' => 'Emergency contact added.',
-            'contact' => new \Modules\EmployeeRecords\Http\Resources\EmergencyContactResource($contact),
+            'contact' => new \Modules\EmployeeRecords\Http\Resources\EmergencyContactResource(
+                $this->hydrateContact($employee, $contact)
+            ),
         ], 201);
     }
 
     /* PUT /api/v1/erm/employees/{employee}/emergency-contacts/{contact} */
     public function updateContact(Request $request, Employee $employee, string $contact): JsonResponse
     {
-        $model = $employee->emergencyContacts()->where('emergency_contact_id', $contact)->firstOrFail();
         $validated = $this->validateContact($request);
+        $targetId = (int) $contact;
 
-        DB::transaction(function () use ($employee, $model, $validated, $request) {
+        $current = collect($this->contactsArray($employee))
+            ->firstWhere('emergency_contact_id', $targetId);
+        if (! $current) {
+            return response()->json(['message' => 'Emergency contact not found.'], 404);
+        }
+
+        DB::transaction(function () use ($request, $employee, $validated, $targetId) {
+            $contacts = $this->contactsArray($employee);
+
             if ($request->boolean('is_primary')) {
-                $employee->emergencyContacts()->where('emergency_contact_id', '!=', $model->emergency_contact_id)
-                    ->update(['is_primary' => false]);
+                foreach ($contacts as &$existing) {
+                    $existing['is_primary'] = false;
+                }
+                unset($existing);
             }
 
-            $model->update($validated);
+            foreach ($contacts as &$existing) {
+                if ((int) ($existing['emergency_contact_id'] ?? 0) === $targetId) {
+                    $existing['name']         = $validated['name'];
+                    $existing['relationship'] = $validated['relationship'] ?? $existing['relationship'] ?? null;
+                    $existing['phone']        = $validated['phone'] ?? $existing['phone'] ?? null;
+                    $existing['address']      = $validated['address'] ?? $existing['address'] ?? null;
+                    $existing['is_primary']   = (bool) ($validated['is_primary'] ?? $existing['is_primary'] ?? false);
+                    $existing['updated_at']   = now()->toDateTimeString();
+                }
+            }
+            unset($existing);
+
+            $this->persistContacts($employee, $contacts);
         });
 
         $this->touchRecord($employee);
         HcmCache::flush();
 
+        $updated = collect($this->contactsArray($employee))
+            ->firstWhere('emergency_contact_id', $targetId);
+
         return response()->json([
             'message' => 'Emergency contact updated.',
-            'contact' => new \Modules\EmployeeRecords\Http\Resources\EmergencyContactResource($model->fresh()),
+            'contact' => new \Modules\EmployeeRecords\Http\Resources\EmergencyContactResource(
+                $this->hydrateContact($employee, $updated)
+            ),
         ]);
     }
 
     /* DELETE /api/v1/erm/employees/{employee}/emergency-contacts/{contact} */
     public function destroyContact(Employee $employee, string $contact): JsonResponse
     {
-        $model = $employee->emergencyContacts()->where('emergency_contact_id', $contact)->firstOrFail();
-        $model->delete();
+        DB::transaction(function () use ($employee, $contact) {
+            $targetId = (int) $contact;
+            $contacts = array_values(array_filter(
+                $this->contactsArray($employee),
+                fn ($c) => (int) ($c['emergency_contact_id'] ?? 0) !== $targetId
+            ));
+            $this->persistContacts($employee, $contacts);
+        });
+
         $this->touchRecord($employee);
+        HcmCache::flush();
 
         return response()->json(['message' => 'Emergency contact removed.']);
     }
@@ -285,5 +344,47 @@ class EmployeeDossierController extends Controller
         ActivityObserver::withoutLogging(fn () => $employee->forceFill([
             'employee_record_last_updated_at' => now()->toDateString(),
         ])->save());
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Phase 3i helpers — emergency contacts live in employees JSON.       */
+    /* ------------------------------------------------------------------ */
+
+    /** @return array<int, array<string, mixed>> */
+    private function contactsArray(Employee $employee): array
+    {
+        $raw = $employee->emergency_contacts_json;
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true);
+        }
+
+        return is_array($raw) ? array_values($raw) : [];
+    }
+
+    /** @param  array<int, array<string, mixed>>  $contacts */
+    private function persistContacts(Employee $employee, array $contacts): void
+    {
+        // The model's `emergency_contacts_json => array` cast serializes this.
+        $employee->emergency_contacts_json = $contacts;
+        $employee->save();
+    }
+
+    /** Hydrate an EmployeeEmergencyContact model from a JSON entry for payloads. */
+    private function hydrateContact(Employee $employee, array $data): EmployeeEmergencyContact
+    {
+        $model = new EmployeeEmergencyContact;
+        $model->forceFill([
+            'emergency_contact_id' => $data['emergency_contact_id'] ?? null,
+            'employee_id'          => $data['employee_id'] ?? $employee->employee_id,
+            'name'                 => $data['name'] ?? '',
+            'relationship'         => $data['relationship'] ?? null,
+            'phone'                => $data['phone'] ?? null,
+            'address'              => $data['address'] ?? null,
+            'is_primary'           => $data['is_primary'] ?? false,
+            'created_at'           => $data['created_at'] ?? now(),
+            'updated_at'           => $data['updated_at'] ?? now(),
+        ]);
+
+        return $model;
     }
 }

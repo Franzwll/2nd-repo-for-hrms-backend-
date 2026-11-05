@@ -543,6 +543,8 @@ export type Interview = {
   id: string;
   dbId?: number;
   applicant: string;
+  applicantId?: string;
+  applicantDbId?: number;
   position: string;
   date: string;
   time: string;

@@ -278,7 +278,7 @@ class ChatbotController extends Controller
     {
         $userId = request()->user()?->getAuthIdentifier();
 
-        $rows = ChatbotMessage::query()
+        $rows = ChatbotMessage::realConversations()
             ->when($userId, fn ($q) => $q->where('user_id', $userId))
             ->when(! $userId, fn ($q) => $q->whereRaw('1 = 0'))
             ->selectRaw('session_id, MAX(created_at) as last_at, COUNT(*) as exchanges')
@@ -298,7 +298,7 @@ class ChatbotController extends Controller
     {
         $userId = request()->user()?->getAuthIdentifier();
 
-        $rows = ChatbotMessage::query()
+        $rows = ChatbotMessage::realConversations()
             ->where('session_id', $session)
             ->when($userId, fn ($q) => $q->where('user_id', $userId))
             ->orderBy('created_at')

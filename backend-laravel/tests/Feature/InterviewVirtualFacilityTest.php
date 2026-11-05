@@ -29,7 +29,7 @@ class InterviewVirtualFacilityTest extends TestCase
 
     private function facilityId(): int
     {
-        return (int) Facility::query()->value('facility_id');
+        return (int) Facility::allFromSettings()->first()?->facility_id;
     }
 
     public function test_virtual_interviews_never_reserve_a_facility(): void

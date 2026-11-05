@@ -60,9 +60,7 @@ class JobPostResource extends JsonResource
             'about'                 => $this->about,
             /* Saved canvas arrangement; null means "use the default order". */
             'blocks'                => $this->blocks_json,
-            'platforms'             => $this->whenLoaded('platforms',
-                fn () => $this->platforms->where('status', 'published')->pluck('platform')->values()
-            ),
+            'platforms'             => $this->platforms->where('status', 'published')->pluck('platform')->values(),
             'picture'               => $this->picture,
             'picture_url'           => $this->picture
                 ? $request->getSchemeAndHttpHost() . '/api/v1/job-posts/' . $this->job_post_id . '/picture'

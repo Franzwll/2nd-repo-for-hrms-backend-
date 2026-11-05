@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class Employee extends Model
 {
@@ -42,6 +44,9 @@ class Employee extends Model
         'salary_grade_id',
         'employee_record_last_updated_at',
         'salary_step',
+        'emergency_contacts_json',
+        'schedule_json',
+        'benefits_json',
     ];
 
     protected $casts = [
@@ -49,6 +54,9 @@ class Employee extends Model
         'date_hired' => 'date',
         'onboarding_complete' => 'boolean',
         'employee_record_last_updated_at' => 'date',
+        'emergency_contacts_json' => 'array',
+        'schedule_json' => 'array',
+        'benefits_json' => 'array',
     ];
 
     public function position(): BelongsTo
@@ -76,9 +84,45 @@ class Employee extends Model
         return $this->hasMany(Employee::class, 'supervisor_employee_id', 'employee_id');
     }
 
-    public function emergencyContacts(): HasMany
+    /**
+     * Emergency contacts hydrated from emergency_contacts_json (Phase 3i).
+     *
+     * When the legacy child table still exists (for example right after a
+     * migrate:rollback) the contacts come from the real relation; otherwise
+     * they are hydrated from this employee's emergency_contacts_json column,
+     * preserving each contact's id, fields and is_primary flag.
+     */
+    public function getEmergencyContactsAttribute(): \Illuminate\Support\Collection
     {
-        return $this->hasMany(EmployeeEmergencyContact::class, 'employee_id', 'employee_id');
+        if (Schema::hasTable('employee_emergency_contacts')) {
+            return $this->hasMany(EmployeeEmergencyContact::class, 'employee_id', 'employee_id')
+                ->orderBy('emergency_contact_id')
+                ->get();
+        }
+
+        $raw = $this->emergency_contacts_json;
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true);
+        }
+        if (! is_array($raw)) {
+            return collect();
+        }
+
+        return collect($raw)->values()->map(function (array $contact) {
+            $model = new EmployeeEmergencyContact;
+            $model->forceFill([
+                'emergency_contact_id' => $contact['emergency_contact_id'] ?? null,
+                'employee_id'          => $contact['employee_id'] ?? $this->employee_id,
+                'name'                 => $contact['name'] ?? '',
+                'relationship'         => $contact['relationship'] ?? null,
+                'phone'                => $contact['phone'] ?? null,
+                'address'              => $contact['address'] ?? null,
+                'is_primary'           => $contact['is_primary'] ?? false,
+                'created_at'           => $contact['created_at'] ?? $this->created_at,
+                'updated_at'           => $contact['updated_at'] ?? $this->updated_at,
+            ]);
+            return $model;
+        });
     }
 
     public function positionHistory(): HasMany
@@ -89,7 +133,14 @@ class Employee extends Model
 
     public function exitRecord(): HasOne
     {
-        return $this->hasOne(EmployeeExitRecord::class, 'employee_id', 'employee_id');
+        return $this->hasOne(EmployeeExitRecord::class, 'employee_id', 'employee_id')
+            ->latestOfMany('exit_date');
+    }
+
+    public function exitRecords(): HasMany
+    {
+        return $this->hasMany(EmployeeExitRecord::class, 'employee_id', 'employee_id')
+            ->orderByDesc('exit_date');
     }
 
     public function documents(): HasMany
@@ -113,14 +164,40 @@ class Employee extends Model
         return $this->hasMany(LeaveBalance::class, 'employee_id', 'employee_id');
     }
 
-    public function workSchedules(): HasMany
+    /**
+     * Work schedule rows hydrated from schedule_json (Phase 5d).
+     */
+    public function getWorkSchedulesAttribute(): Collection
     {
-        return $this->hasMany(WorkSchedule::class, 'employee_id', 'employee_id');
+        return collect($this->schedule_json ?? [])
+            ->filter(fn ($row) => is_array($row))
+            ->map(function (array $row) {
+                $model = new WorkSchedule;
+                $model->forceFill($row);
+                $model->exists = true;
+
+                return $model;
+            })
+            ->sortBy('work_schedule_id')
+            ->values();
     }
 
-    public function benefits(): HasMany
+    /**
+     * Benefit rows hydrated from benefits_json (Phase 5f).
+     */
+    public function getBenefitsAttribute(): Collection
     {
-        return $this->hasMany(EmployeeBenefit::class, 'employee_id', 'employee_id');
+        return collect($this->benefits_json ?? [])
+            ->filter(fn ($row) => is_array($row))
+            ->map(function (array $row) {
+                $model = new EmployeeBenefit;
+                $model->forceFill($row);
+                $model->exists = true;
+
+                return $model;
+            })
+            ->sortBy('employee_benefit_id')
+            ->values();
     }
 
     public function attendanceRecords(): HasMany

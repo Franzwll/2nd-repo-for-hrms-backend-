@@ -51,9 +51,17 @@ class ApplicantManagementController extends Controller
         // treated as a declined applicant before the list is returned.
         OfferService::expireOverdue();
 
+        // Lazy stage correction: any applicant whose interview is active
+        // (Scheduled or Completed) cannot be below Interview Scheduled. Correct
+        // any stale Screened/Accepted rows in a single bulk update so the
+        // pipeline and Move-to-Stage dialog always reflect the true stage.
+        Applicant::whereIn('stage', ['Screened', 'Accepted'])
+            ->whereHas('interviews', fn ($q) => $q->whereIn('status', ['Scheduled', 'Completed']))
+            ->update(['stage' => 'Interview Scheduled']);
+
         // `jobPost.position` is eager-loaded so the resource can resolve the
         // Core HCM test-requirement flags (owner) without N+1 queries.
-        $query = Applicant::with(['jobPost.department', 'jobPost.position', 'screeningEntities', 'screeningScores', 'latestScreening'])
+        $query = Applicant::with(['jobPost.department', 'jobPost.position', 'latestScreening'])
             ->withCount('documents')
             ->orderByDesc('applied_at');
 
@@ -317,8 +325,6 @@ class ApplicantManagementController extends Controller
         $model = Applicant::with([
             'jobPost.department',
             'jobPost.position',
-            'screeningEntities',
-            'screeningScores',
             'interviews',
             'assessment',
             'latestScreening',
@@ -487,8 +493,6 @@ class ApplicantManagementController extends Controller
             'applicant' => new ApplicantResource($model->fresh([
                 'jobPost.department',
                 'jobPost.position',
-                'screeningEntities',
-                'screeningScores',
                 'latestScreening',
                 'documents',
             ])),
@@ -762,7 +766,7 @@ class ApplicantManagementController extends Controller
         unset($data['resume']);
 
         $model->update($data);
-        $model->refresh()->load(['jobPost.department', 'jobPost.position', 'screeningEntities', 'screeningScores', 'interviews', 'assessment']);
+        $model->refresh()->load(['jobPost.department', 'jobPost.position', 'interviews', 'assessment', 'latestScreening']);
 
         // Re-screen automatically when the resume was replaced.
         if (isset($data['resume_file_path']) && $model->job_post_id) {
@@ -936,7 +940,7 @@ class ApplicantManagementController extends Controller
         }
 
         if ($model->stage === 'Final Evaluation') {
-            $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+            $final = $model->finalEvaluation()->latest('evaluation_id')->first();
             if (! $final || $final->recommendation !== 'Recommended for Hire') {
                 return response()->json([
                     'message' => 'A final evaluation with a "Recommended for Hire" recommendation is required before extending an offer.',
@@ -1122,7 +1126,7 @@ class ApplicantManagementController extends Controller
         // An Offer must still be backed by a positive final evaluation —
         // otherwise the pipeline would jump past the whole process.
         if ($targetStage === 'Offer') {
-            $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+            $final = $model->finalEvaluation()->latest('evaluation_id')->first();
             if (! $final || $final->recommendation === 'Not Recommended') {
                 return response()->json([
                     'message' => 'Returning to Offer requires a final evaluation that is not "Not Recommended".',
@@ -1223,24 +1227,25 @@ class ApplicantManagementController extends Controller
     {
         $targetIndex = self::RETURN_STAGE_ORDER[$targetStage] ?? 0;
 
-        // Stages >= 6: Final Evaluation
-        if ($targetIndex <= 6) {
+        // Stages > 6 (e.g. returning to Offer from Hired): Final Evaluation kept.
+        // Stages <= 5 (returning to Practical or earlier): clean up Final Evaluation.
+        if ($targetIndex <= 5) {
             FinalEvaluation::where('applicant_id', $model->applicant_id)->delete();
         }
 
-        // Stages >= 5: Practical Test
-        if ($targetIndex <= 5) {
+        // Stages <= 4 (returning to Assessment Test or earlier): clean up Practical Test.
+        if ($targetIndex <= 4) {
             $model->practicalTests()->delete();
         }
 
-        // Stages >= 4: Assessment Test & Invites
-        if ($targetIndex <= 4) {
+        // Stages <= 3 (returning to Assessed or earlier): clean up Assessment Test & Invites.
+        if ($targetIndex <= 3) {
             $model->assessmentTests()->delete();
             AssessmentInvite::where('applicant_id', $model->applicant_id)->delete();
         }
 
-        // Stages >= 3: Interview Assessment (Assessed verdict)
-        if ($targetIndex <= 3) {
+        // Stages <= 2 (returning to Interview Scheduled or earlier): clean up Interview Assessment.
+        if ($targetIndex <= 2) {
             $model->assessments()->delete();
             if ($targetIndex === 2) {
                 // When returning to Interview Scheduled, reset completed interview back to Scheduled
@@ -1371,13 +1376,13 @@ class ApplicantManagementController extends Controller
                 return response()->json(['message' => "Moving to {$targetStage} requires an interview."], 422);
             }
             if ($targetIndex >= 4) {
-                $latestAssessment = $model->assessments()->latest('assessment_id')->first();
+                $latestAssessment = $model->assessments()->latest('evaluation_id')->first();
                 if (! $latestAssessment || $latestAssessment->result !== 'Passed') {
                     return response()->json(['message' => "Moving to {$targetStage} requires a passed interview assessment."], 422);
                 }
             }
             if ($targetIndex >= 5) {
-                $latestTest = $model->assessmentTests()->latest('assessment_test_id')->first();
+                $latestTest = $model->assessmentTests()->latest('evaluation_id')->first();
                 if (! $latestTest || $latestTest->result !== 'Passed') {
                     return response()->json(['message' => "Moving to {$targetStage} requires a passed assessment test."], 422);
                 }
@@ -1389,14 +1394,14 @@ class ApplicantManagementController extends Controller
                     $model->jobPost?->position
                 );
                 if ($requiresPractical) {
-                    $latestPractical = $model->practicalTests()->latest('practical_test_id')->first();
+                    $latestPractical = $model->practicalTests()->latest('evaluation_id')->first();
                     if (! $latestPractical || $latestPractical->result !== 'Passed') {
                         return response()->json(['message' => "Moving to {$targetStage} requires a passed practical assessment."], 422);
                     }
                 }
             }
             if ($targetIndex >= 7) {
-                $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+                $final = $model->finalEvaluation()->latest('evaluation_id')->first();
                 if (! $final || $final->recommendation === 'Not Recommended') {
                     return response()->json(['message' => "Moving to {$targetStage} requires a passing final evaluation."], 422);
                 }

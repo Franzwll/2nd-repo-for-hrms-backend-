@@ -30,14 +30,14 @@ Three role-scoped AI assistants power the Oxford Suites Makati HRMS. All AI call
    - Top 5 keyword-matched **enabled FAQs**, tagged `[FAQ#id]` for citations.
 3. `GeminiChatService::chat()` (`backend-laravel/app/Services/GeminiChatService.php`) tries Groq (`CHAT_GROQ_MODEL`, default `openai/gpt-oss-20b`) → OpenRouter (`CHAT_OPENROUTER_MODEL`, default `nvidia/nemotron-3-super-120b-a12b:free`) → shared Gemini (`gemini-3.5-flash-lite` default), temp `0.4`, last 12 turns, circuit breaker after 5 full-chain failures.
    - `systemPrompt('guest', $context)` (`GeminiChatService.php`) scopes the model to HRMS topics only, forbids inventing vacancies/salaries, requires `SOURCES: FAQ-x` citation line.
-4. Fallback: `ChatbotEngine::respond()` (`backend-laravel/app/Services/ChatbotEngine.php:51`) — intent matcher (`open_jobs, apply, documents, salary, benefits, timeline, resume/NLP, experience, contact, about…`) + live job/company data + FAQ match. Unmatched questions are logged to `chatbot_unanswered` for HR review.
+4. Fallback: `ChatbotEngine::respond()` (`backend-laravel/app/Services/ChatbotEngine.php:51`) — intent matcher (`open_jobs, apply, documents, salary, benefits, timeline, resume/NLP, experience, contact, about…`) + live job/company data + FAQ match. Unmatched questions are logged to `chatbot_messages` with `source = 'unanswered'` for HR review; analytics and transcripts filter those rows out.
 5. Every exchange is persisted to `chatbot_messages` (`session_id, user_id, role, message, reply, source: groq|openrouter|gemini|fallback, faq_ids`) for audit/analytics.
 
 ### Admin management
 - FAQ knowledge base CRUD: `GET/POST/PUT/DELETE /chatbot/faqs` (permission `Settings` / `Settings:Edit`).
 - UI: `frontend/src/components/modules/ChatbotFaq.tsx`, routes `frontend/src/routes/superadmin/_settings/chatbot.tsx`, `frontend/src/routes/admin/_settings/chatbot.tsx`.
 - Feedback: `POST /chatbot/messages/{message}/feedback` (thumbs up/down).
-- Tables: `chatbot_faqs`, `chatbot_messages`, `chatbot_unanswered`.
+- Tables: `chatbot_faqs`, `chatbot_messages` (unanswered queue rows use `source = 'unanswered'`).
 
 ---
 
@@ -108,5 +108,5 @@ Three role-scoped AI assistants power the Oxford Suites Makati HRMS. All AI call
 
 ## Shared technical notes
 - **Security:** backend proxy pattern — keys live in Laravel `config/services.php` (`chat_groq`, `chat_openrouter`, `job_groq`, `job_openrouter`, `gemini`); frontend only calls `/api/v1/*` with a Sanctum bearer token (chat itself is public + throttled).
-- **Audit:** chat exchanges → `chatbot_messages`; unanswered → `chatbot_unanswered`; FAQ votes → feedback column; AI drafts → `AuditLogger` + token-usage cache (`chat_ai_tokens_Ym` + legacy `gemini_tokens_Ym`, `job_ai_*`).
+- **Audit:** chat exchanges → `chatbot_messages`; unanswered → `chatbot_messages` with `source = 'unanswered'`; FAQ votes → feedback column; AI drafts → `AuditLogger` + token-usage cache (`chat_ai_tokens_Ym` + legacy `gemini_tokens_Ym`, `job_ai_*`).
 - **Files map:** chat backend `Modules/Landing/*` + `app/Services/GeminiChatService.php`, `app/Services/ChatbotEngine.php`; drafts backend `Modules/RecruitmentManagement/*` + `app/Services/JobContentGenerator.php`; frontend `components/public/Chatbot.tsx`, `components/portal/AiConciergeWidget.tsx`, `components/modules/EmployeeAiPage.tsx`, `components/modules/RecruitmentManagement.tsx`, `lib/api.ts` (`chatbotApi`, `jobPostsApi`).

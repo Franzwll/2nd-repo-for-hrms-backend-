@@ -58,6 +58,59 @@ class SettingsDatabaseSeeder extends Seeder
                 'password' => 'Oxford@2026',
             ],
 
+            // Interview facilities (Phase 4b). Kept with their original ids so
+            // interviews.facility_id remains a stable reference.
+            'interview.facilities' => [
+                [
+                    'facility_id' => 1,
+                    'name'        => 'Room 1',
+                    'type'        => 'On-site',
+                    'location'    => 'Oxford Suites Makati, HR Office, 3rd Floor',
+                    'capacity'    => 1,
+                    'icon'        => 'room',
+                    'description' => 'Primary on-site interview room with guest-facing setup.',
+                    'is_active'   => true,
+                    'created_at'  => '2026-10-18 17:06:12',
+                    'updated_at'  => '2026-10-18 17:06:12',
+                ],
+                [
+                    'facility_id' => 2,
+                    'name'        => 'Room 2',
+                    'type'        => 'On-site',
+                    'location'    => 'Oxford Suites Makati, HR Office, 3rd Floor',
+                    'capacity'    => 1,
+                    'icon'        => 'room',
+                    'description' => 'Secondary on-site interview room for panel interviews.',
+                    'is_active'   => true,
+                    'created_at'  => '2026-10-18 17:06:12',
+                    'updated_at'  => '2026-10-18 17:06:12',
+                ],
+                [
+                    'facility_id' => 3,
+                    'name'        => 'Room 3',
+                    'type'        => 'On-site',
+                    'location'    => 'Oxford Suites Makati, HR Office, 3rd Floor',
+                    'capacity'    => 2,
+                    'icon'        => 'room',
+                    'description' => 'Practical demonstration room for hands-on assessments.',
+                    'is_active'   => true,
+                    'created_at'  => '2026-10-18 17:06:12',
+                    'updated_at'  => '2026-10-18 17:06:12',
+                ],
+                [
+                    'facility_id' => 4,
+                    'name'        => 'Online Interview',
+                    'type'        => 'Virtual',
+                    'location'    => 'meet.oxfordsuites.ph/interview-room',
+                    'capacity'    => 5,
+                    'icon'        => 'online',
+                    'description' => 'Virtual interview room hosted on the company meeting platform.',
+                    'is_active'   => true,
+                    'created_at'  => '2026-10-18 17:06:12',
+                    'updated_at'  => '2026-10-18 17:06:12',
+                ],
+            ],
+
             // Probationary day threshold consumed by New Hire Onboarding
             // auto-regularization (admin ticker + employee countdown).
             // Scalar on purpose — readers do Number(setting_value).

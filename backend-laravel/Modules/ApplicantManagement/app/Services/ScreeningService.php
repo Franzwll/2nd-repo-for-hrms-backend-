@@ -677,24 +677,8 @@ class ScreeningService
             'processed_at' => now(),
         ]);
 
-        // Refresh entity + score breakdown rows (existing tables, reused).
-        $applicant->screeningEntities()->delete();
-        foreach (($result['entities'] ?? []) as $entity) {
-            ApplicantScreeningEntity::create([
-                'applicant_id' => $applicant->applicant_id,
-                'label' => mb_substr((string) ($entity['label'] ?? ''), 0, 80),
-                'value' => (string) ($entity['value'] ?? ''),
-            ]);
-        }
-
-        $applicant->screeningScores()->delete();
-        foreach (($result['score_breakdown'] ?? []) as $criterion => $component) {
-            ApplicantScreeningScore::create([
-                'applicant_id' => $applicant->applicant_id,
-                'criterion' => ucfirst($criterion),
-                'score' => (float) ($component['earned'] ?? 0),
-            ]);
-        }
+        // Entities and score breakdown are stored directly in applicant_screenings
+        // (entities_json and score_breakdown_json) eliminating normalized child tables.
 
         // Update the applicant row itself (fit_score, status, summary, flags).
         $flags = [];

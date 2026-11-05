@@ -83,40 +83,65 @@ export function navForRole(role: Role): NavItem[] {
     ];
   }
 
-  const shared: NavItem[] = [
-    { label: "Dashboard", to: base, icon: LayoutDashboard },
-    {
-      label: "Recruitment & Onboarding",
-      to: `${base}/applicants`,
-      icon: Megaphone,
-      children: recruitmentChildren(base),
-    },
-    {
-      label: "Core HCM",
-      to: `${base}/org-chart`,
-      icon: Building2,
-      children: hcmChildren(base),
-    },
-    { label: "Employee Records", to: `${base}/employees`, icon: FolderOpen },
-    { label: "ESS Management", to: `${base}/ess`, icon: Headset },
-    {
-      label: "My ESS",
-      to: `${base}/my-ess`,
-      icon: UserCheck,
-      children: myEssChildren(base),
-    },
-  ];
+  const myEssItem: NavItem = {
+    label: "My ESS",
+    to: `${base}/my-ess`,
+    icon: UserCheck,
+    children: myEssChildren(base),
+  };
+
+  const recruitmentItem: NavItem = {
+    label: "Recruitment & Onboarding",
+    to: `${base}/applicants`,
+    icon: Megaphone,
+    children: recruitmentChildren(base),
+  };
+
+  const coreHcmItem: NavItem = {
+    label: "Core HCM",
+    to: `${base}/org-chart`,
+    icon: Building2,
+    children: hcmChildren(base),
+  };
+
+  const employeeRecordsItem: NavItem = {
+    label: "Employee Records",
+    to: `${base}/employees`,
+    icon: FolderOpen,
+  };
+
+  const essManagementItem: NavItem = {
+    label: "ESS Management",
+    to: `${base}/ess`,
+    icon: Headset,
+  };
+
+  if (role === "admin") {
+    return [
+      { label: "Dashboard", to: base, icon: LayoutDashboard },
+      myEssItem,
+      recruitmentItem,
+      coreHcmItem,
+      employeeRecordsItem,
+      essManagementItem,
+      { label: "Settings", to: `${base}/settings`, icon: Settings },
+    ];
+  }
 
   if (role === "superadmin") {
     return [
-      ...shared,
+      { label: "Dashboard", to: base, icon: LayoutDashboard },
+      recruitmentItem,
+      coreHcmItem,
+      employeeRecordsItem,
+      essManagementItem,
       { label: "User Management", to: `${base}/users`, icon: ShieldCheck },
       { label: "Audit Logs", to: `${base}/audit`, icon: ScrollText },
       { label: "Settings", to: `${base}/settings`, icon: Settings },
     ];
   }
 
-  return [...shared, { label: "Settings", to: `${base}/settings`, icon: Settings }];
+  return [];
 }
 
 export const iconRegistry = { Users, UserCheck };

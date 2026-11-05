@@ -45,7 +45,18 @@ class ScreeningRequirementTemplateSeeder extends Seeder
                 'active' => true,
             ]);
 
-            $record->items()->createMany($template['items']);
+            // Phase 3h: requirement entities are inlined in items_json (array cast encodes it).
+            $record->items_json = array_map(function (array $item, int $idx) use ($record) {
+                return [
+                    'item_id'     => ($idx + 1),
+                    'template_id' => $record->template_id,
+                    'entity_type' => $item['entity_type'],
+                    'value'       => $item['value'],
+                    'required'    => (bool) ($item['required'] ?? true),
+                    'created_at'  => now()->toDateTimeString(),
+                ];
+            }, $template['items'], array_keys($template['items']));
+            $record->save();
         }
     }
 

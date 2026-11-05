@@ -262,8 +262,9 @@ class EssRequestWorkflowTest extends TestCase
 
         $essRequest = EssRequest::where('request_code', $code)->firstOrFail();
         $this->assertSame(1, $essRequest->returned_count);
-        $this->assertDatabaseHas('ess_request_status_histories', [
+        $this->assertDatabaseHas('ess_request_events', [
             'ess_request_id' => $essRequest->ess_request_id,
+            'event_type' => 'status',
             'status' => 'Returned for Clarification',
         ]);
     }

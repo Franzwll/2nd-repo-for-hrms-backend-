@@ -18,10 +18,12 @@ class JobPostPlatform extends Model
     ];
 
     protected $fillable = [
+        'job_post_platform_id',
         'job_post_id',
         'platform',
         'published_at',
         'status',
+        'created_at',
     ];
 
     public function jobPost(): BelongsTo

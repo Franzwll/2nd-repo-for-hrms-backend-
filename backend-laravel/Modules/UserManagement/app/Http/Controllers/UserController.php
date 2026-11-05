@@ -214,7 +214,7 @@ class UserController extends Controller
     public function loginActivity(SystemUser $user): JsonResponse
     {
         $activities = $user->loginActivity()
-            ->orderByDesc('login_at')
+            ->orderByDesc('occurred_at')
             ->paginate($this->perPage(request()));
 
         return response()->json([

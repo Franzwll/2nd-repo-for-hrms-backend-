@@ -76,12 +76,10 @@ INSERT IGNORE INTO `job_posts`
  '["TESDA NC II in Electrical, Refrigeration, or equivalent.","At least 1 year hotel or building maintenance experience.","Willing to be on-call for emergencies."]',
   '["HVAC","Plumbing","Electrical","Preventive Maintenance"]');
 
-INSERT IGNORE INTO `job_post_platforms` (`job_post_id`, `platform`, `published_at`, `status`) VALUES
-(7, 'Company Website', '2026-05-25 08:00:00', 'published'),
-(7, 'Facebook',        '2026-05-25 08:20:00', 'published'),
-(8, 'Company Website', '2026-05-26 08:00:00', 'published'),
-(8, 'Facebook',        '2026-05-26 08:30:00', 'published'),
-(9, 'Company Website', '2026-05-27 08:00:00', 'published'),
-(9, 'Indeed',          '2026-05-27 09:00:00', 'published'),
-(10, 'Company Website', '2026-05-28 08:00:00', 'published'),
-(10, 'Indeed',          '2026-05-28 09:15:00', 'published');
+-- job_post_platforms (inlined into job_posts.platforms_json since Phase 3d).
+-- Guarded on an empty platforms_json so running this extension over an
+-- already-seeded database keeps each post's existing platform list intact.
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 15, "job_post_id": 7, "platform": "Website", "published_at": "2026-05-25 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 16, "job_post_id": 7, "platform": "Facebook", "published_at": "2026-05-25 08:20:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 7 AND (`platforms_json` IS NULL OR `platforms_json` = '');
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 17, "job_post_id": 8, "platform": "Website", "published_at": "2026-05-26 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 18, "job_post_id": 8, "platform": "Facebook", "published_at": "2026-05-26 08:30:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 8 AND (`platforms_json` IS NULL OR `platforms_json` = '');
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 19, "job_post_id": 9, "platform": "Website", "published_at": "2026-05-27 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 20, "job_post_id": 9, "platform": "Indeed", "published_at": "2026-05-27 09:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 9 AND (`platforms_json` IS NULL OR `platforms_json` = '');
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 21, "job_post_id": 10, "platform": "Website", "published_at": "2026-05-28 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 22, "job_post_id": 10, "platform": "Indeed", "published_at": "2026-05-28 09:15:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 10 AND (`platforms_json` IS NULL OR `platforms_json` = '');
