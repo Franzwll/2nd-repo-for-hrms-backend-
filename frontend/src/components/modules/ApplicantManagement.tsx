@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -93,6 +92,7 @@ import { toast } from "sonner";
 import { ListBody } from "@/components/portal/ListBody";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
+import { WorkflowTabs } from "@/components/portal/WorkflowTabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -456,6 +456,36 @@ const displayAppliedAt = (v: string | null | undefined): string => {
   const suffix = hour >= 12 ? "PM" : "AM";
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
   return `${m[1]} ${String(h12).padStart(2, "0")}:${m[3]} ${suffix}`;
+};
+
+/**
+ * Splits an applied date into a readable short date (e.g. "Nov 5, 2026") and time ("03:48 PM").
+ */
+const formatDisplayDate = (
+  v: string | null | undefined,
+): { date: string; time: string } => {
+  if (!v) return { date: "—", time: "" };
+  const shown = displayAppliedAt(v);
+  const parts = shown.split(" ");
+  if (parts.length >= 2) {
+    const rawDate = parts[0];
+    const time = parts.slice(1).join(" ");
+    const m = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      const monthNames = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+      ];
+      const monthIdx = parseInt(m[2], 10) - 1;
+      const day = parseInt(m[3], 10);
+      const year = m[1];
+      if (monthIdx >= 0 && monthIdx < 12) {
+        return { date: `${monthNames[monthIdx]} ${day}, ${year}`, time };
+      }
+    }
+    return { date: rawDate, time };
+  }
+  return { date: shown, time: "" };
 };
 
 /**
@@ -1358,18 +1388,18 @@ function ScreeningStatTile({
   const t = screeningToneClass[tone];
   return (
     <div className={cn("h-full rounded-lg border p-3", t.card, className)}>
-      <p
+      <div
         className={cn(
-          "flex items-center gap-1.5 font-bold leading-none",
-          small ? "text-sm leading-tight" : "text-lg",
+          "flex items-start gap-1.5 font-bold",
+          small ? "text-xs leading-snug" : "text-lg leading-none items-center",
           t.value,
         )}
       >
-        {icon}
-        <span className="truncate" title={valueTitle}>
+        {icon && <span className="shrink-0">{icon}</span>}
+        <span className={small ? "line-clamp-2 break-words" : "truncate"} title={valueTitle}>
           {value}
         </span>
-      </p>
+      </div>
       <p className={cn("mt-1.5 text-[0.7rem] font-medium leading-tight", t.label)}>{label}</p>
     </div>
   );
@@ -7246,11 +7276,6 @@ function ApplicantViewScreen({
   );
 }
 
-/** Candidate cards visible in the "Top 5 Candidates Today" list before it
- *  scrolls. Candidates 4 and 5 stay in the list and remain reachable by
- *  scrolling — the card never grows to fit all five. */
-const TOP_FIVE_VISIBLE_CARDS = 3;
-
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
   const { gateSensitive, gateDialog } = usePasswordGate();
   const { requestPrint, printDialog } = useSecuredPrint();
@@ -7453,15 +7478,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const pipelineListRef = useRef<HTMLDivElement>(null);
   /** Room Availability & Daily Schedule card — "View in calendar" scrolls here. */
   const roomAvailabilityRef = useRef<HTMLDivElement>(null);
-
-  /* --- Top 5 Candidates Today list viewport -------------------------------- */
-  /* The visible list area is locked to exactly TOP_FIVE_VISIBLE_CARDS cards so
-     candidates 4 and 5 scroll instead of stretching the card taller than the
-     Candidate Ranking card beside it. Card height is measured at runtime, so
-     the viewport stays exactly three cards at any zoom / font size. */
-  const [topFiveList, setTopFiveList] = useState<HTMLOListElement | null>(null);
-  const [topFiveCard, setTopFiveCard] = useState<HTMLLIElement | null>(null);
-  const [topFiveViewport, setTopFiveViewport] = useState<number | null>(null);
 
   const [search, setSearch] = useState("");
   const [review, setReview] = useState<Applicant | null>(null);
@@ -8528,26 +8544,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         .slice(0, 5),
     [rows, isHiddenStage],
   );
-
-  /* Measures one candidate card once it is on screen and locks the list
-     viewport to TOP_FIVE_VISIBLE_CARDS cards (see the ranking card). Runs
-     before paint, so the list never flashes all five cards. */
-  useLayoutEffect(() => {
-    if (!topFiveList || !topFiveCard) return;
-    const measure = () => {
-      const rowGap = Number.parseFloat(getComputedStyle(topFiveList).rowGap || "0") || 0;
-      const cardHeight = topFiveCard.getBoundingClientRect().height;
-      if (cardHeight <= 0) return;
-      setTopFiveViewport(
-        Math.round(cardHeight * TOP_FIVE_VISIBLE_CARDS + rowGap * (TOP_FIVE_VISIBLE_CARDS - 1)),
-      );
-    };
-    measure();
-    // Re-measure when the card resizes (zoom, font-size, longer content).
-    const observer = new ResizeObserver(measure);
-    observer.observe(topFiveCard);
-    return () => observer.disconnect();
-  }, [topFiveList, topFiveCard, topFiveToday.length]);
 
   const filtered = rows.filter((a) => {
     if (isHiddenStage(a)) return false;
@@ -12250,6 +12246,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <StatCard
                   label="Total Applicants"
                   value={rows.length}
+                  hint="Everyone in the pipeline"
                   icon={Users}
                   tone="primary"
                   onClick={() => goToApplicants("all")}
@@ -12259,54 +12256,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <StatCard
                   label="New Applicant"
                   value={rows.filter((a) => a.stage === "Screened").length}
+                  hint="Awaiting first review"
                   icon={UserPlus}
                   tone="primary"
                   onClick={goToNewApplicants}
                 />
               </div>
               <div className="h-full [&>*]:h-full">
-                {/* Perfect for the Job — same card shape as StatCard, plus a
-                  Today / Week / Month quick range switch for the count. */}
-                <Card
-                  className="group h-full cursor-pointer transition-colors hover:border-primary/40"
+                <StatCard
+                  label="Perfect for the Job"
+                  value={rows.filter((a) => a.status === "fit").length}
+                  hint="Meets score and requirements"
+                  icon={CheckCircle2}
+                  tone="success"
                   onClick={goToPerfectForJob}
-                >
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="eyebrow">Perfect for the Job</p>
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-                      </div>
-                      <div
-                        className="flex w-fit shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {(["today", "week", "month", "all"] as const).map((r) => (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => setPerfectRange(r)}
-                            className={cn(
-                              "cursor-pointer rounded px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide transition-colors",
-                              perfectRange === r
-                                ? "bg-primary text-primary-foreground"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            {r}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="mt-2 font-display text-3xl font-semibold text-success">
-                      {
-                        rows.filter(
-                          (a) => a.status === "fit" && isApplicantInPerfectRange(a, perfectRange),
-                        ).length
-                      }
-                    </p>
-                  </CardContent>
-                </Card>
+                />
               </div>
               <div className="h-full [&>*]:h-full">
                 <StatCard
@@ -12315,6 +12279,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     interviews.filter((i) => i.date === TODAY_ISO && i.status !== "Cancelled")
                       .length
                   }
+                  hint="Interviews booked for today"
                   icon={CalendarDays}
                   tone="gold"
                   onClick={goToTodayInterviews}
@@ -12327,40 +12292,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             {/* Sticky sub-header: pinned right below the 64px portal header so
                 the page's top bar (tabs) stays visible while the long ranking
                 and applicant list scrolls. */}
-            <div className="sticky top-16 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-              <TabsList className="py-2">
-                <TabsTrigger
-                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                  value="ranking"
-                >
-                  <Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants
-                </TabsTrigger>
-                <TabsTrigger
-                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                  value="scheduling"
-                >
-                  <CalendarClock className="h-3.5 w-3.5" /> Interview Pipeline
-                </TabsTrigger>
-                <TabsTrigger
-                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                  value="history"
-                >
-                  <History className="h-3.5 w-3.5" /> History &amp; Audit
-                </TabsTrigger>
-              </TabsList>
+            <div className="sticky top-16 z-20 -mx-1 bg-background/95 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+              <WorkflowTabs
+                tabs={[
+                  { value: "ranking", label: "Ranking & applicants", icon: Trophy },
+                  { value: "scheduling", label: "Interview pipeline", icon: CalendarClock },
+                  { value: "history", label: "History & audit", icon: History },
+                ]}
+              />
             </div>
 
             {/* RANKING + TABLE */}
             <TabsContent value="ranking" className=" space-y-6">
-              <div className="grid items-stretch gap-6 xl:grid-cols-[2fr_1fr]">
-                <Card className="border-border/70">
-                  <CardContent className="flex h-full flex-col p-6">
+              <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
+                {/* Screening Overview Card */}
+                <Card className="border-border/70 bg-card">
+                  <CardContent className="flex h-full flex-col justify-between p-5 sm:p-6">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                          <Trophy className="h-5 w-5 text-primary" />
-                          Candidate Ranking
+                          <Target className="h-5 w-5 text-primary" />
+                          Screening overview
                         </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          How this hiring pool landed against the job requirements.
+                        </p>
                       </div>
                       <Select value={positionFilter} onValueChange={setPositionFilter}>
                         <SelectTrigger className="w-48">
@@ -12377,24 +12333,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </Select>
                     </div>
 
-                    <div className="mx-auto mt-2 flex w-full max-w-3xl flex-1 flex-wrap items-center justify-center gap-8 py-2">
-                      <div className="relative h-[380px] w-[380px] shrink-0">
+                    <div className="mt-5 flex flex-1 flex-col items-center justify-center gap-6 sm:flex-row sm:gap-8">
+                      {/* Donut chart */}
+                      <div className="relative flex h-[240px] w-[240px] shrink-0 items-center justify-center">
                         {loading ? (
-                          <div className="h-full w-full flex items-center justify-center">
-                            <Skeleton className="h-[380px] w-[380px] rounded-full" />
-                          </div>
+                          <Skeleton className="h-[230px] w-[230px] rounded-full" />
                         ) : (
                           <>
-                            <PieChart width={380} height={380}>
+                            <PieChart width={240} height={240}>
                               <Pie
                                 isAnimationActive={false}
                                 data={distribution}
                                 dataKey="value"
                                 nameKey="name"
-                                cx={190}
-                                cy={190}
-                                innerRadius={80}
-                                outerRadius={130}
+                                cx={120}
+                                cy={120}
+                                innerRadius={58}
+                                outerRadius={94}
                                 paddingAngle={2}
                                 labelLine={false}
                                 label={(props: {
@@ -12414,7 +12369,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     value = 0,
                                   } = props;
                                   const pct = screenedTotal ? (value / screenedTotal) * 100 : 0;
-                                  if (pct < 4) return null;
+                                  if (pct < 5) return null;
                                   const r = innerRadius + (outerRadius - innerRadius) / 2;
                                   const rad = -midAngle * (Math.PI / 180);
                                   return (
@@ -12436,7 +12391,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   <Cell
                                     key={d.key}
                                     fill={statusChartColor[d.key]}
-                                    className="cursor-pointer"
+                                    className="cursor-pointer transition-opacity hover:opacity-80"
                                     onClick={() => goToStatus(d.key)}
                                   />
                                 ))}
@@ -12453,160 +12408,165 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               />
                             </PieChart>
 
+                            {/* Donut Center Overlay */}
                             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                              <span className="font-display text-3xl font-semibold">
+                              <span className="font-display text-3xl font-bold tracking-tight text-foreground">
                                 {screenedTotal}
                               </span>
-                              <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">
-                                Resumes
+                              <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                                {screenedTotal === 1 ? "Resume" : "Resumes"}
                               </span>
                             </div>
                           </>
                         )}
                       </div>
 
-                      <div className="grid w-full min-w-[16rem] max-w-[24rem] flex-1 grid-cols-1 gap-2">
-                        {loading ? (
-                          <>
-                            {Array.from({ length: 4 }).map((_, i) => (
+                      {/* Status filter buttons */}
+                      <div className="flex w-full flex-1 flex-col gap-2 min-w-[190px]">
+                        {loading
+                          ? Array.from({ length: 4 }).map((_, i) => (
                               <div
                                 key={`skeleton-breakdown-${i}`}
-                                className="flex items-center justify-between rounded-md border border-border px-4 py-3"
+                                className="rounded-lg border border-border/70 p-2.5"
                                 aria-hidden="true"
                               >
-                                <span className="flex items-center gap-2">
-                                  <Skeleton className="h-3 w-3 rounded-full" />
-                                  <Skeleton className="h-4 w-28" />
-                                </span>
-                                <Skeleton className="h-5 w-10" />
+                                <Skeleton className="h-3.5 w-24" />
+                                <Skeleton className="mt-2 h-1.5 w-full" />
                               </div>
-                            ))}
-                          </>
-                        ) : (
-                          distribution.map((d) => (
-                            <button
-                              type="button"
-                              key={d.key}
-                              title={`Show the ${d.name} applicants in the Applicant List`}
-                              onClick={() => goToStatus(d.key)}
-                              className="flex cursor-pointer items-center justify-between rounded-md border border-border px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
-                            >
-                              <span className="flex items-center gap-2 text-sm">
-                                <span
-                                  className="h-3 w-3 rounded-full"
-                                  style={{ background: statusChartColor[d.key] }}
-                                />
-                                {d.name}
-                              </span>
-                              <span className="font-display text-lg font-semibold">{d.value}</span>
-                            </button>
-                          ))
-                        )}
+                            ))
+                          : distribution.map((d) => {
+                              const pct = screenedTotal
+                                ? Math.round((d.value / screenedTotal) * 100)
+                                : 0;
+                              return (
+                                <button
+                                  type="button"
+                                  key={d.key}
+                                  title={`Filter by ${d.name}`}
+                                  onClick={() => goToStatus(d.key)}
+                                  className="group cursor-pointer rounded-lg border border-border/70 bg-card p-2 text-left transition-all hover:border-primary/40 hover:bg-muted/30"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="flex min-w-0 items-center gap-2 text-xs sm:text-sm font-medium">
+                                      <span
+                                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                        style={{ background: statusChartColor[d.key] }}
+                                      />
+                                      <span className="truncate">{d.name}</span>
+                                    </span>
+                                    <span className="shrink-0 font-display text-sm sm:text-base font-semibold tabular-nums text-foreground">
+                                      {d.value}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1.5 flex items-center gap-2">
+                                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                                      <div
+                                        className="h-full rounded-full transition-[width] duration-300"
+                                        style={{
+                                          width: `${pct}%`,
+                                          background: statusChartColor[d.key],
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-[0.65rem] font-medium tabular-nums text-muted-foreground shrink-0 w-7 text-right">
+                                      {pct}%
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            })}
                       </div>
                     </div>
+
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Click any chart slice or status card to filter the applicant list below.
+                    </p>
                   </CardContent>
                 </Card>
 
-                {/* Right — stretches to the row height so its bottom edge lines
-                up with Candidate Ranking, while the list viewport is locked to
-                three candidate cards; candidates 4 and 5 scroll into view. */}
-                <Card className="flex min-h-0 flex-col self-stretch overflow-hidden border-border/70">
-                  <CardContent className="flex min-h-0 flex-1 flex-col p-6">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                        <Trophy className="h-5 w-5 text-gold" /> Top 5 Candidates Today
-                      </h2>
+                {/* Priority Candidates Card */}
+                <Card className="flex flex-col border-border/70 bg-card">
+                  <CardContent className="flex h-full flex-1 flex-col justify-between p-5 sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
+                          <Trophy className="h-4 w-4 text-gold" />
+                          Priority candidates
+                        </h3>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Strongest matches from resume screening.
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="border-gold/40 bg-gold-soft text-gold text-[0.68rem] font-semibold">
+                        Top 5
+                      </Badge>
                     </div>
-                    <ol
-                      ref={setTopFiveList}
-                      style={topFiveViewport ? { maxHeight: `${topFiveViewport}px` } : undefined}
-                      className="mt-4 flex max-h-[33rem] min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
-                    >
+
+                    <ol className="mt-4 flex flex-1 flex-col divide-y divide-border/60 overflow-hidden rounded-lg border border-border/70 bg-card">
                       {loading
-                        ? Array.from({ length: 3 }).map((_, i) => (
-                            <li
-                              key={`skeleton-top5-${i}`}
-                              className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm"
-                            >
-                              <div className="flex items-center gap-3">
-                                <Skeleton className="h-7 w-7 rounded-full" />
-                                <Skeleton className="h-12 w-12 rounded-full" />
-                                <div className="min-w-0 flex-1">
-                                  <Skeleton className="h-5 w-48" />
-                                  <Skeleton className="h-4 w-32 mt-1" />
-                                  <Skeleton className="h-5 w-24 mt-2" />
-                                </div>
-                                <Skeleton className="h-8 w-20 ml-auto" />
+                        ? Array.from({ length: 5 }).map((_, i) => (
+                            <li key={`skeleton-top5-${i}`} className="flex items-center gap-3 p-3">
+                              <Skeleton className="h-6 w-6 rounded-full" />
+                              <Skeleton className="h-8 w-8 rounded-full" />
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <Skeleton className="h-3.5 w-32" />
+                                <Skeleton className="h-3 w-20" />
                               </div>
-                              <Skeleton className="h-9 w-full mt-2" />
+                              <Skeleton className="h-6 w-10" />
                             </li>
                           ))
                         : topFiveToday.map((a, i) => (
                             <li
                               key={a.id}
-                              ref={i === 0 ? setTopFiveCard : undefined}
-                              className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
+                              className="group flex flex-1 items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-muted/40 cursor-pointer"
+                              onClick={() => openReview(a)}
                             >
-                              {/* Row 1: Rank + Avatar + Name/Position */}
-                              <div className="flex items-center gap-3">
-                                <span
-                                  className={cn(
-                                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-display text-xs font-semibold",
-                                    i === 0
-                                      ? "bg-gold text-gold-foreground"
-                                      : "bg-secondary text-secondary-foreground",
-                                  )}
-                                >
-                                  {i + 1}
-                                </span>
-                                <Avatar className="h-12 w-12 shrink-0">
-                                  <AvatarFallback className="bg-secondary text-sm font-medium">
-                                    {initials(a.name)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-base font-semibold">{a.name}</p>
-                                  <p className="truncate text-sm text-muted-foreground">
-                                    {a.position}
-                                  </p>
-                                  {(() => {
-                                    const tier = computeTopCandidateTier(
-                                      a.status,
-                                      applicantDocs[a.id] ?? [],
-                                    );
-                                    return (
-                                      <Badge
-                                        variant="outline"
-                                        className={cn(
-                                          "mt-1 text-[0.65rem]",
-                                          topCandidateTierMeta[tier].className,
-                                        )}
-                                      >
-                                        <Trophy className="mr-1 h-3 w-3" />
-                                        {topCandidateTierMeta[tier].label}
-                                      </Badge>
-                                    );
-                                  })()}
-                                </div>
-                                {/* Score shares the name/badge row — the separate
-                                score row that left a white gap before Review is
-                                gone, and the percent lines up with the badge. */}
-                                <span className="ml-auto shrink-0 self-center font-display text-2xl font-bold text-primary">
-                                  {a.score}%
-                                </span>
-                              </div>
-
-                              {/* Review button — full width, matches photo */}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="w-full"
-                                onClick={() => openReview(a)}
+                              <span
+                                className={cn(
+                                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-display text-xs font-semibold",
+                                  i === 0
+                                    ? "bg-gold text-gold-foreground font-bold shadow-xs"
+                                    : "bg-secondary text-secondary-foreground",
+                                )}
                               >
-                                Review
+                                {i + 1}
+                              </span>
+                              <Avatar className="h-8 w-8 shrink-0">
+                                <AvatarFallback className="bg-secondary text-[0.65rem] font-medium text-foreground">
+                                  {initials(a.name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-semibold group-hover:text-primary transition-colors text-foreground">
+                                  {a.name}
+                                </p>
+                                <p className="truncate text-[0.7rem] text-muted-foreground">
+                                  {a.position}
+                                </p>
+                              </div>
+                              <span className="shrink-0 font-display text-sm sm:text-base font-semibold text-primary tabular-nums">
+                                {a.score}%
+                              </span>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 shrink-0 text-muted-foreground group-hover:text-primary hover:bg-primary/10"
+                                title="Review screening"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openReview(a);
+                                }}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                                <span className="sr-only">Review</span>
                               </Button>
                             </li>
                           ))}
+                      {!loading && topFiveToday.length === 0 && (
+                        <li className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground">
+                          No screened candidates yet. New resumes appear here after ranking.
+                        </li>
+                      )}
                     </ol>
                   </CardContent>
                 </Card>
@@ -12614,12 +12574,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
               <Card ref={applicantListRef} className="scroll-mt-28 border-border/70">
                 <CardContent className="p-4 sm:p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                         <Users className="h-5 w-5 text-primary" />
                         Applicant List
                       </h2>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {loading
+                          ? "Loading applicants…"
+                          : `${applicantPage.total} applicant${applicantPage.total === 1 ? "" : "s"} match the current filters.`}
+                      </p>
                       {rankingFilter !== "all" && (
                         <Badge
                           variant="outline"
@@ -12632,23 +12597,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             onClick={() => setRankingFilter("all")}
                             aria-label="Clear quick filter"
                           >
-                            ?
+                            ×
                           </button>
                         </Badge>
                       )}
                     </div>
-                    <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+                    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                       <div className="relative w-full sm:w-60">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
-                          placeholder="Search applicant name, ID..."
+                          placeholder="Search name, ID, email…"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
                           className="w-full pl-8"
                         />
                       </div>
                       <Select value={positionFilter} onValueChange={setPositionFilter}>
-                        <SelectTrigger className="w-full sm:w-52">
+                        <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-44">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -12661,11 +12626,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </SelectContent>
                       </Select>
                       <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-full sm:w-52">
+                        <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-40">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="all">All results</SelectItem>
                           {(Object.keys(statusMeta) as ApplicantStatus[]).map((k) => (
                             <SelectItem key={k} value={k}>
                               {statusMeta[k].label}
@@ -12674,7 +12639,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </SelectContent>
                       </Select>
                       <Select value={stageFilter} onValueChange={setStageFilter}>
-                        <SelectTrigger className="w-full sm:w-48">
+                        <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-40">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -12694,6 +12659,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           ))}
                         </SelectContent>
                       </Select>
+                      {(search ||
+                        positionFilter !== "all" ||
+                        statusFilter !== "all" ||
+                        stageFilter !== "all" ||
+                        rankingFilter !== "all") && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 px-2 text-xs text-muted-foreground"
+                          onClick={() => {
+                            setSearch("");
+                            setPositionFilter("all");
+                            setStatusFilter("all");
+                            setStageFilter("all");
+                            setRankingFilter("all");
+                          }}
+                        >
+                          Clear filters
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -12702,38 +12687,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       {/* `min-w` keeps every column readable on phones: the shared
                           Table wrapper already scrolls horizontally, so the table
                           slides instead of squeezing the labels together. */}
-                      <Table className="table-fixed text-xs min-w-[840px]">
+                      <Table className="table-fixed text-xs min-w-[920px]">
                         <TableHeader>
                           <TableRow>
                             <SortHead
                               sortKey="name"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[18%]"
+                              className="w-[24%]"
                             >
                               Applicant
-                            </SortHead>
-                            <SortHead
-                              sortKey="contact"
-                              sort={applicantSort.sort}
-                              onSort={applicantSort.toggle}
-                              className="hidden w-[14%] md:table-cell"
-                            >
-                              Contact
                             </SortHead>
                             <SortHead
                               sortKey="position"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[13%]"
+                              className="w-[15%]"
                             >
-                              Position
+                              Role
                             </SortHead>
                             <SortHead
                               sortKey="applied"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[10%]"
+                              className="w-[12%]"
                             >
                               Applied
                             </SortHead>
@@ -12741,7 +12718,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="score"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[9%]"
+                              className="w-[10%]"
                             >
                               Score
                             </SortHead>
@@ -12749,55 +12726,51 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="status"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[11%]"
+                              className="w-[16%]"
                             >
-                              Status
+                              Result
                             </SortHead>
                             <SortHead
                               sortKey="stage"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[9%]"
+                              className="w-[12%]"
                             >
                               Stage
                             </SortHead>
-                            <TableHead className="w-[16%] text-right">Actions</TableHead>
+                            <TableHead className="w-[11%] text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {loading
                             ? Array.from({ length: 5 }).map((_, i) => (
                                 <TableRow key={`skeleton-${i}`}>
-                                  <TableCell className="max-w-0">
+                                  <TableCell>
                                     <div className="flex min-w-0 items-center gap-2">
                                       <Skeleton className="h-7 w-7 rounded-full" />
                                       <div className="min-w-0">
-                                        <Skeleton className="h-4 w-48" />
-                                        <Skeleton className="h-3 w-32 mt-1" />
+                                        <Skeleton className="h-4 w-40" />
+                                        <Skeleton className="h-3 w-28 mt-1" />
                                       </div>
                                     </div>
                                   </TableCell>
-                                  <TableCell className="hidden max-w-0 md:table-cell">
-                                    <Skeleton className="h-4 w-48" />
-                                    <Skeleton className="h-3 w-32 mt-1" />
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate">
-                                    <Skeleton className="h-4 w-36" />
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate text-muted-foreground">
-                                    <Skeleton className="h-4 w-24" />
+                                  <TableCell>
+                                    <Skeleton className="h-4 w-32" />
                                   </TableCell>
                                   <TableCell>
-                                    <Skeleton className="h-5 w-16" />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Skeleton className="h-5 w-24" />
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate">
                                     <Skeleton className="h-4 w-20" />
                                   </TableCell>
                                   <TableCell>
-                                    <Skeleton className="h-7 w-24" />
+                                    <Skeleton className="h-5 w-14" />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Skeleton className="h-5 w-20" />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Skeleton className="h-4 w-24" />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Skeleton className="ml-auto h-7 w-16" />
                                   </TableCell>
                                 </TableRow>
                               ))
@@ -12812,8 +12785,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   )}
                                 >
                                   <TableCell className="max-w-0">
-                                    <div className="flex min-w-0 items-center gap-2">
-                                      <Avatar className="h-7 w-7 shrink-0">
+                                    <div className="flex min-w-0 items-center gap-2.5">
+                                      <Avatar className="h-8 w-8 shrink-0">
                                         <AvatarFallback className="bg-secondary text-[0.65rem]">
                                           {initials(a.name)}
                                         </AvatarFallback>
@@ -12822,69 +12795,91 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         <p className="truncate font-medium" title={a.name}>
                                           {a.name}
                                         </p>
-                                        <p className="truncate text-muted-foreground">{a.id}</p>
+                                        <p
+                                          className="truncate text-[0.7rem] text-muted-foreground"
+                                          title={`${a.email} · ${a.phone}`}
+                                        >
+                                          {a.email} · {a.phone}
+                                        </p>
                                       </div>
                                     </div>
                                   </TableCell>
-                                  <TableCell className="hidden max-w-0 md:table-cell">
-                                    <p className="truncate" title={a.email}>
-                                      {a.email}
+                                  <TableCell className="max-w-0">
+                                    <p className="truncate" title={a.position}>
+                                      {a.position}
                                     </p>
-                                    <p className="truncate text-muted-foreground">{a.phone}</p>
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate" title={a.position}>
-                                    {a.position}
+                                    <p className="truncate text-[0.7rem] text-muted-foreground">
+                                      {a.id}
+                                    </p>
                                   </TableCell>
                                   <TableCell
-                                    className="max-w-0 truncate text-muted-foreground"
+                                    className="whitespace-nowrap text-muted-foreground"
                                     title={displayAppliedAt(a.appliedAt)}
                                   >
-                                    {displayAppliedAt(a.appliedAt)}
+                                    {(() => {
+                                      const { date, time } = formatDisplayDate(a.appliedAt);
+                                      return (
+                                        <>
+                                          <span className="block font-medium text-foreground text-[0.75rem]">
+                                            {date}
+                                          </span>
+                                          {time && (
+                                            <span className="block text-[0.68rem] text-muted-foreground">
+                                              {time}
+                                            </span>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
                                   </TableCell>
                                   <TableCell>
-                                    <span className="font-display text-sm font-semibold">
+                                    <span className="font-display text-sm font-semibold tabular-nums">
                                       {a.score}%
                                     </span>
                                     {(a.docCount ?? 0) > 0 ? (
                                       <p
-                                        className="truncate text-xs font-medium text-primary"
-                                        title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
+                                        className="truncate text-[0.7rem] text-muted-foreground"
+                                        title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded`}
                                       >
-                                        {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
+                                        {a.docCount} doc{a.docCount === 1 ? "" : "s"}
                                       </p>
-                                    ) : null}
+                                    ) : (
+                                      <p className="truncate text-[0.7rem] text-muted-foreground">
+                                        Resume only
+                                      </p>
+                                    )}
                                   </TableCell>
                                   <TableCell>
                                     <Badge
                                       variant="outline"
                                       className={cn(
-                                        "max-w-full truncate px-1.5 py-0.5",
+                                        "whitespace-nowrap px-2 py-0.5 text-xs font-medium",
                                         statusMeta[a.status].className,
                                       )}
                                       title={statusMeta[a.status].label}
                                     >
                                       <span
                                         className={cn(
-                                          "mr-1 h-1.5 w-1.5 shrink-0 rounded-full",
+                                          "mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
                                           statusMeta[a.status].dot,
                                         )}
                                       />
-                                      <span className="truncate">{statusMeta[a.status].label}</span>
+                                      <span>{statusMeta[a.status].label}</span>
                                     </Badge>
                                   </TableCell>
-                                  <TableCell className="max-w-0 truncate" title={a.stage}>
+                                  <TableCell className="truncate" title={a.stage}>
                                     {a.stage}
                                   </TableCell>
                                   <TableCell>
-                                    <div className="flex justify-end gap-1.5">
+                                    <div className="flex justify-end">
                                       <Button
                                         size="sm"
-                                        variant="outline"
-                                        className="h-7 cursor-pointer"
-                                        title="Open applicant view profile"
+                                        variant="ghost"
+                                        className="h-7 cursor-pointer px-2 text-xs"
+                                        title="Open applicant profile"
                                         onClick={() => setViewingApplicant(a)}
                                       >
-                                        <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
+                                        <Eye className="mr-1 h-3.5 w-3.5" /> View
                                       </Button>
                                     </div>
                                   </TableCell>
@@ -15067,16 +15062,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
+                  <div className="mt-4 [&_td]:align-top">
                     <ListBody>
-                      <Table className="table-fixed text-xs min-w-[980px]">
+                      <Table className="table-fixed text-xs min-w-[1150px]">
                         <TableHeader>
                           <TableRow>
                             <SortHead
                               sortKey="applicant"
                               sort={pipelineSort.sort}
                               onSort={pipelineSort.toggle}
-                              className="w-[24%]"
+                              className="w-[21%]"
                             >
                               Applicant
                             </SortHead>
@@ -15084,7 +15079,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="applied"
                               sort={pipelineSort.sort}
                               onSort={pipelineSort.toggle}
-                              className="w-[8%]"
+                              className="w-[9%]"
                             >
                               Applied
                             </SortHead>
@@ -15092,7 +15087,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="stage"
                               sort={pipelineSort.sort}
                               onSort={pipelineSort.toggle}
-                              className="w-[9%]"
+                              className="w-[10%]"
                             >
                               Current Stage
                             </SortHead>
@@ -15100,7 +15095,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="screening"
                               sort={pipelineSort.sort}
                               onSort={pipelineSort.toggle}
-                              className="w-[7%]"
+                              className="w-[9%]"
                             >
                               Screening
                             </SortHead>
@@ -15108,7 +15103,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="interview"
                               sort={pipelineSort.sort}
                               onSort={pipelineSort.toggle}
-                              className="w-[12%]"
+                              className="w-[13%]"
                             >
                               Interview
                             </SortHead>
@@ -15116,7 +15111,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="assessment"
                               sort={pipelineSort.sort}
                               onSort={pipelineSort.toggle}
-                              className="w-[10%]"
+                              className="w-[11%]"
                             >
                               Assessment
                             </SortHead>
@@ -15136,7 +15131,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             >
                               Final
                             </SortHead>
-                            <TableHead className="w-[12%]">Actions</TableHead>
+                            <TableHead className="w-[9%] text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -16516,7 +16511,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   const detail = vm.detail;
 
                   return (
-                    <Tabs defaultValue="match" value={reviewTab} onValueChange={(v) => setReviewTab(v as any)} className="w-full space-y-4">
+                    <>
+                      <ScreeningModalSummary
+                        status={review.status}
+                        score={vm.score}
+                        matchedCount={vm.matched.length}
+                        missingCount={vm.missing.length}
+                        yearsExperience={vm.yearsExperience}
+                        educationLabel={vm.educationLabel}
+                      />
+                      <Tabs defaultValue="match" value={reviewTab} onValueChange={(v) => setReviewTab(v as any)} className="w-full space-y-4">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-2">
                         <TabsList className="bg-muted/70 p-1">
                           <TabsTrigger
@@ -16556,15 +16560,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                       {/* TAB 1: Match & Requirements */}
                       <TabsContent value="match" className="mt-0 space-y-4">
-                        <ScreeningModalSummary
-                          status={review.status}
-                          score={vm.score}
-                          matchedCount={vm.matched.length}
-                          missingCount={vm.missing.length}
-                          yearsExperience={vm.yearsExperience}
-                          educationLabel={vm.educationLabel}
-                        />
-
                         <div className="grid items-stretch gap-5 grid-cols-1 xl:grid-cols-2">
                           <RequirementMatchPanel
                             rows={vm.rows}
@@ -16670,6 +16665,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         />
                       </TabsContent>
                     </Tabs>
+                    </>
                   );
                 })()}
               </div>

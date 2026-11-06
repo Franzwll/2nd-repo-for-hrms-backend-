@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowDown,
   ArrowUp,
   BookOpen,
@@ -57,6 +58,7 @@ import { useBlocker } from "@tanstack/react-router";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
+import { WorkflowTabs } from "@/components/portal/WorkflowTabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -3049,6 +3051,67 @@ export function RequirementTemplateManager({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * A job posting's picture, with a two-step fallback: the saved upload, then
+ * the composed template poster, then a branded placeholder. A stale path or a
+ * backend without the template endpoint must never surface a broken image.
+ */
+function PosterThumb({
+  src,
+  fallbackSrc,
+  alt,
+  className,
+}: {
+  src?: string | null;
+  fallbackSrc?: string;
+  alt: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
+
+  const effectiveSrc =
+    !failed && src
+      ? src
+      : !fallbackFailed && fallbackSrc && fallbackSrc !== src
+        ? fallbackSrc
+        : null;
+
+  if (!effectiveSrc) {
+    return (
+      <div
+        className={cn(
+          "flex flex-col items-center justify-center gap-1.5 rounded-md border border-gold/30 bg-secondary/30 px-4 text-center text-primary",
+          className,
+        )}
+        role="img"
+        aria-label={alt}
+      >
+        <Briefcase className="h-6 w-6 text-gold" />
+        <span className="font-display text-sm font-semibold text-foreground">Oxford Suites Makati</span>
+        <span className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+          {alt}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={effectiveSrc}
+      alt={alt}
+      className={className}
+      onError={() => {
+        if (!failed && src) {
+          setFailed(true);
+        } else {
+          setFallbackFailed(true);
+        }
+      }}
+    />
   );
 }
 
@@ -6504,7 +6567,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
    *  drift over the red shapes / building photo on the right. */
   const HiringPoster = ({ className }: { className?: string }) => (
     <div className={cn("relative aspect-square w-full overflow-hidden bg-card", className)}>
-      <img
+      <PosterThumb
         src={posterImageUrl}
         alt="Oxford Suites Makati hiring poster"
         className="h-full w-full object-cover"
@@ -6620,77 +6683,122 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         <StatCardsSkeleton count={4} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            label="Active Postings"
-            value={openCount}
-            icon={Send}
-            tone="primary"
-            onClick={() => focusPostings("Open")}
-          />
-          <StatCard
-            label="Total Vacancies"
-            value={totalVacancies}
-            icon={Briefcase}
-            tone="gold"
-            onClick={() => focusPostings("all")}
-          />
-          <StatCard
-            label="Pending Requisitions"
-            value={pendingRequisitions.length}
-            icon={FileText}
-            tone="success"
-            onClick={() => focusRequisitions({ status: "Pending" })}
-          />
-          <StatCard
-            label="High Urgency"
-            value={highUrgencyCount}
-            icon={AlertTriangle}
-            tone="caution"
-            onClick={() => focusRequisitions({ urgency: "High" })}
-          />
+          <div className="h-full [&>*]:h-full">
+            <StatCard
+              label="Active Postings"
+              value={openCount}
+              hint="Currently accepting applications"
+              icon={Send}
+              tone="primary"
+              onClick={() => focusPostings("Open")}
+            />
+          </div>
+          <div className="h-full [&>*]:h-full">
+            <StatCard
+              label="Total Vacancies"
+              value={totalVacancies}
+              hint="Open headcount across roles"
+              icon={Briefcase}
+              tone="gold"
+              onClick={() => focusPostings("all")}
+            />
+          </div>
+          <div className="h-full [&>*]:h-full">
+            <StatCard
+              label="Pending Requisitions"
+              value={pendingRequisitions.length}
+              hint="Awaiting HR review & approval"
+              icon={FileText}
+              tone="success"
+              onClick={() => focusRequisitions({ status: "Pending" })}
+            />
+          </div>
+          <div className="h-full [&>*]:h-full">
+            <StatCard
+              label="High Urgency"
+              value={highUrgencyCount}
+              hint="Positions needing fast-track hiring"
+              icon={AlertTriangle}
+              tone="caution"
+              onClick={() => focusRequisitions({ urgency: "High" })}
+            />
+          </div>
         </div>
       )}
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-6">
-        <TabsList>
-          <TabsTrigger
-            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            value="postings"
-          >
-            <Briefcase className="h-3.5 w-3.5" /> Vacancies &amp; Postings
-          </TabsTrigger>
-          <TabsTrigger
-            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            value="builder"
-          >
-            <FilePlus2 className="h-3.5 w-3.5" /> Job Post Builder
-          </TabsTrigger>
-          <TabsTrigger
-            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            value="requisitions"
-          >
-            <Send className="h-3.5 w-3.5" /> Requisitions
-            {pendingRequisitions.length ? ` (${pendingRequisitions.length})` : ""}
-          </TabsTrigger>
-        </TabsList>
+        <WorkflowTabs
+          tabs={[
+            { value: "postings", label: "Vacancies & postings", icon: Briefcase },
+            { value: "builder", label: "Job post builder", icon: FilePlus2 },
+            {
+              value: "requisitions",
+              label: "Requisitions",
+              icon: Send,
+              count: pendingRequisitions.length,
+            },
+          ]}
+        />
 
         <TabsContent id="recruitment-postings" value="postings" className="mt-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-              <Briefcase className="h-4 w-4 text-primary" /> Vacancies &amp; Postings
-            </h2>
-            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <Briefcase className="h-5 w-5 text-primary" /> Vacancies &amp; Postings
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {jobsLoading
+                    ? "Loading job posts…"
+                    : `${pagedJobs.length} of ${listSort.sorted.length} job post${listSort.sorted.length === 1 ? "" : "s"} shown.`}
+                </p>
+              </div>
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={viewMode === "list" ? "secondary" : "ghost"}
+                    className="h-7 w-7"
+                    onClick={() => setViewMode("list")}
+                    aria-label="List view"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={viewMode === "grid" ? "secondary" : "ghost"}
+                    className="h-7 w-7"
+                    onClick={() => setViewMode("grid")}
+                    aria-label="Grid view"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button onClick={() => setNewOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> New job post
+                </Button>
+                {role === "superadmin" && (
+                  <Button onClick={openAddApplicantFree}>
+                    <UserPlus className="mr-2 h-4 w-4" /> Add applicant
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-muted/20 p-2">
+              <div className="relative w-full min-w-0 sm:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search posted positions…"
-                  className="pl-8"
+                  className="w-full pl-8"
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-36">
+                <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-36">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -6701,7 +6809,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </SelectContent>
               </Select>
               <Select value={deptFilter} onValueChange={setDeptFilter}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-44">
                   <SelectValue placeholder="Department" />
                 </SelectTrigger>
                 <SelectContent>
@@ -6714,7 +6822,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </SelectContent>
               </Select>
               <Select value={dateFilter} onValueChange={setDateFilter}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-40">
                   <SelectValue placeholder="Date posted" />
                 </SelectTrigger>
                 <SelectContent>
@@ -6725,34 +6833,19 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <SelectItem value="year">This year</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+              {(search || statusFilter !== "all" || deptFilter !== "all" || dateFilter !== "all") && (
                 <Button
-                  type="button"
-                  size="icon"
-                  variant={viewMode === "list" ? "secondary" : "ghost"}
-                  className="h-7 w-7"
-                  onClick={() => setViewMode("list")}
-                  aria-label="List view"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 px-2 text-xs text-muted-foreground"
+                  onClick={() => {
+                    setSearch("");
+                    setStatusFilter("all");
+                    setDeptFilter("all");
+                    setDateFilter("all");
+                  }}
                 >
-                  <List className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant={viewMode === "grid" ? "secondary" : "ghost"}
-                  className="h-7 w-7"
-                  onClick={() => setViewMode("grid")}
-                  aria-label="Grid view"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-              </div>
-              <Button onClick={() => setNewOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" /> New job post
-              </Button>
-              {role === "superadmin" && (
-                <Button onClick={openAddApplicantFree}>
-                  <UserPlus className="mr-2 h-4 w-4" /> Add applicant
+                  Clear filters
                 </Button>
               )}
             </div>
@@ -6920,20 +7013,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       >
                         <CardContent className="flex h-full flex-col p-5">
                           <div className="min-h-0 flex-1">
-                            <img
-                              src={
-                                j.picture ||
-                                `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`
-                              }
+                            <PosterThumb
+                              src={j.picture}
+                              fallbackSrc={`${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`}
                               alt={`${j.title} hiring poster`}
                               className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
-                              onError={(e) => {
-                                // A stale picture path 404s — fall back to the
-                                // composed template poster instead of a broken icon.
-                                const el = e.currentTarget;
-                                const fallback = `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`;
-                                if (el.src !== fallback) el.src = fallback;
-                              }}
                             />
                             <div className="flex items-start justify-between gap-2">
                               <div>
@@ -7293,29 +7377,107 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
         <TabsContent value="builder" className="mt-4">
           {!builderStarted ? (
-            <button
-              type="button"
-              onClick={() => {
-                setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
-                setPendingPosition("");
-                setPendingPositionDbId(null);
-                setDeptDialogOpen(true);
-              }}
-              className="group flex min-h-[520px] w-full flex-col items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-border bg-muted/20 p-12 text-center transition-all hover:border-primary/60 hover:bg-primary/5 active:scale-[0.995]"
-            >
-              <span className="flex h-20 w-20 items-center justify-center text-primary transition-transform group-hover:scale-105">
-                <FilePlus2 className="h-9 w-9" />
-              </span>
-              <span className="font-display text-3xl font-semibold">Create a job posting</span>
-              <span className="max-w-lg text-sm text-muted-foreground">
-                Choose a department and job position to start a new posting, then build it with
-                drag-and-drop content blocks and see it exactly as applicants will on the careers
-                site.
-              </span>
-              <span className="mt-1 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-card px-4 py-2 text-xs font-medium text-primary">
-                <Plus className="h-3.5 w-3.5" /> Start a new posting
-              </span>
-            </button>
+            <div className="flex min-h-[500px] w-full flex-col items-center justify-center rounded-2xl border border-border/80 bg-card p-8 sm:p-12 text-center shadow-xs">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
+                <FilePlus2 className="h-8 w-8" />
+              </div>
+              <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">
+                Job Post Builder
+              </h2>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                Compose, preview, and publish hotel job postings with modular content blocks,
+                Gemini-powered drafting, and real-time candidate view parity.
+              </p>
+
+              <div className="mt-8 grid w-full max-w-2xl gap-4 sm:grid-cols-2 text-left">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
+                    setPendingPosition("");
+                    setPendingPositionDbId(null);
+                    setDeptDialogOpen(true);
+                  }}
+                  className="group flex flex-col justify-between rounded-xl border border-border/80 bg-background/60 p-5 transition-all hover:border-primary hover:bg-primary/5 hover:shadow-sm cursor-pointer"
+                >
+                  <div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground mb-3 group-hover:scale-105 transition-transform">
+                      <Plus className="h-5 w-5" />
+                    </div>
+                    <h3 className="font-display text-base font-semibold text-foreground">
+                      Start from scratch
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground leading-normal">
+                      Select a department and position from the hotel structure to create a fresh posting.
+                    </p>
+                  </div>
+                  <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
+                    Select role & build <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+                  </span>
+                </button>
+
+                <div className="flex flex-col justify-between rounded-xl border border-border/80 bg-background/60 p-5">
+                  <div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gold/20 text-gold mb-3">
+                      <Copy className="h-5 w-5" />
+                    </div>
+                    <h3 className="font-display text-base font-semibold text-foreground">
+                      Use existing template
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground leading-normal">
+                      Clone an existing job posting's responsibilities, requirements, and benefits.
+                    </p>
+                  </div>
+                  <div className="mt-4">
+                    {jobList.length > 0 ? (
+                      <Select
+                        onValueChange={(id) => {
+                          const found = jobList.find((j) => String(j.id) === id);
+                          if (found) copyAndUseTemplate(found);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Choose a posting..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {jobList.map((j) => (
+                            <SelectItem key={j.id} value={String(j.id)}>
+                              {j.title} ({j.department})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No postings created yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 grid w-full max-w-2xl grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border/70 pt-6 text-left">
+                <div className="flex items-start gap-2.5">
+                  <Sparkles className="h-4 w-4 shrink-0 text-gold mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">AI Drafting</p>
+                    <p className="text-[0.68rem] text-muted-foreground">Auto-generates 6 sections in seconds</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Screening Sync</p>
+                    <p className="text-[0.68rem] text-muted-foreground">Grounded in ATS skills & credentials</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <Eye className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Live Careers Preview</p>
+                    <p className="text-[0.68rem] text-muted-foreground">Instant side-by-side candidate view</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -7671,7 +7833,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                       />
                                     )}
                                     <ul className="space-y-1">
-                                      {aiUsage.providers.map((p) => (
+                                      {(aiUsage.providers ?? []).map((p) => (
                                         <li
                                           key={`${p.kind}-${p.service}-${p.model}`}
                                           className="flex items-start gap-1.5 text-[0.68rem] leading-relaxed text-muted-foreground"

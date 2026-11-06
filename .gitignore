@@ -8,6 +8,8 @@ nlp-service/uvicorn_*.log
 .opencode
 .impeccable
 .agent
+.agents/
+skills-lock.json
 
 # Laravel 4 specific
 bootstrap/compiled.php
