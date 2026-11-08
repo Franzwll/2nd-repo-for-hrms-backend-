@@ -40,6 +40,7 @@ import {
   History,
   Loader2,
   Mail,
+  MapPin,
   Maximize2,
   Monitor,
   MoreHorizontal,
@@ -820,6 +821,146 @@ function stagePillMeta(stage: string): { label: string; className: string } {
   return { label: stage, className: "bg-muted text-muted-foreground" };
 }
 
+/** Five-step rail shown in the right-side applicant profile panel. */
+const APPLICANT_PROFILE_STEPS: { label: string; icon: typeof Users }[] = [
+  { label: "Screening", icon: ScanLine },
+  { label: "Interview", icon: Users },
+  { label: "Assessment", icon: ClipboardCheck },
+  { label: "Final Evaluation", icon: Award },
+  { label: "Hired", icon: Check },
+];
+
+/** Shared five-stage pipeline rail: Screening → Interview → Assessment →
+ *  Final Evaluation → Hired. Completed stages show a green check, the current
+ *  stage is maroon, future stages stay outlined. Every stage is clickable. */
+function ProfileStageRail({
+  stageIndex,
+  activeStage,
+  onSelect,
+  className,
+}: {
+  stageIndex: number;
+  activeStage: number | null;
+  onSelect: (index: number) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex w-full items-start", className)}>
+      {APPLICANT_PROFILE_STEPS.map((step, index) => {
+        const Icon = step.icon;
+        const done = index < stageIndex;
+        const current = index === stageIndex;
+        const selected = index === activeStage;
+        return (
+          <div key={step.label} className="relative flex min-w-0 flex-1 flex-col items-center">
+            {index < APPLICANT_PROFILE_STEPS.length - 1 && (
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute left-1/2 top-4 h-[2px] w-full",
+                  index < stageIndex ? "bg-emerald-500" : "bg-border",
+                )}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => onSelect(index)}
+              aria-pressed={selected}
+              aria-current={current ? "step" : undefined}
+              title={step.label}
+              className="group relative z-10 flex min-w-0 cursor-pointer flex-col items-center gap-1.5 rounded-lg px-1 pb-1 pt-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <span
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
+                  done
+                    ? "border-emerald-500 bg-emerald-500 text-white"
+                    : current
+                      ? "border-primary bg-primary text-primary-foreground ring-4 ring-primary/15"
+                      : "border-border bg-card text-muted-foreground group-hover:border-primary/50 group-hover:text-primary",
+                  selected && "outline outline-2 outline-offset-2 outline-primary/40",
+                )}
+              >
+                {done ? (
+                  <Check className="h-4 w-4" strokeWidth={3} />
+                ) : (
+                  <Icon className="h-4 w-4" />
+                )}
+              </span>
+              <span
+                className={cn(
+                  "block max-w-full text-center text-[0.56rem] font-semibold leading-tight",
+                  current
+                    ? "border-b-2 border-primary pb-0.5 text-primary"
+                    : selected
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                )}
+              >
+                {step.label}
+              </span>
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function applicantProfileStageIndex(a: Applicant): number {
+  switch (a.stage) {
+    case "Screened":
+      return 0;
+    case "Accepted":
+    case "Interview Scheduled":
+      return 1;
+    case "Assessment Test":
+    case "Practical Test":
+    case "Assessed":
+      return 2;
+    case "Final Evaluation":
+    case "Offer":
+      return 3;
+    case "Hired":
+      return 4;
+    case "Rejected":
+      return 0;
+    default:
+      return 0;
+  }
+}
+
+function applicantNextStep(a: Applicant, hasInterview: boolean): string {
+  switch (a.stage) {
+    case "Screened":
+      return "Review the screening result and decide whether to move this applicant to interview.";
+    case "Accepted":
+      return hasInterview
+        ? "Confirm the interview schedule and send the candidate the invite."
+        : "Schedule the interview to keep the application moving.";
+    case "Interview Scheduled":
+      return "Prepare the interview panel and confirm the candidate's attendance.";
+    case "Assessment Test":
+      return a.requiresPractical
+        ? "Record the assessment test, then move on to the practical test."
+        : "Record the assessment test result to complete this stage.";
+    case "Practical Test":
+      return "Record the practical test result to unlock the final evaluation.";
+    case "Assessed":
+      return "Confirm every assessment result, then complete the final evaluation.";
+    case "Final Evaluation":
+      return "Review the final evaluation and confirm the hiring decision.";
+    case "Offer":
+      return "Track the applicant's response to the offer and record it once received.";
+    case "Hired":
+      return "Coordinate the onboarding start date with New Hire Onboarding.";
+    case "Rejected":
+      return "No further action — the applicant was rejected at this stage.";
+    default:
+      return "Review this applicant's record and continue the hiring process.";
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Recruitment pipeline tracker — the always-visible stage rail above the tabs */
 /* -------------------------------------------------------------------------- */
@@ -879,6 +1020,7 @@ function RecruitmentPipelineTracker({
   active: PipelineStageKey;
   onSelect: (tab: string) => void;
 }) {
+  const activeIndex = PIPELINE_STAGE_STEPS.findIndex((step) => step.key === active);
   return (
     <Card className="mt-3 border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
       <CardContent className="p-4 sm:p-5">
@@ -896,23 +1038,27 @@ function RecruitmentPipelineTracker({
             onClick={() => onSelect("history")}
             className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-primary hover:underline"
           >
-            View Details <ArrowRight className="h-3.5 w-3.5" />
+            View History <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
 
         <div className="relative mt-4 px-0 sm:px-2">
           <div
             aria-hidden
-            className="absolute left-[10%] right-[10%] top-[21px] hidden h-[2px] sm:flex"
+            className="absolute left-[10%] right-[10%] top-[21px] hidden h-[2px] grid-cols-4 sm:grid"
           >
-            <span className="h-full flex-[3] bg-primary/80" />
-            <span className="h-full flex-1 bg-gold/60" />
+            {PIPELINE_STAGE_STEPS.slice(0, -1).map((step, index) => (
+              <span
+                key={step.key}
+                className={cn("h-full", index < activeIndex ? "bg-primary/70" : "bg-border")}
+              />
+            ))}
           </div>
           <ol className="relative grid grid-cols-1 gap-2 sm:grid-cols-5 sm:gap-0">
             {PIPELINE_STAGE_STEPS.map((step, index) => {
               const Icon = step.icon;
               const isActive = step.key === active;
-              const isFinal = step.key === "final";
+              const reached = index <= activeIndex;
               return (
                 <li key={step.key} className="min-w-0">
                   <button
@@ -926,11 +1072,10 @@ function RecruitmentPipelineTracker({
                     <span
                       className={cn(
                         "relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-                        isFinal
-                          ? "border-gold/70 bg-gold-soft text-gold"
-                          : "border-primary bg-primary text-primary-foreground",
-                        isActive && "shadow-md ring-4 ring-primary/10",
-                        !isActive && "group-hover:brightness-110",
+                        reached
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card text-muted-foreground group-hover:border-primary/60 group-hover:text-primary",
+                        isActive && "shadow-md ring-4 ring-primary/15",
                       )}
                     >
                       <Icon className="h-5 w-5" />
@@ -941,7 +1086,9 @@ function RecruitmentPipelineTracker({
                           "block truncate text-xs font-semibold",
                           isActive
                             ? "border-b-2 border-primary pb-0.5 text-foreground"
-                            : "text-foreground",
+                            : reached
+                              ? "text-foreground"
+                              : "text-muted-foreground",
                         )}
                       >
                         {step.label}
@@ -1056,47 +1203,6 @@ const initials = (name: string) =>
     .map((p) => p[0])
     .slice(0, 2)
     .join("");
-
-/** Resolves which facility an interview occupies — by its reserved room name,
- *  falling back to the virtual room for online interviews. On-site interviews
- *  without a reserved room resolve to null (unassigned). */
-const facilityOfInterview = (i: Interview): Facility | null => {
-  const byName = facilities.find((f) => f.name === i.facilityName);
-  if (byName) return byName;
-  if (i.mode === "Virtual") return facilities.find((f) => f.type === "Virtual") ?? null;
-  return null;
-};
-
-/** Front-view door icon in the style of the Places reference (green when reserved). */
-function DoorIcon({ highlighted, className }: { highlighted: boolean; className?: string }) {
-  return (
-    <svg viewBox="0 0 48 72" className={className ?? "h-16 w-12"} aria-hidden="true">
-      <rect
-        x="7"
-        y="4"
-        width="34"
-        height="64"
-        rx="2"
-        fill={highlighted ? "#15803d" : "transparent"}
-        className={highlighted ? "dark:fill-green-500" : undefined}
-        stroke="currentColor"
-        strokeWidth="2.5"
-      />
-      <rect
-        x="13"
-        y="10"
-        width="22"
-        height="52"
-        rx="1"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        opacity="0.65"
-      />
-      <circle cx="31" cy="40" r="2.2" fill={highlighted ? "#ffffff" : "currentColor"} />
-    </svg>
-  );
-}
 
 /** Normalizes extracted contact numbers to plain local form:
  *  strips "-" and spaces, converts a leading +63 to 0
@@ -5459,7 +5565,15 @@ export function ScreeningResumeDocsMatchDetail({
    ============================================================================ */
 
 type ViewPanel =
-  "current" | "history" | "details" | "resume" | "interview" | "test" | "practical" | "final";
+  | "current"
+  | "history"
+  | "details"
+  | "resume"
+  | "interview"
+  | "test"
+  | "practical"
+  | "final"
+  | "activity";
 
 type ViewScreenDoc = {
   docType: VerificationDocType;
@@ -5732,7 +5846,8 @@ function ApplicantViewScreen({
     if (lastFlowKey.current === flowKey) return;
     lastFlowKey.current = flowKey;
     // Leave the user alone when they are reading reference material.
-    if (panel === "details" || panel === "resume" || panel === "history") return;
+    if (panel === "details" || panel === "resume" || panel === "history" || panel === "activity")
+      return;
     // Open the stage being worked on now (the first stage that is not finished).
     const nextIdx = stepStates.findIndex((s) => s === "current");
     // A closed pipeline (offer extended / hired) opens the final evaluation.
@@ -5842,1821 +5957,1747 @@ function ApplicantViewScreen({
     else setPanel(key);
   };
 
-  /** One entry of the section nav. `done` turns the badge into a green check so
-   *  a finished process is visible at a glance (and, for positions that skip it,
-   *  the practical reads completed as soon as the applicant reaches the final
-   *  evaluation). */
-  const sectionBtn = (
-    id: ViewPanel,
-    label: string,
-    icon: React.ReactNode,
-    badge?: number,
-    done?: boolean,
-  ) => {
-    const active = panel === id;
-    return (
-      <button
-        type="button"
-        onClick={() => setPanel(id)}
-        className={cn(
-          "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-semibold transition-colors cursor-pointer",
-          active
-            ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-        )}
-      >
-        <span className={cn(active ? "text-primary-foreground" : "text-muted-foreground")}>
-          {icon}
-        </span>
-        <span className="truncate flex-1">{label}</span>
-        {done ? (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.6rem] font-bold",
-              active
-                ? "bg-primary-foreground/20 text-primary-foreground"
-                : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-            )}
-            title="Completed"
-          >
-            <Check className="h-3 w-3" strokeWidth={3} /> Done
-          </span>
-        ) : (
-          badge !== undefined &&
-          badge > 0 && (
-            <span
-              className={cn(
-                "ml-auto min-w-4 rounded-full px-1.5 py-0.2 text-center text-[0.65rem] font-bold",
-                active
-                  ? "bg-primary-foreground/20 text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground",
-              )}
-            >
-              {badge}
-            </span>
-          )
-        )}
-      </button>
-    );
-  };
-
   const emptyNote = (text: string) => (
     <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
       <Info className="h-4 w-4 shrink-0" /> {text}
     </p>
   );
 
+  /** Which pipeline node the open section belongs to (null for profile/activity). */
+  const railActiveIndex =
+    panel === "resume"
+      ? 0
+      : panel === "interview"
+        ? 1
+        : panel === "test" || panel === "practical"
+          ? 2
+          : panel === "final"
+            ? a.stage === "Hired"
+              ? 4
+              : 3
+            : panel === "current"
+              ? Math.min(applicantProfileStageIndex(a), 4)
+              : null;
+
+  /** Rail click → the section that stage owns. Assessment opens the written
+   *  test when required, otherwise the practical (or the final evaluation). */
+  const openRailStage = (index: number) => {
+    if (index === 0) setPanel("resume");
+    else if (index === 1) setPanel("interview");
+    else if (index === 2) setPanel(requiresTest ? "test" : requiresPrac ? "practical" : "final");
+    else setPanel("final");
+  };
+
+  const profilePanels: ViewPanel[] = ["details", "resume", "history"];
+  const activeViewTab: "stage" | "profile" | "activity" =
+    panel === "activity" ? "activity" : profilePanels.includes(panel) ? "profile" : "stage";
+
   return (
-    <div ref={rootRef} className="mt-6 space-y-5">
-      {/* Top bar — Back to applicants navigation */}
-      <div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onBack}
-          className="shadow-xs hover:bg-muted font-medium cursor-pointer"
-        >
-          <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
-        </Button>
-      </div>
+    <div ref={rootRef} className="mt-6">
+      <Card className="overflow-hidden border-border/70 shadow-xs">
+        {/* Maroon title bar — same language as the right-side profile panel. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-primary px-5 py-4 text-primary-foreground sm:px-6">
+          <div className="min-w-0">
+            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-primary-foreground/70">
+              Applicant Profile
+            </p>
+            <h2 className="truncate font-display text-xl font-bold tracking-tight">{a.name}</h2>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onBack}
+            className="shrink-0 cursor-pointer shadow-xs"
+          >
+            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
+          </Button>
+        </div>
 
-      {/* Applicant hero — sleek modern card with subtle gradient highlight & rich metadata */}
-      <Card className="relative overflow-hidden border-border/80 bg-gradient-to-br from-card via-card to-muted/20 shadow-xs">
-        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary via-primary/80 to-primary/40" />
-        <CardContent className="p-6">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-4">
-              <Avatar className="h-16 w-16 shrink-0 ring-2 ring-primary/20 ring-offset-2 ring-offset-background">
-                <AvatarFallback className="bg-primary/10 text-primary font-display text-xl font-bold">
-                  {initials(a.name)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-display text-2xl font-bold tracking-tight text-foreground">
-                    {a.name}
-                  </h2>
-                  <span className="rounded-md border border-border bg-muted/80 px-2 py-0.5 font-mono text-xs font-semibold text-muted-foreground">
-                    {a.id}
-                  </span>
-                  {tier <= 2 && (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "gap-1 text-[11px] font-semibold",
-                        topCandidateTierMeta[tier].className,
-                      )}
-                    >
-                      <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
-                    </Badge>
-                  )}
-                  {a.isArchived && (
-                    <Badge
-                      variant="outline"
-                      className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px]"
-                    >
-                      <Archive className="h-3 w-3" /> Archived
-                    </Badge>
-                  )}
-                  {a.isActiveBlocked && (
-                    <Badge
-                      variant="outline"
-                      className="gap-1 border-destructive/40 bg-destructive/10 text-destructive text-[11px]"
-                    >
-                      <Ban className="h-3 w-3" /> Blocked
-                    </Badge>
-                  )}
-                </div>
+        {/* Identity — avatar, role, badges, contact and match score. */}
+        <div className="flex flex-wrap items-start gap-4 border-b border-border/60 bg-background px-5 py-5 sm:px-6">
+          <Avatar className="h-16 w-16 shrink-0 border-2 border-card shadow-sm">
+            <AvatarFallback className="bg-secondary font-display text-xl font-semibold text-secondary-foreground">
+              {initials(a.name)}
+            </AvatarFallback>
+          </Avatar>
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1 font-medium text-foreground">
-                    <Briefcase className="h-3.5 w-3.5 text-primary" /> {a.position}
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />{" "}
-                    {departmentOf(a.position)}
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <CalendarDays className="h-3.5 w-3.5" /> Applied:{" "}
-                    {displayAppliedAt(a.appliedAt)}
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
-                  {a.email && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[11px]">
-                      <Mail className="h-3 w-3 text-muted-foreground" /> {a.email}
-                    </span>
+          <div className="min-w-0 flex-1 basis-[280px]">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-foreground">{a.position}</p>
+              <span className="rounded-md border border-border bg-muted/70 px-2 py-0.5 font-mono text-[0.65rem] font-semibold text-muted-foreground">
+                {a.id}
+              </span>
+              {tier <= 2 && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "gap-1 text-[11px] font-semibold",
+                    topCandidateTierMeta[tier].className,
                   )}
-                  {a.phone && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[11px]">
-                      <Phone className="h-3 w-3 text-muted-foreground" /> {a.phone}
-                    </span>
-                  )}
-                  <Badge
-                    variant="outline"
-                    className={cn("gap-1.5 ml-1 text-[11px]", statusMeta[a.status].className)}
-                  >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full animate-pulse",
-                        statusMeta[a.status].dot,
-                      )}
-                    />
-                    {statusMeta[a.status].label}
-                  </Badge>
-                  <Badge variant="secondary" className="text-[11px]">
-                    {a.stage}
-                  </Badge>
-                </div>
-
-                {linkedHire?.startDate && (
-                  <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-gold-foreground dark:text-gold">
-                    <CalendarClock className="h-3.5 w-3.5" />
-                    Start Date as Employee:{" "}
-                    <span className="font-semibold underline">{linkedHire.startDate}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Right side: Resume Card or Score Widget */}
-            <div className="shrink-0 flex items-center">
-              {a.resumeUrl ? (
-                <div className="flex items-center gap-3 rounded-xl border border-border/80 bg-background/80 p-3 shadow-2xs backdrop-blur-xs">
-                  <ScreeningDocIcon docType="resume" label="RES" />
-                  <div className="min-w-0 max-w-48">
-                    <p
-                      className="truncate text-xs font-semibold text-foreground"
-                      title={a.resumeOriginalName || undefined}
-                    >
-                      {a.resumeOriginalName || "Resume / CV"}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-full px-1.5 py-0.2 text-[10px] font-bold",
-                          a.score >= passing
-                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                            : "bg-destructive/15 text-destructive",
-                        )}
-                      >
-                        {Math.round(a.score)}% Score
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">PDF</span>
-                    </div>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 shrink-0 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                    title="Download resume"
-                    onClick={() => window.open(a.resumeUrl!, "_blank", "noopener")}
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-border/80 bg-background/80 px-4 py-3 text-right shadow-2xs">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Screening Score
-                  </p>
-                  <p
-                    className={cn(
-                      "font-display text-3xl font-bold tracking-tight",
-                      a.score >= passing
-                        ? "text-success"
-                        : a.score >= 60
-                          ? "text-caution"
-                          : "text-destructive",
-                    )}
-                  >
-                    {a.score}%
-                  </p>
-                  <p className="text-[10px] font-medium text-muted-foreground">
-                    {passedScreening ? "Passed screening" : "Below passing threshold"}
-                  </p>
-                </div>
+                >
+                  <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
+                </Badge>
+              )}
+              {a.isArchived && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-amber-500/40 bg-amber-500/10 text-[11px] text-amber-700 dark:text-amber-300"
+                >
+                  <Archive className="h-3 w-3" /> Archived
+                </Badge>
+              )}
+              {a.isActiveBlocked && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-destructive/40 bg-destructive/10 text-[11px] text-destructive"
+                >
+                  <Ban className="h-3 w-3" /> Blocked
+                </Badge>
               )}
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Stage stepper — timeline: Screening → Interview → Assessment Test → Practical Assessment → Final Evaluation */}
-      <Card className="border-border/70 bg-card/60 backdrop-blur-xs shadow-xs">
-        <CardContent className="overflow-x-auto px-6 py-4">
-          <div className="flex min-w-[640px] items-start">
-            {VIEW_MILESTONES.map((m, i) => {
-              /* Colour comes from the recorded progress, not the stage label:
-                 completed → green, the stage being worked on → red, the rest → gray. */
-              const state: StageProgressState = stepStates[i] ?? "pending";
-              const done = state === "done";
-              const current = state === "current";
-              const isTest = m.label === "Assessment Test";
-              const isPrac = m.label === "Practical Assessment";
-              const skipped = (isTest && !requiresTest) || (isPrac && !requiresPrac);
-              /** Verdict already recorded for this stage, when there is one. */
-              const verdict =
-                i === 1
-                  ? (assessment?.result ?? null)
-                  : i === 2
-                    ? (test?.result ?? null)
-                    : i === 3
-                      ? (practical?.result ?? null)
-                      : null;
-              const isFailed =
-                verdict === "Failed" ||
-                (i === 4 && final?.recommendation === "Not Recommended") ||
-                (i === 0 && a.stage === "Rejected" && !assessment && !test && !practical && !final);
-              const statusText = skipped
-                ? done
-                  ? "Not required — Completed"
-                  : "Not required"
-                : isFailed
-                  ? `Failed${verdict ? ` · ${verdict}` : ""}`
-                  : done
-                    ? verdict
-                      ? `Completed · ${verdict}`
-                      : "Completed"
-                    : a.stage === "Rejected"
-                      ? "Disqualified"
-                      : current
-                        ? "In Progress"
-                        : "Pending";
-              const isLast = i === VIEW_MILESTONES.length - 1;
-
-              // Connector to the next node: green behind a completed stage, a
-              // green→red ramp into the stage in progress, gray while pending.
-              const nextState = stepStates[i + 1] ?? "pending";
-              const lineClass =
-                nextState === "done"
-                  ? "bg-emerald-500"
-                  : nextState === "current"
-                    ? "bg-gradient-to-r from-emerald-500 to-primary/60"
-                    : "bg-muted";
-
-              return (
-                <div
-                  key={m.label}
-                  className="relative flex flex-1 flex-col items-center text-center"
-                >
-                  {/* Connector line */}
-                  {!isLast && (
-                    <div
-                      aria-hidden
-                      className={cn(
-                        "absolute top-[14px] h-[2px]",
-                        "left-[calc(50%+16px)] right-[calc(-50%+16px)]",
-                        lineClass,
-                      )}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => openMilestone(m.key)}
-                    aria-label={`Open ${m.label}`}
-                    title={`Open ${m.label}`}
-                    className={cn(
-                      "relative z-10 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-bold transition-all",
-                      "hover:scale-105 active:scale-95 disabled:cursor-not-allowed",
-                      isFailed
-                        ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/20 shadow-xs"
-                        : done
-                          ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20"
-                          : current
-                            ? "bg-primary text-primary-foreground ring-4 ring-primary/25 shadow-xs"
-                            : "bg-muted text-muted-foreground border border-border",
-                    )}
-                  >
-                    {isFailed ? (
-                      <X className="h-3.5 w-3.5" strokeWidth={3} />
-                    ) : done ? (
-                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                    ) : (
-                      i + 1
-                    )}
-                  </button>
-                  <span
-                    className={cn(
-                      "mt-2 px-1 text-xs font-semibold leading-tight",
-                      done
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : current
-                          ? "text-primary font-bold"
-                          : "text-muted-foreground",
-                    )}
-                  >
-                    {m.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "mt-0.5 text-[11px] font-medium leading-tight",
-                      done
-                        ? "text-emerald-600/80 dark:text-emerald-400/80"
-                        : current
-                          ? "text-primary/90"
-                          : "text-muted-foreground/70",
-                    )}
-                  >
-                    {statusText}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Body grid: section nav + panels */}
-      <div className="grid items-start gap-4 lg:grid-cols-[250px_1fr] lg:items-stretch">
-        <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh] shadow-xs">
-          <CardContent className="h-full p-3 flex flex-col justify-between lg:overflow-y-auto">
-            <div className="space-y-4">
-              <div>
-                <p className="px-2 pb-2 text-[10px] font-bold tracking-wider uppercase text-muted-foreground">
-                  Applicant Sections
-                </p>
-                <div className="space-y-1">
-                  {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
-                  {sectionBtn(
-                    "history",
-                    "Previous Applications",
-                    <History className="h-4 w-4" />,
-                    (history?.data?.length ?? 0) > 0 ? history?.data?.length : undefined,
-                    !history?.cooldown &&
-                      !history?.block?.is_blocked &&
-                      (history?.data?.length ?? 0) > 0,
-                  )}
-                  {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
-                  {sectionBtn(
-                    "resume",
-                    "Resume & Documents",
-                    <Upload className="h-4 w-4" />,
-                    docCount,
-                    passedScreening,
-                  )}
-                  {sectionBtn(
-                    "interview",
-                    "Interview",
-                    <ClipboardCheck className="h-4 w-4" />,
-                    assessments.length,
-                    !!assessment,
-                  )}
-                  {sectionBtn(
-                    "test",
-                    "Assessment Test",
-                    <BookMarked className="h-4 w-4" />,
-                    assessmentTests.length,
-                    !!test,
-                  )}
-                  {sectionBtn(
-                    "practical",
-                    "Practical Assessment",
-                    <Wrench className="h-4 w-4" />,
-                    requiresPrac ? practicalTests.length : undefined,
-                    /* Not required for this position: done as soon as the
-                     applicant has advanced past the stage (progress bar rule). */
-                    requiresPrac ? !!practical : stepStates[3] === "done",
-                  )}
-                  {sectionBtn(
-                    "final",
-                    "Final Evaluation",
-                    <CheckCircle2 className="h-4 w-4" />,
-                    finalEvaluations.length,
-                    stepStates[4] === "done",
-                  )}
-                </div>
-              </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Building2 className="h-3.5 w-3.5" /> {departmentOf(a.position)}
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <CalendarDays className="h-3.5 w-3.5" /> Applied {displayAppliedAt(a.appliedAt)}
+              </span>
             </div>
 
-            {/* Quick Summary Pill at bottom of sidebar */}
-            <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] uppercase font-bold tracking-wider">Applicant ID</span>
-                <span className="font-mono text-[11px] font-medium text-foreground">{a.id}</span>
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] uppercase font-bold tracking-wider">
-                  Current Stage
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {a.email && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[0.65rem] text-muted-foreground">
+                  <Mail className="h-3 w-3" /> {a.email}
                 </span>
-                <span className="text-[11px] font-semibold text-primary">{a.stage}</span>
-              </div>
+              )}
+              {a.phone && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[0.65rem] text-muted-foreground">
+                  <Phone className="h-3 w-3" /> {a.phone}
+                </span>
+              )}
+              <Badge
+                variant="outline"
+                className={cn("gap-1.5 text-[11px]", statusMeta[a.status].className)}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", statusMeta[a.status].dot)} />
+                {statusMeta[a.status].label}
+              </Badge>
+              <Badge variant="secondary" className="text-[11px]">
+                {a.stage}
+              </Badge>
             </div>
-          </CardContent>
-        </Card>
 
-        <div className="min-w-0 h-full space-y-4 lg:h-[80vh] lg:overflow-y-auto [&>*]:min-h-full">
-          {(() => {
-            switch (panel) {
-              case "current":
+            {linkedHire?.startDate && (
+              <p className="mt-2 flex items-center gap-1.5 text-[0.72rem] font-medium text-gold-foreground dark:text-gold">
+                <CalendarClock className="h-3.5 w-3.5" />
+                Start Date as Employee:{" "}
+                <span className="font-semibold underline">{linkedHire.startDate}</span>
+              </p>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-stretch gap-2.5">
+            {a.resumeUrl && (
+              <div className="flex items-center gap-2.5 rounded-xl border border-border/80 bg-background/80 p-2.5">
+                <ScreeningDocIcon docType="resume" label="RES" />
+                <div className="min-w-0 max-w-40">
+                  <p
+                    className="truncate text-[0.7rem] font-semibold text-foreground"
+                    title={a.resumeOriginalName || undefined}
+                  >
+                    {a.resumeOriginalName || "Resume / CV"}
+                  </p>
+                  <p className="text-[0.62rem] text-muted-foreground">PDF</p>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                  title="Download resume"
+                  onClick={() => window.open(a.resumeUrl!, "_blank", "noopener")}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+            <div className="flex w-[104px] shrink-0 flex-col items-center justify-center rounded-xl border border-gold/30 bg-gold-soft/40 px-3 py-2 text-center">
+              <p className="flex items-center gap-1 text-[0.6rem] font-semibold text-muted-foreground">
+                <Target className="h-3 w-3 text-gold" /> Match
+              </p>
+              <p
+                className={cn(
+                  "mt-0.5 font-display text-2xl font-bold leading-none tabular-nums",
+                  a.score >= passing
+                    ? "text-success"
+                    : a.score >= 60
+                      ? "text-caution"
+                      : "text-destructive",
+                )}
+              >
+                {a.score}%
+              </p>
+              <p className="mt-1 text-[0.58rem] text-muted-foreground">
+                {passedScreening ? "Passed screening" : "For review"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Shared pipeline rail — every stage opens its record. */}
+        <div className="border-b border-border/60 bg-muted/15 px-4 py-4 sm:px-6">
+          <ProfileStageRail
+            stageIndex={Math.min(applicantProfileStageIndex(a), 4)}
+            activeStage={railActiveIndex}
+            onSelect={openRailStage}
+          />
+        </div>
+
+        {/* Sections — Stage workflow / Profile records / Activity timeline. */}
+        <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4 sm:px-6">
+          {[
+            { key: "stage" as const, label: "Stage", icon: Info },
+            { key: "profile" as const, label: "Profile", icon: FileText },
+            { key: "activity" as const, label: "Activity", icon: History },
+          ].map((t) => {
+            const TabIcon = t.icon;
+            const active = activeViewTab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() =>
+                  setPanel(
+                    t.key === "stage" ? "current" : t.key === "profile" ? "details" : "activity",
+                  )
+                }
+                aria-pressed={active}
+                className={cn(
+                  "flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                    : "border-border bg-card text-foreground hover:bg-muted/60",
+                )}
+              >
+                <TabIcon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="bg-muted/15 px-4 pb-5 pt-3 sm:px-5">
+          {activeViewTab === "stage" &&
+            (panel === "test" || panel === "practical") &&
+            requiresTest &&
+            requiresPrac && (
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {[
+                  { id: "test" as ViewPanel, label: "Written Test" },
+                  { id: "practical" as ViewPanel, label: "Practical Test" },
+                ].map((step) => {
+                  const active = panel === step.id;
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => setPanel(step.id)}
+                      aria-pressed={active}
+                      className={cn(
+                        "cursor-pointer rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold transition-colors",
+                        active
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-card text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {step.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+          {activeViewTab === "profile" && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {[
+                { id: "details" as ViewPanel, label: "Application Details" },
+                { id: "resume" as ViewPanel, label: "Resume & Documents" },
+                { id: "history" as ViewPanel, label: "Previous Applications" },
+              ].map((section) => {
+                const active = panel === section.id;
                 return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                        <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                            <Info className="h-4 w-4 text-primary" /> {a.stage}
-                          </h3>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {stageDesc[a.stage] ??
-                              "Current recruitment pipeline stage for this applicant."}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {tier <= 2 && (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "gap-1 font-semibold",
-                                topCandidateTierMeta[tier].className,
-                              )}
-                            >
-                              <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setPanel(section.id)}
+                    aria-pressed={active}
+                    className={cn(
+                      "cursor-pointer rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold transition-colors",
+                      active
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-card text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {section.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-                      {/* Quick Administrative Controls Bar */}
-                      <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                          <Sliders className="h-3.5 w-3.5 text-primary" />
-                          <span>Administrative Actions</span>
+          <div className="min-w-0">
+            {(() => {
+              switch (panel) {
+                case "current":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                          <div>
+                            <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                              <Info className="h-4 w-4 text-primary" /> {a.stage}
+                            </h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {stageDesc[a.stage] ??
+                                "Current recruitment pipeline stage for this applicant."}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {tier <= 2 && (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "gap-1 font-semibold",
+                                  topCandidateTierMeta[tier].className,
+                                )}
+                              >
+                                <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {isSuperAdmin && a.stage !== "Rejected" && onMoveToStage && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1.5 cursor-pointer"
-                              onClick={() => onMoveToStage(a)}
-                            >
-                              <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
-                            </Button>
-                          )}
-                          {isSuperAdmin && a.stage === "Rejected" && onReopen && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                              onClick={() => onReopen(a)}
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" /> Reopen application
-                            </Button>
-                          )}
-                          {isSuperAdmin &&
-                            (a.stage === "Hired" ||
-                              a.stage === "Offer" ||
-                              (a.status as string) === "hired") &&
-                            onCorrectHiring && (
+
+                        {/* Quick Administrative Controls Bar */}
+                        <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                            <Sliders className="h-3.5 w-3.5 text-primary" />
+                            <span>Administrative Actions</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {isSuperAdmin && a.stage !== "Rejected" && onMoveToStage && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
-                                onClick={() => onCorrectHiring(a)}
+                                className="h-7 text-xs gap-1.5 cursor-pointer"
+                                onClick={() => onMoveToStage(a)}
                               >
-                                <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
+                                <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
                               </Button>
                             )}
-                          {!a.isArchived && onArchive ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1.5 text-muted-foreground cursor-pointer"
-                              onClick={() => onArchive(a)}
-                            >
-                              <Archive className="h-3.5 w-3.5" /> Archive
-                            </Button>
-                          ) : a.isArchived && onRestore ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                              onClick={() => onRestore(a)}
-                            >
-                              <ArchiveRestore className="h-3.5 w-3.5" /> Restore
-                            </Button>
-                          ) : null}
-                          {isSuperAdmin &&
-                            (!a.isActiveBlocked && onBlock ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer"
-                                onClick={() => onBlock(a)}
-                              >
-                                <Ban className="h-3.5 w-3.5" /> Block
-                              </Button>
-                            ) : a.isActiveBlocked && onUnblock ? (
+                            {isSuperAdmin && a.stage === "Rejected" && onReopen && (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                                onClick={() => onReopen(a)}
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" /> Reopen application
+                              </Button>
+                            )}
+                            {isSuperAdmin &&
+                              (a.stage === "Hired" ||
+                                a.stage === "Offer" ||
+                                (a.status as string) === "hired") &&
+                              onCorrectHiring && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                                  onClick={() => onCorrectHiring(a)}
+                                >
+                                  <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
+                                </Button>
+                              )}
+                            {!a.isArchived && onArchive ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1.5 text-muted-foreground cursor-pointer"
+                                onClick={() => onArchive(a)}
+                              >
+                                <Archive className="h-3.5 w-3.5" /> Archive
+                              </Button>
+                            ) : a.isArchived && onRestore ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                                onClick={() => onRestore(a)}
+                              >
+                                <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+                              </Button>
+                            ) : null}
+                            {isSuperAdmin &&
+                              (!a.isActiveBlocked && onBlock ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer"
+                                  onClick={() => onBlock(a)}
+                                >
+                                  <Ban className="h-3.5 w-3.5" /> Block
+                                </Button>
+                              ) : a.isActiveBlocked && onUnblock ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                                  onClick={() => onUnblock(a)}
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                                </Button>
+                              ) : null)}
+                          </div>
+                        </div>
+
+                        {/* Stage overview — interactive shortcut cards */}
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          {[
+                            {
+                              id: "resume" as ViewPanel,
+                              icon: <FileText className="h-4 w-4" />,
+                              label: "Screening",
+                              meta: passedScreening ? "Passed" : "For Review",
+                              tone: passedScreening
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-amber-600 dark:text-amber-400",
+                              dot: passedScreening ? "bg-emerald-500" : "bg-amber-500",
+                            },
+                            {
+                              id: "interview" as ViewPanel,
+                              icon: <ClipboardCheck className="h-4 w-4" />,
+                              label: "Interview",
+                              meta: assessment
+                                ? `${assessment.result} · ${assessment.total}%`
+                                : interview
+                                  ? `Scheduled · ${interview.date}`
+                                  : "Not yet conducted",
+                              tone:
+                                assessment?.result === "Passed"
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : assessment?.result === "Failed"
+                                    ? "text-destructive"
+                                    : "text-muted-foreground",
+                              dot:
+                                assessment?.result === "Passed"
+                                  ? "bg-emerald-500"
+                                  : assessment?.result === "Failed"
+                                    ? "bg-destructive"
+                                    : "bg-muted-foreground/40",
+                            },
+                            {
+                              id: "test" as ViewPanel,
+                              icon: <BookMarked className="h-4 w-4" />,
+                              label: "Assessment Test",
+                              meta: test ? `${test.result} · ${test.total}%` : "Not yet taken",
+                              tone:
+                                test?.result === "Passed"
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : test?.result === "Failed"
+                                    ? "text-destructive"
+                                    : "text-muted-foreground",
+                              dot:
+                                test?.result === "Passed"
+                                  ? "bg-emerald-500"
+                                  : test?.result === "Failed"
+                                    ? "bg-destructive"
+                                    : "bg-muted-foreground/40",
+                            },
+                            {
+                              id: "practical" as ViewPanel,
+                              icon: <Wrench className="h-4 w-4" />,
+                              label: "Practical",
+                              meta: !requiresPrac
+                                ? "Not required"
+                                : practical
+                                  ? `${practical.result} · ${practical.total}%`
+                                  : "Pending",
+                              tone: !requiresPrac
+                                ? "text-muted-foreground"
+                                : practical?.result === "Passed"
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : practical?.result === "Failed"
+                                    ? "text-destructive"
+                                    : "text-muted-foreground",
+                              dot: !requiresPrac
+                                ? "bg-muted-foreground/30"
+                                : practical?.result === "Passed"
+                                  ? "bg-emerald-500"
+                                  : practical?.result === "Failed"
+                                    ? "bg-destructive"
+                                    : "bg-muted-foreground/40",
+                            },
+                          ].map((r) => (
+                            <button
+                              key={r.id}
+                              type="button"
+                              onClick={() => setPanel(r.id)}
+                              className="group relative flex min-h-0 flex-col items-start gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition-all hover:border-primary/40 hover:shadow-sm hover:bg-muted/30"
+                            >
+                              <div className="flex w-full items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-primary">
+                                    {r.icon}
+                                  </span>
+                                  <span className="text-xs font-semibold text-foreground">
+                                    {r.label}
+                                  </span>
+                                </span>
+                                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", r.dot)} />
+                                <span className={cn("text-[0.68rem] font-medium", r.tone)}>
+                                  {r.meta}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="mt-5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                              <History className="h-3.5 w-3.5 text-primary" /> Recent Activity &
+                              Milestones
+                            </h4>
+                            <span className="text-[11px] text-muted-foreground">Latest events</span>
+                          </div>
+                          {(() => {
+                            const stageFallback =
+                              audit.length === 0
+                                ? [
+                                    final
+                                      ? {
+                                          id: `stage-final-${final.id}`,
+                                          actionType: "Final Evaluation Completed",
+                                          details: `Final evaluation recorded — ${final.recommendation}.`,
+                                          actorName: "System",
+                                          date: final.date,
+                                          time: "",
+                                        }
+                                      : null,
+                                    test
+                                      ? {
+                                          id: `stage-test-${test.id}`,
+                                          actionType: "Assessment Test Completed",
+                                          details: `${test.title} — ${test.result} · ${test.total}%.`,
+                                          actorName: "System",
+                                          date: test.date,
+                                          time: "",
+                                        }
+                                      : null,
+                                    assessment
+                                      ? {
+                                          id: `stage-interview-${assessment.date}`,
+                                          actionType: "Interview Completed",
+                                          details: `Interview ${assessment.result} · ${assessment.total}% — ${assessment.outcome}.`,
+                                          actorName: "System",
+                                          date: assessment.date,
+                                          time: "",
+                                        }
+                                      : interview
+                                        ? {
+                                            id: `stage-sched-${interview.date}-${interview.time}`,
+                                            actionType: "Interview Scheduled",
+                                            details: `${interview.date} · ${interview.time} — ${interview.status}.`,
+                                            actorName: "System",
+                                            date: interview.date,
+                                            time: "",
+                                          }
+                                        : null,
+                                    {
+                                      id: `stage-screening-${a.id}`,
+                                      actionType: "Resume Screening Completed",
+                                      details: `Screened at ${a.score}% — ${passedScreening ? "Passed" : "For Review"}.`,
+                                      actorName: "System",
+                                      date: a.appliedAt,
+                                      time: "",
+                                    },
+                                  ].filter((x): x is NonNullable<typeof x> => x !== null)
+                                : [];
+                            const items = (audit.length > 0 ? audit : stageFallback).slice(0, 6);
+                            if (items.length === 0) {
+                              return (
+                                <div className="mt-2">
+                                  {emptyNote("No recorded events for this applicant yet.")}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="space-y-2">
+                                {items.map((e) => (
+                                  <div
+                                    key={e.id}
+                                    className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/20 p-3 transition-colors hover:bg-muted/40 hover:border-border"
+                                  >
+                                    <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center">
+                                      <span
+                                        className={cn(
+                                          "h-2 w-2 rounded-full ring-4",
+                                          /Rejected|Cancelled|No-Show/.test(e.actionType)
+                                            ? "bg-destructive ring-destructive/20"
+                                            : /Passed|Hired|Completed/.test(e.actionType)
+                                              ? "bg-emerald-500 ring-emerald-500/20"
+                                              : "bg-primary ring-primary/20",
+                                        )}
+                                      />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                        <p className="text-xs font-semibold text-foreground">
+                                          {e.actionType}
+                                        </p>
+                                        <span className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                          {e.date} {e.time}
+                                        </span>
+                                      </div>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {e.details}
+                                      </p>
+                                      <span className="mt-1 inline-block text-[10px] text-muted-foreground/80">
+                                        Recorded by: {e.actorName}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                case "history":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-5">
+                        {/* Header */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                          <div>
+                            <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                              <History className="h-4 w-4 text-primary" /> Previous Applications
+                            </h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Past application attempts by the same email address.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {historyLoading ? (
+                              <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse">
+                                <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs font-semibold">
+                                {history?.data?.length ?? 0} attempt
+                                {(history?.data?.length ?? 0) !== 1 ? "s" : ""}
+                              </Badge>
+                            )}
+                            {onOverrideCooldown &&
+                              (history?.cooldown || history?.block?.is_blocked) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                                  disabled={overrideBusy}
+                                  onClick={onOverrideCooldown}
+                                >
+                                  {overrideBusy ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <ShieldAlert className="h-3.5 w-3.5" />
+                                  )}
+                                  Override cooldown
+                                </Button>
+                              )}
+                          </div>
+                        </div>
+
+                        {/* Block alert */}
+                        {history?.block?.is_blocked && (
+                          <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
+                            <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-destructive">
+                                Applicant is blocked
+                              </p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                This applicant has been restricted from re-applying. Only a super
+                                admin can lift this restriction.
+                              </p>
+                            </div>
+                            {isSuperAdmin && onUnblock && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 shrink-0 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
                                 onClick={() => onUnblock(a)}
                               >
                                 <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
                               </Button>
-                            ) : null)}
-                        </div>
-                      </div>
-
-                      {/* Stage overview — interactive shortcut cards */}
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        {[
-                          {
-                            id: "resume" as ViewPanel,
-                            icon: <FileText className="h-4 w-4" />,
-                            label: "Screening",
-                            meta: passedScreening ? "Passed" : "For Review",
-                            tone: passedScreening
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : "text-amber-600 dark:text-amber-400",
-                            dot: passedScreening ? "bg-emerald-500" : "bg-amber-500",
-                          },
-                          {
-                            id: "interview" as ViewPanel,
-                            icon: <ClipboardCheck className="h-4 w-4" />,
-                            label: "Interview",
-                            meta: assessment
-                              ? `${assessment.result} · ${assessment.total}%`
-                              : interview
-                                ? `Scheduled · ${interview.date}`
-                                : "Not yet conducted",
-                            tone:
-                              assessment?.result === "Passed"
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : assessment?.result === "Failed"
-                                  ? "text-destructive"
-                                  : "text-muted-foreground",
-                            dot:
-                              assessment?.result === "Passed"
-                                ? "bg-emerald-500"
-                                : assessment?.result === "Failed"
-                                  ? "bg-destructive"
-                                  : "bg-muted-foreground/40",
-                          },
-                          {
-                            id: "test" as ViewPanel,
-                            icon: <BookMarked className="h-4 w-4" />,
-                            label: "Assessment Test",
-                            meta: test ? `${test.result} · ${test.total}%` : "Not yet taken",
-                            tone:
-                              test?.result === "Passed"
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : test?.result === "Failed"
-                                  ? "text-destructive"
-                                  : "text-muted-foreground",
-                            dot:
-                              test?.result === "Passed"
-                                ? "bg-emerald-500"
-                                : test?.result === "Failed"
-                                  ? "bg-destructive"
-                                  : "bg-muted-foreground/40",
-                          },
-                          {
-                            id: "practical" as ViewPanel,
-                            icon: <Wrench className="h-4 w-4" />,
-                            label: "Practical",
-                            meta: !requiresPrac
-                              ? "Not required"
-                              : practical
-                                ? `${practical.result} · ${practical.total}%`
-                                : "Pending",
-                            tone: !requiresPrac
-                              ? "text-muted-foreground"
-                              : practical?.result === "Passed"
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : practical?.result === "Failed"
-                                  ? "text-destructive"
-                                  : "text-muted-foreground",
-                            dot: !requiresPrac
-                              ? "bg-muted-foreground/30"
-                              : practical?.result === "Passed"
-                                ? "bg-emerald-500"
-                                : practical?.result === "Failed"
-                                  ? "bg-destructive"
-                                  : "bg-muted-foreground/40",
-                          },
-                        ].map((r) => (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onClick={() => setPanel(r.id)}
-                            className="group relative flex min-h-0 flex-col items-start gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition-all hover:border-primary/40 hover:shadow-sm hover:bg-muted/30"
-                          >
-                            <div className="flex w-full items-center justify-between">
-                              <span className="flex items-center gap-2">
-                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-primary">
-                                  {r.icon}
-                                </span>
-                                <span className="text-xs font-semibold text-foreground">
-                                  {r.label}
-                                </span>
-                              </span>
-                              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", r.dot)} />
-                              <span className={cn("text-[0.68rem] font-medium", r.tone)}>
-                                {r.meta}
-                              </span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="mt-5 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            <History className="h-3.5 w-3.5 text-primary" /> Recent Activity &
-                            Milestones
-                          </h4>
-                          <span className="text-[11px] text-muted-foreground">Latest events</span>
-                        </div>
-                        {(() => {
-                          const stageFallback =
-                            audit.length === 0
-                              ? [
-                                  final
-                                    ? {
-                                        id: `stage-final-${final.id}`,
-                                        actionType: "Final Evaluation Completed",
-                                        details: `Final evaluation recorded — ${final.recommendation}.`,
-                                        actorName: "System",
-                                        date: final.date,
-                                        time: "",
-                                      }
-                                    : null,
-                                  test
-                                    ? {
-                                        id: `stage-test-${test.id}`,
-                                        actionType: "Assessment Test Completed",
-                                        details: `${test.title} — ${test.result} · ${test.total}%.`,
-                                        actorName: "System",
-                                        date: test.date,
-                                        time: "",
-                                      }
-                                    : null,
-                                  assessment
-                                    ? {
-                                        id: `stage-interview-${assessment.date}`,
-                                        actionType: "Interview Completed",
-                                        details: `Interview ${assessment.result} · ${assessment.total}% — ${assessment.outcome}.`,
-                                        actorName: "System",
-                                        date: assessment.date,
-                                        time: "",
-                                      }
-                                    : interview
-                                      ? {
-                                          id: `stage-sched-${interview.date}-${interview.time}`,
-                                          actionType: "Interview Scheduled",
-                                          details: `${interview.date} · ${interview.time} — ${interview.status}.`,
-                                          actorName: "System",
-                                          date: interview.date,
-                                          time: "",
-                                        }
-                                      : null,
-                                  {
-                                    id: `stage-screening-${a.id}`,
-                                    actionType: "Resume Screening Completed",
-                                    details: `Screened at ${a.score}% — ${passedScreening ? "Passed" : "For Review"}.`,
-                                    actorName: "System",
-                                    date: a.appliedAt,
-                                    time: "",
-                                  },
-                                ].filter((x): x is NonNullable<typeof x> => x !== null)
-                              : [];
-                          const items = (audit.length > 0 ? audit : stageFallback).slice(0, 6);
-                          if (items.length === 0) {
-                            return (
-                              <div className="mt-2">
-                                {emptyNote("No recorded events for this applicant yet.")}
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="space-y-2">
-                              {items.map((e) => (
-                                <div
-                                  key={e.id}
-                                  className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/20 p-3 transition-colors hover:bg-muted/40 hover:border-border"
-                                >
-                                  <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center">
-                                    <span
-                                      className={cn(
-                                        "h-2 w-2 rounded-full ring-4",
-                                        /Rejected|Cancelled|No-Show/.test(e.actionType)
-                                          ? "bg-destructive ring-destructive/20"
-                                          : /Passed|Hired|Completed/.test(e.actionType)
-                                            ? "bg-emerald-500 ring-emerald-500/20"
-                                            : "bg-primary ring-primary/20",
-                                      )}
-                                    />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center justify-between gap-1.5">
-                                      <p className="text-xs font-semibold text-foreground">
-                                        {e.actionType}
-                                      </p>
-                                      <span className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                                        {e.date} {e.time}
-                                      </span>
-                                    </div>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">
-                                      {e.details}
-                                    </p>
-                                    <span className="mt-1 inline-block text-[10px] text-muted-foreground/80">
-                                      Recorded by: {e.actorName}
-                                    </span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              case "history":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-5">
-                      {/* Header */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                        <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                            <History className="h-4 w-4 text-primary" /> Previous Applications
-                          </h3>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Past application attempts by the same email address.
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {historyLoading ? (
-                            <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse">
-                              <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs font-semibold">
-                              {history?.data?.length ?? 0} attempt
-                              {(history?.data?.length ?? 0) !== 1 ? "s" : ""}
-                            </Badge>
-                          )}
-                          {onOverrideCooldown &&
-                            (history?.cooldown || history?.block?.is_blocked) && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
-                                disabled={overrideBusy}
-                                onClick={onOverrideCooldown}
-                              >
-                                {overrideBusy ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <ShieldAlert className="h-3.5 w-3.5" />
-                                )}
-                                Override cooldown
-                              </Button>
                             )}
-                        </div>
-                      </div>
-
-                      {/* Block alert */}
-                      {history?.block?.is_blocked && (
-                        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
-                          <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-destructive">
-                              Applicant is blocked
-                            </p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              This applicant has been restricted from re-applying. Only a super
-                              admin can lift this restriction.
-                            </p>
                           </div>
-                          {isSuperAdmin && onUnblock && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 shrink-0 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                              onClick={() => onUnblock(a)}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
-                            </Button>
-                          )}
-                        </div>
-                      )}
+                        )}
 
-                      {/* Cooldown / eligible status card */}
-                      {!historyLoading &&
-                        history &&
-                        (Boolean(history.cooldown) ? (
-                          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
-                            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                                Cooling-down period active
-                              </p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {history.cooldown
-                                  ? `This applicant may re-apply after ${history.cooldown.eligible_after_label} (${history.cooldown.days_left} day${history.cooldown.days_left === 1 ? "" : "s"} left).`
-                                  : "This applicant must wait before re-applying."}
-                              </p>
+                        {/* Cooldown / eligible status card */}
+                        {!historyLoading &&
+                          history &&
+                          (Boolean(history.cooldown) ? (
+                            <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
+                              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                                  Cooling-down period active
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  {history.cooldown
+                                    ? `This applicant may re-apply after ${history.cooldown.eligible_after_label} (${history.cooldown.days_left} day${history.cooldown.days_left === 1 ? "" : "s"} left).`
+                                    : "This applicant must wait before re-applying."}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        ) : !history.block?.is_blocked ? (
-                          <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4">
-                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                            <div>
-                              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                                Eligible to re-apply
-                              </p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                No cooldown or block restriction is active.
-                              </p>
+                          ) : !history.block?.is_blocked ? (
+                            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4">
+                              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                              <div>
+                                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                                  Eligible to re-apply
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  No cooldown or block restriction is active.
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        ) : null)}
+                          ) : null)}
 
-                      {/* History list */}
-                      {historyLoading ? (
-                        <div className="space-y-3">
-                          {Array.from({ length: 3 }).map((_, i) => (
-                            <div
-                              key={i}
-                              className="h-20 animate-pulse rounded-xl border border-border bg-muted/30"
-                            />
-                          ))}
-                        </div>
-                      ) : history?.data && history.data.length > 0 ? (
-                        <div className="space-y-3">
-                          {history.data.map((row, idx) => {
-                            const isCurrent = row.is_current;
-                            return (
+                        {/* History list */}
+                        {historyLoading ? (
+                          <div className="space-y-3">
+                            {Array.from({ length: 3 }).map((_, i) => (
                               <div
-                                key={row.applicant_id}
-                                className={cn(
-                                  "rounded-xl border p-4 transition-colors",
-                                  isCurrent
-                                    ? "border-primary/40 bg-primary/5"
-                                    : "border-border bg-card hover:border-border/80 hover:bg-muted/20",
-                                )}
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                  <div className="min-w-0 flex-1 space-y-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="font-mono text-[11px] font-bold text-muted-foreground">
-                                        {row.applicant_code ?? `#${idx + 1}`}
-                                      </span>
-                                      {isCurrent && (
+                                key={i}
+                                className="h-20 animate-pulse rounded-xl border border-border bg-muted/30"
+                              />
+                            ))}
+                          </div>
+                        ) : history?.data && history.data.length > 0 ? (
+                          <div className="space-y-3">
+                            {history.data.map((row, idx) => {
+                              const isCurrent = row.is_current;
+                              return (
+                                <div
+                                  key={row.applicant_id}
+                                  className={cn(
+                                    "rounded-xl border p-4 transition-colors",
+                                    isCurrent
+                                      ? "border-primary/40 bg-primary/5"
+                                      : "border-border bg-card hover:border-border/80 hover:bg-muted/20",
+                                  )}
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-mono text-[11px] font-bold text-muted-foreground">
+                                          {row.applicant_code ?? `#${idx + 1}`}
+                                        </span>
+                                        {isCurrent && (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[10px] gap-1 border-primary/40 text-primary"
+                                          >
+                                            Current
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <p className="text-sm font-semibold text-foreground">
+                                        {row.position ?? a.position}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Applied:{" "}
+                                        {row.applied_at ? displayAppliedAt(row.applied_at) : "—"}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1.5">
+                                      {row.stage && (
+                                        <Badge variant="secondary" className="text-[11px]">
+                                          {row.stage}
+                                        </Badge>
+                                      )}
+                                      {row.status && (
                                         <Badge
                                           variant="outline"
-                                          className="text-[10px] gap-1 border-primary/40 text-primary"
+                                          className={cn(
+                                            "text-[10px]",
+                                            row.status === "hired"
+                                              ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/8"
+                                              : row.status === "rejected"
+                                                ? "border-destructive/40 text-destructive bg-destructive/8"
+                                                : "border-border text-muted-foreground",
+                                          )}
                                         >
-                                          Current
+                                          {row.status}
                                         </Badge>
                                       )}
                                     </div>
-                                    <p className="text-sm font-semibold text-foreground">
-                                      {row.position ?? a.position}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                      Applied:{" "}
-                                      {row.applied_at ? displayAppliedAt(row.applied_at) : "—"}
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-col items-end gap-1.5">
-                                    {row.stage && (
-                                      <Badge variant="secondary" className="text-[11px]">
-                                        {row.stage}
-                                      </Badge>
-                                    )}
-                                    {row.status && (
-                                      <Badge
-                                        variant="outline"
-                                        className={cn(
-                                          "text-[10px]",
-                                          row.status === "hired"
-                                            ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/8"
-                                            : row.status === "rejected"
-                                              ? "border-destructive/40 text-destructive bg-destructive/8"
-                                              : "border-border text-muted-foreground",
-                                        )}
-                                      >
-                                        {row.status}
-                                      </Badge>
-                                    )}
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        !historyLoading && (
-                          <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/60">
-                              <History className="h-7 w-7 text-muted-foreground/50" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">
-                                First-Time Applicant
-                              </p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                No previous applications found for this email address.
-                              </p>
-                            </div>
+                              );
+                            })}
                           </div>
-                        )
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              case "details":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-5">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <FileText className="h-4 w-4 text-primary" /> Application Details
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Submitted via {a.source} · {displayAppliedAt(a.appliedAt)}
-                        </p>
-                      </div>
-
-                      <div className="grid gap-4">
-                        {/* Card 1 — Candidate Profile */}
-                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
-                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            <User className="h-3.5 w-3.5" /> Candidate Profile
-                          </h4>
-                          {[
-                            { label: "Full Name", value: a.name },
-                            { label: "Email", value: a.email, mono: true },
-                            { label: "Phone", value: a.phone, mono: true },
-                            { label: "Source", value: a.source },
-                          ].map(({ label, value, mono }) => (
-                            <div key={label} className="flex items-start justify-between gap-2">
-                              <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
-                                {label}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-right text-xs font-medium text-foreground break-all",
-                                  mono && "font-mono",
-                                )}
-                              >
-                                {value ?? "—"}
-                              </span>
+                        ) : (
+                          !historyLoading && (
+                            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/60">
+                                <History className="h-7 w-7 text-muted-foreground/50" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">
+                                  First-Time Applicant
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  No previous applications found for this email address.
+                                </p>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-
-                        {/* Card 2 — Application Metadata */}
-                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
-                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            <Briefcase className="h-3.5 w-3.5" /> Application Metadata
-                          </h4>
-                          {[
-                            { label: "Applicant ID", value: String(a.id), mono: true },
-                            { label: "Position", value: a.position },
-                            { label: "Department", value: departmentOf(a.position) },
-                            { label: "Current Stage", value: a.stage },
-                            { label: "Date Applied", value: displayAppliedAt(a.appliedAt) },
-                          ].map(({ label, value, mono }) => (
-                            <div key={label} className="flex items-start justify-between gap-2">
-                              <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
-                                {label}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-right text-xs font-medium text-foreground break-all",
-                                  mono && "font-mono",
-                                )}
-                              >
-                                {value ?? "—"}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              case "resume":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                        <div>
+                          )
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                case "details":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-5">
+                        <div className="border-b border-border/60 pb-4">
                           <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                            <Upload className="h-4 w-4 text-primary" /> Resume &amp; Documents
+                            <FileText className="h-4 w-4 text-primary" /> Application Details
                           </h3>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Resume screening result plus supporting verification documents (COE,
-                            Certificate, Credentials, Others).
+                            Submitted via {a.source} · {displayAppliedAt(a.appliedAt)}
                           </p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className="border-border bg-secondary text-secondary-foreground"
-                          >
-                            {docCount} item{docCount === 1 ? "" : "s"}
-                          </Badge>
-                          <Button size="sm" variant="outline" onClick={onReview}>
-                            <ScanLine className="mr-1.5 h-3.5 w-3.5" /> Review Screening
-                          </Button>
-                        </div>
-                      </div>
 
-                      {/* Resume Screening Result — redesigned to the approved mockup */}
-                      {(() => {
-                        const vm = screeningViewModel(a);
-                        const detail = vm.detail;
-                        return (
-                          <div className="mt-4 space-y-4">
-                            <div className="rounded-xl border border-border bg-card p-5">
-                              <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-                                <ShieldCheck className="h-4.5 w-4.5 text-primary" /> Resume
-                                Screening
-                              </h3>
-                              <div className="mt-4 flex flex-col items-center gap-4 lg:flex-row lg:items-start">
-                                <ScreeningScoreDonut score={vm.score} />
-                                <div className="w-full min-w-0 flex-1 space-y-3">
-                                  <ScreeningVerdictBanner status={a.status} score={vm.score} />
-                                  <ScreeningStatTiles
-                                    matchedCount={vm.matched.length}
-                                    missingCount={vm.missing.length}
-                                    yearsExperience={vm.yearsExperience}
-                                    educationLabel={vm.educationLabel}
-                                    showIcons={false}
-                                  />
-                                </div>
+                        <div className="grid gap-4">
+                          {/* Card 1 — Candidate Profile */}
+                          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                            <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                              <User className="h-3.5 w-3.5" /> Candidate Profile
+                            </h4>
+                            {[
+                              { label: "Full Name", value: a.name },
+                              { label: "Email", value: a.email, mono: true },
+                              { label: "Phone", value: a.phone, mono: true },
+                              { label: "Source", value: a.source },
+                            ].map(({ label, value, mono }) => (
+                              <div key={label} className="flex items-start justify-between gap-2">
+                                <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
+                                  {label}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-right text-xs font-medium text-foreground break-all",
+                                    mono && "font-mono",
+                                  )}
+                                >
+                                  {value ?? "—"}
+                                </span>
                               </div>
-                            </div>
-
-                            <ScreeningVerificationImpact
-                              verification={vm.verification}
-                              resumeScore={vm.resumeScore}
-                              score={vm.score}
-                              onRecompute={onRecomputeRanking}
-                              recomputing={recomputingRanking}
-                            />
-
-                            <div className="grid items-stretch gap-5 grid-cols-1 xl:grid-cols-2">
-                              <ResumeInfoPanel
-                                title="Key Information Extracted"
-                                variant="modal"
-                                skills={vm.skills}
-                                recognizedRoles={vm.recognizedRoles}
-                                unrecognizedRoles={vm.unrecognizedRoles}
-                                workExperience={vm.workExperience}
-                                education={vm.education}
-                                experienceYears={vm.yearsExperience}
-                                certifications={vm.certifications}
-                                personalInfo={vm.personalInfo}
-                                skillsRecognized={vm.skillsRecognized}
-                                unrecognizedCertifications={vm.unrecognizedCertifications}
-                              />
-                              <RequirementMatchPanel
-                                rows={vm.rows}
-                                experienceMinYears={vm.experienceMinYears}
-                              />
-                            </div>
-
-                            <ScreeningResumeDocsMatchDetail
-                              docs={serverDocList}
-                              loading={serverDocsLoading}
-                              resumeName={vm.personalInfo.name ?? a.name}
-                              resumeEducation={vm.education}
-                              resumeCertifications={vm.certifications}
-                            />
-
-                            <ScreeningSupportDocsGrid
-                              resumeName={a.resumeOriginalName || "Resume / CV"}
-                              resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
-                              onOpenResume={
-                                a.resumeUrl
-                                  ? () => window.open(a.resumeUrl!, "_blank", "noopener")
-                                  : undefined
-                              }
-                              docs={serverDocList}
-                              loading={serverDocsLoading}
-                              onView={(d) =>
-                                window.open(
-                                  applicantDocumentsApi.fileUrl(d.applicant_document_id),
-                                  "_blank",
-                                  "noopener",
-                                )
-                              }
-                              onDownload={(d) =>
-                                window.open(
-                                  applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
-                                  "_blank",
-                                  "noopener",
-                                )
-                              }
-                            />
-
-                            {docs.length > 0 && (
-                              <div className="rounded-xl border border-border bg-card p-5">
-                                <h3 className="text-sm font-semibold">Session uploads</h3>
-                                <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-                                  Documents staged in this session, not yet verified against the
-                                  resume.
-                                </p>
-                                <div className="mt-3 space-y-4">
-                                  {VERIFICATION_DOC_TYPES.map((t) => {
-                                    const group = docs.filter((d) => d.docType === t.type);
-                                    if (group.length === 0) return null;
-                                    return (
-                                      <div key={t.type}>
-                                        <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
-                                          {t.label}
-                                          <Badge
-                                            variant="outline"
-                                            className="border-border bg-muted text-muted-foreground"
-                                          >
-                                            {group.length}
-                                          </Badge>
-                                        </p>
-                                        <p className="text-[0.7rem] text-muted-foreground">
-                                          {t.verifies}
-                                        </p>
-                                        <div className="mt-2 overflow-x-auto">
-                                          <Table>
-                                            <TableHeader>
-                                              <TableRow>
-                                                <TableHead>Title / File</TableHead>
-                                                <TableHead>Original Copy</TableHead>
-                                                <TableHead>Uploaded</TableHead>
-                                              </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                              {serverDocsLoading && (
-                                                <TableRowsSkeleton cols={3} rows={5} />
-                                              )}
-                                              {!serverDocsLoading &&
-                                                group.map((d) => (
-                                                  <TableRow key={`${d.docType}-${d.fileName}`}>
-                                                    <TableCell>
-                                                      <p className="text-sm font-medium">
-                                                        {d.title}
-                                                      </p>
-                                                      <p className="text-xs text-muted-foreground">
-                                                        {d.fileName}
-                                                      </p>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                      {d.originalCopy ? (
-                                                        <Badge
-                                                          variant="outline"
-                                                          className="border-success/30 bg-success/10 text-success"
-                                                        >
-                                                          Original
-                                                        </Badge>
-                                                      ) : (
-                                                        <Badge
-                                                          variant="outline"
-                                                          className="border-caution/30 bg-caution/10 text-caution"
-                                                        >
-                                                          Copy
-                                                        </Badge>
-                                                      )}
-                                                    </TableCell>
-                                                    <TableCell className="text-xs text-muted-foreground">
-                                                      {d.uploadedAt}
-                                                    </TableCell>
-                                                  </TableRow>
-                                                ))}
-                                            </TableBody>
-                                          </Table>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            <ScreeningDetailsAccordion
-                              detail={detail}
-                              variant="modal"
-                              position={a.position}
-                              score={vm.score}
-                              vm={vm}
-                            />
-
-                            {detail?.alternative_job && (
-                              <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
-                                <p className="font-medium text-warning-foreground">
-                                  Recommended alternative: {detail.alternative_job.title} (
-                                  {Math.round(detail.alternative_job.alternative_match_score ?? 0)}
-                                  %)
-                                </p>
-                                {detail.alternative_job.reason && (
-                                  <p className="mt-1 text-xs text-muted-foreground">
-                                    {detail.alternative_job.reason}
-                                  </p>
-                                )}
-                              </div>
-                            )}
+                            ))}
                           </div>
-                        );
-                      })()}
 
-                      {/* Report unrecognized entities — full width at the bottom
-                          of the Resume Screening Result in Resume & Documents. */}
-                      {(() => {
-                        const vm = screeningViewModel(a);
-                        const entries = unrecognizedEntriesFrom(vm, a.screening_detail);
-                        return (
-                          <ReportUnrecognizedDialog
-                            entries={entries}
-                            applicantName={a.name}
-                            className="mt-4 w-full justify-center"
-                            triggerLabel={
-                              entries.length > 0
-                                ? `Report unrecognized entities (${entries.length})`
-                                : "Report unrecognized entities"
-                            }
-                          />
-                        );
-                      })()}
-                    </CardContent>
-                  </Card>
-                );
-              case "interview":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <ClipboardCheck className="h-4 w-4 text-primary" /> Interview
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          This applicant&apos;s interview record and evaluation outcomes.
-                        </p>
-                      </div>
-
-                      {(showAcceptInterview ||
-                        showScheduleInterview ||
-                        showRescheduleInterview) && (
-                        <div className="flex flex-wrap gap-2">
-                          {showAcceptInterview && (
-                            <Button size="sm" onClick={onAcceptAndSchedule}>
-                              <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Accept &amp; Schedule
-                            </Button>
-                          )}
-                          {showScheduleInterview && (
-                            <Button size="sm" onClick={onAcceptAndSchedule}>
-                              <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Schedule Interview
-                            </Button>
-                          )}
-                          {showRescheduleInterview && liveInterview && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onRescheduleInterview?.(liveInterview)}
-                            >
-                              <Repeat2 className="mr-1.5 h-3.5 w-3.5" /> Reschedule Interview
-                            </Button>
-                          )}
+                          {/* Card 2 — Application Metadata */}
+                          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                            <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                              <Briefcase className="h-3.5 w-3.5" /> Application Metadata
+                            </h4>
+                            {[
+                              { label: "Applicant ID", value: String(a.id), mono: true },
+                              { label: "Position", value: a.position },
+                              { label: "Department", value: departmentOf(a.position) },
+                              { label: "Current Stage", value: a.stage },
+                              { label: "Date Applied", value: displayAppliedAt(a.appliedAt) },
+                            ].map(({ label, value, mono }) => (
+                              <div key={label} className="flex items-start justify-between gap-2">
+                                <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
+                                  {label}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-right text-xs font-medium text-foreground break-all",
+                                    mono && "font-mono",
+                                  )}
+                                >
+                                  {value ?? "—"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      )}
-
-                      {assessment ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              Interview completed {assessment.date}
-                            </p>
+                      </CardContent>
+                    </Card>
+                  );
+                case "resume":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                          <div>
+                            <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                              <Upload className="h-4 w-4 text-primary" /> Resume &amp; Documents
+                            </h3>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              {assessment.remarks || "No overall evaluation notes recorded."}
+                              Resume screening result plus supporting verification documents (COE,
+                              Certificate, Credentials, Others).
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-bold text-primary">
-                              {assessment.total}%
-                            </span>
                             <Badge
                               variant="outline"
-                              className={cn(
-                                assessment.result === "Passed"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
+                              className="border-border bg-secondary text-secondary-foreground"
                             >
-                              {assessment.result}
+                              {docCount} item{docCount === 1 ? "" : "s"}
                             </Badge>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                assessment.outcome === "Recommended"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : assessment.outcome === "Hold"
-                                    ? "border-warning/40 bg-warning/10 text-warning"
-                                    : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {assessment.outcome}
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onViewInterview(assessment)}
-                            >
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View Results
+                            <Button size="sm" variant="outline" onClick={onReview}>
+                              <ScanLine className="mr-1.5 h-3.5 w-3.5" /> Review Screening
                             </Button>
                           </div>
                         </div>
-                      ) : interview ? (
-                        <div className="space-y-3">
+
+                        {/* Resume Screening Result — redesigned to the approved mockup */}
+                        {(() => {
+                          const vm = screeningViewModel(a);
+                          const detail = vm.detail;
+                          return (
+                            <div className="mt-4 space-y-4">
+                              <div className="rounded-xl border border-border bg-card p-5">
+                                <h3 className="flex items-center gap-2 font-display text-base font-semibold">
+                                  <ShieldCheck className="h-4.5 w-4.5 text-primary" /> Resume
+                                  Screening
+                                </h3>
+                                <div className="mt-4 flex flex-col items-center gap-4 lg:flex-row lg:items-start">
+                                  <ScreeningScoreDonut score={vm.score} />
+                                  <div className="w-full min-w-0 flex-1 space-y-3">
+                                    <ScreeningVerdictBanner status={a.status} score={vm.score} />
+                                    <ScreeningStatTiles
+                                      matchedCount={vm.matched.length}
+                                      missingCount={vm.missing.length}
+                                      yearsExperience={vm.yearsExperience}
+                                      educationLabel={vm.educationLabel}
+                                      showIcons={false}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <ScreeningVerificationImpact
+                                verification={vm.verification}
+                                resumeScore={vm.resumeScore}
+                                score={vm.score}
+                                onRecompute={onRecomputeRanking}
+                                recomputing={recomputingRanking}
+                              />
+
+                              <div className="grid items-stretch gap-5 grid-cols-1 xl:grid-cols-2">
+                                <ResumeInfoPanel
+                                  title="Key Information Extracted"
+                                  variant="modal"
+                                  skills={vm.skills}
+                                  recognizedRoles={vm.recognizedRoles}
+                                  unrecognizedRoles={vm.unrecognizedRoles}
+                                  workExperience={vm.workExperience}
+                                  education={vm.education}
+                                  experienceYears={vm.yearsExperience}
+                                  certifications={vm.certifications}
+                                  personalInfo={vm.personalInfo}
+                                  skillsRecognized={vm.skillsRecognized}
+                                  unrecognizedCertifications={vm.unrecognizedCertifications}
+                                />
+                                <RequirementMatchPanel
+                                  rows={vm.rows}
+                                  experienceMinYears={vm.experienceMinYears}
+                                />
+                              </div>
+
+                              <ScreeningResumeDocsMatchDetail
+                                docs={serverDocList}
+                                loading={serverDocsLoading}
+                                resumeName={vm.personalInfo.name ?? a.name}
+                                resumeEducation={vm.education}
+                                resumeCertifications={vm.certifications}
+                              />
+
+                              <ScreeningSupportDocsGrid
+                                resumeName={a.resumeOriginalName || "Resume / CV"}
+                                resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
+                                onOpenResume={
+                                  a.resumeUrl
+                                    ? () => window.open(a.resumeUrl!, "_blank", "noopener")
+                                    : undefined
+                                }
+                                docs={serverDocList}
+                                loading={serverDocsLoading}
+                                onView={(d) =>
+                                  window.open(
+                                    applicantDocumentsApi.fileUrl(d.applicant_document_id),
+                                    "_blank",
+                                    "noopener",
+                                  )
+                                }
+                                onDownload={(d) =>
+                                  window.open(
+                                    applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
+                                    "_blank",
+                                    "noopener",
+                                  )
+                                }
+                              />
+
+                              {docs.length > 0 && (
+                                <div className="rounded-xl border border-border bg-card p-5">
+                                  <h3 className="text-sm font-semibold">Session uploads</h3>
+                                  <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
+                                    Documents staged in this session, not yet verified against the
+                                    resume.
+                                  </p>
+                                  <div className="mt-3 space-y-4">
+                                    {VERIFICATION_DOC_TYPES.map((t) => {
+                                      const group = docs.filter((d) => d.docType === t.type);
+                                      if (group.length === 0) return null;
+                                      return (
+                                        <div key={t.type}>
+                                          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
+                                            {t.label}
+                                            <Badge
+                                              variant="outline"
+                                              className="border-border bg-muted text-muted-foreground"
+                                            >
+                                              {group.length}
+                                            </Badge>
+                                          </p>
+                                          <p className="text-[0.7rem] text-muted-foreground">
+                                            {t.verifies}
+                                          </p>
+                                          <div className="mt-2 overflow-x-auto">
+                                            <Table>
+                                              <TableHeader>
+                                                <TableRow>
+                                                  <TableHead>Title / File</TableHead>
+                                                  <TableHead>Original Copy</TableHead>
+                                                  <TableHead>Uploaded</TableHead>
+                                                </TableRow>
+                                              </TableHeader>
+                                              <TableBody>
+                                                {serverDocsLoading && (
+                                                  <TableRowsSkeleton cols={3} rows={5} />
+                                                )}
+                                                {!serverDocsLoading &&
+                                                  group.map((d) => (
+                                                    <TableRow key={`${d.docType}-${d.fileName}`}>
+                                                      <TableCell>
+                                                        <p className="text-sm font-medium">
+                                                          {d.title}
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                          {d.fileName}
+                                                        </p>
+                                                      </TableCell>
+                                                      <TableCell>
+                                                        {d.originalCopy ? (
+                                                          <Badge
+                                                            variant="outline"
+                                                            className="border-success/30 bg-success/10 text-success"
+                                                          >
+                                                            Original
+                                                          </Badge>
+                                                        ) : (
+                                                          <Badge
+                                                            variant="outline"
+                                                            className="border-caution/30 bg-caution/10 text-caution"
+                                                          >
+                                                            Copy
+                                                          </Badge>
+                                                        )}
+                                                      </TableCell>
+                                                      <TableCell className="text-xs text-muted-foreground">
+                                                        {d.uploadedAt}
+                                                      </TableCell>
+                                                    </TableRow>
+                                                  ))}
+                                              </TableBody>
+                                            </Table>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              <ScreeningDetailsAccordion
+                                detail={detail}
+                                variant="modal"
+                                position={a.position}
+                                score={vm.score}
+                                vm={vm}
+                              />
+
+                              {detail?.alternative_job && (
+                                <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
+                                  <p className="font-medium text-warning-foreground">
+                                    Recommended alternative: {detail.alternative_job.title} (
+                                    {Math.round(
+                                      detail.alternative_job.alternative_match_score ?? 0,
+                                    )}
+                                    %)
+                                  </p>
+                                  {detail.alternative_job.reason && (
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      {detail.alternative_job.reason}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Report unrecognized entities — full width at the bottom
+                          of the Resume Screening Result in Resume & Documents. */}
+                        {(() => {
+                          const vm = screeningViewModel(a);
+                          const entries = unrecognizedEntriesFrom(vm, a.screening_detail);
+                          return (
+                            <ReportUnrecognizedDialog
+                              entries={entries}
+                              applicantName={a.name}
+                              className="mt-4 w-full justify-center"
+                              triggerLabel={
+                                entries.length > 0
+                                  ? `Report unrecognized entities (${entries.length})`
+                                  : "Report unrecognized entities"
+                              }
+                            />
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
+                  );
+                case "interview":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <ClipboardCheck className="h-4 w-4 text-primary" /> Interview
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            This applicant&apos;s interview record and evaluation outcomes.
+                          </p>
+                        </div>
+
+                        {(showAcceptInterview ||
+                          showScheduleInterview ||
+                          showRescheduleInterview) && (
+                          <div className="flex flex-wrap gap-2">
+                            {showAcceptInterview && (
+                              <Button size="sm" onClick={onAcceptAndSchedule}>
+                                <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Accept &amp;
+                                Schedule
+                              </Button>
+                            )}
+                            {showScheduleInterview && (
+                              <Button size="sm" onClick={onAcceptAndSchedule}>
+                                <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Schedule Interview
+                              </Button>
+                            )}
+                            {showRescheduleInterview && liveInterview && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onRescheduleInterview?.(liveInterview)}
+                              >
+                                <Repeat2 className="mr-1.5 h-3.5 w-3.5" /> Reschedule Interview
+                              </Button>
+                            )}
+                          </div>
+                        )}
+
+                        {assessment ? (
                           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium">
-                                {interview.date} · {interview.time}
+                              <p className="text-sm font-semibold text-foreground">
+                                Interview completed {assessment.date}
                               </p>
                               <p className="mt-1 text-xs text-muted-foreground">
-                                {interview.mode}
-                                {interview.facilityName ? ` · ${interview.facilityName}` : ""}
-                                {interview.facilityStatus &&
-                                interview.facilityStatus !== "Not Required"
-                                  ? ` · ${interview.facilityStatus}`
-                                  : ""}
-                                {interview.interviewer ? ` · ${interview.interviewer}` : ""}
+                                {assessment.remarks || "No overall evaluation notes recorded."}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-display text-2xl font-bold text-primary">
+                                {assessment.total}%
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  assessment.result === "Passed"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : "border-destructive/30 bg-destructive/10 text-destructive",
+                                )}
+                              >
+                                {assessment.result}
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  assessment.outcome === "Recommended"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : assessment.outcome === "Hold"
+                                      ? "border-warning/40 bg-warning/10 text-warning"
+                                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                                )}
+                              >
+                                {assessment.outcome}
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onViewInterview(assessment)}
+                              >
+                                <Eye className="mr-1.5 h-3.5 w-3.5" /> View Results
+                              </Button>
+                            </div>
+                          </div>
+                        ) : interview ? (
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium">
+                                  {interview.date} · {interview.time}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {interview.mode}
+                                  {interview.facilityName ? ` · ${interview.facilityName}` : ""}
+                                  {interview.facilityStatus &&
+                                  interview.facilityStatus !== "Not Required"
+                                    ? ` · ${interview.facilityStatus}`
+                                    : ""}
+                                  {interview.interviewer ? ` · ${interview.interviewer}` : ""}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className="border-gold/40 bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
+                                >
+                                  {interview.status}
+                                </Badge>
+                                {(() => {
+                                  // Startable only inside the slot window
+                                  // ([start, start + duration)) — not the whole day.
+                                  const windowState = interview
+                                    ? getInterviewWindow(
+                                        interview.date,
+                                        interview.time,
+                                        interviewDurationMinutes(
+                                          interview.time,
+                                          interview.endTime,
+                                          slotDurationMinutes,
+                                        ),
+                                        new Date(),
+                                      )
+                                    : "past-day";
+                                  if (windowState === "live") {
+                                    return interview.mode === "Virtual" ? (
+                                      <Button size="sm" onClick={onStartInterview}>
+                                        <Video className="mr-1.5 h-3.5 w-3.5" /> Start Zoom
+                                        Interview
+                                      </Button>
+                                    ) : (
+                                      <Button size="sm" onClick={onStartInterview}>
+                                        <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start
+                                        Interview
+                                      </Button>
+                                    );
+                                  }
+                                  if (
+                                    !assessment &&
+                                    interview.status !== "Cancelled" &&
+                                    (windowState === "ended" || windowState === "past-day")
+                                  ) {
+                                    return (
+                                      <Button size="sm" onClick={onStartInterview}>
+                                        <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Record
+                                        Evaluation
+                                      </Button>
+                                    );
+                                  }
+                                  return (
+                                    <span className="text-xs text-muted-foreground">
+                                      {windowState === "upcoming"
+                                        ? `Starts at ${interview.time} (${slotDurationMinutes} min)`
+                                        : windowState === "future-day"
+                                          ? "Available on interview day"
+                                          : "Interview window has passed"}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                            {interview.mode === "Virtual" &&
+                              (interview.zoomJoinUrl ||
+                                interview.zoomContinueUrl ||
+                                interview.zoomPassword) && (
+                                <div className="mt-3 rounded-md border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900/40 dark:bg-blue-950/20">
+                                  <p className="mb-1.5 flex items-center gap-1.5 font-semibold text-blue-800 dark:text-blue-200">
+                                    <Video className="h-3.5 w-3.5" /> Zoom details emailed to
+                                    applicant
+                                  </p>
+                                  {interview.zoomJoinUrl && (
+                                    <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
+                                      1st link — Join:{" "}
+                                      <a
+                                        href={interview.zoomJoinUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="underline"
+                                      >
+                                        {interview.zoomJoinUrl}
+                                      </a>
+                                    </p>
+                                  )}
+                                  {interview.zoomContinueUrl && (
+                                    <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
+                                      2nd link — Continue:{" "}
+                                      <a
+                                        href={interview.zoomContinueUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="underline"
+                                      >
+                                        {interview.zoomContinueUrl}
+                                      </a>
+                                    </p>
+                                  )}
+                                  <p className="text-blue-700 dark:text-blue-300">
+                                    {interview.zoomPassword
+                                      ? `Password: ${interview.zoomPassword} · `
+                                      : ""}
+                                    Interviewer: {interview.interviewer}
+                                  </p>
+                                </div>
+                              )}
+                            {interview.interview_notes &&
+                              interview.interview_notes.trim() !== "" && (
+                                <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+                                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                                    <FileText className="h-3.5 w-3.5 text-primary" /> Interviewer
+                                    notes
+                                  </p>
+                                  <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+                                    {interview.interview_notes}
+                                  </p>
+                                </div>
+                              )}
+                          </div>
+                        ) : (
+                          <div className="mt-4">
+                            {emptyNote(
+                              "No interview yet. Book a slot from the Interview Pipeline tab in the main list.",
+                            )}
+                          </div>
+                        )}
+
+                        {!assessment && (
+                          <p className="mt-4 flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                            <Info className="h-4 w-4 shrink-0" />
+                            <span>
+                              Booking and rescheduling stay in the{" "}
+                              <b className="font-semibold text-foreground">Interview Pipeline</b>{" "}
+                              tab. This section shows this applicant&apos;s interview record only.
+                            </span>
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                case "test":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <BookMarked className="h-4 w-4 text-primary" /> Assessment Test
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Job-specific test that unlocks after the interview assessment is passed.
+                            {!requiresTest &&
+                              " This position does not require it (set in Core HCM)."}
+                          </p>
+                        </div>
+
+                        {!requiresTest ? (
+                          <div className="mt-2">
+                            {emptyNote(
+                              "This position does not require an assessment test (Core HCM).",
+                            )}
+                          </div>
+                        ) : test ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">{test.title}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {test.name} · {test.position} · {test.date}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-display text-2xl font-bold text-primary">
+                                {test.total}%
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  test.result === "Passed"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : "border-destructive/30 bg-destructive/10 text-destructive",
+                                )}
+                              >
+                                {test.result}
+                              </Badge>
+                              <Button size="sm" variant="outline" onClick={() => onViewTest(test)}>
+                                <Eye className="mr-1.5 h-3.5 w-3.5" /> View
+                              </Button>
+                            </div>
+                          </div>
+                        ) : readyForTest ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">
+                                Ready for the assessment test
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {a.position} — the interview assessment was passed.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={inviteBusy}
+                                onClick={() => onCopyTestLink?.()}
+                                title="Email a no-login test link the applicant opens to answer the test themselves (also copies it)"
+                              >
+                                {inviteBusy ? (
+                                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                                )}
+                                Email applicant test link
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            {emptyNote(
+                              requiresTest
+                                ? "Assessment test unlocks after the interview stage is completed and passed."
+                                : "Assessment test is not required for this position (Core HCM) — proceed to the practical (when required) or final evaluation.",
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                case "practical":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <Wrench className="h-4 w-4 text-primary" /> Practical Assessment
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Hands-on practical exam — required only when the Core HCM position
+                            requires it.
+                          </p>
+                        </div>
+
+                        {!requiresPrac ? (
+                          <div className="mt-2">
+                            {emptyNote("This position does not require a practical assessment.")}
+                          </div>
+                        ) : practical ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">
+                                {practical.taskTitle}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {practical.name} · {practical.position} · {practical.date}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-display text-2xl font-bold text-primary">
+                                {practical.total}%
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  practical.result === "Passed"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : "border-destructive/30 bg-destructive/10 text-destructive",
+                                )}
+                              >
+                                {practical.result}
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onViewPractical(practical)}
+                              >
+                                <Eye className="mr-1.5 h-3.5 w-3.5" /> View
+                              </Button>
+                            </div>
+                          </div>
+                        ) : readyForPractical ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">
+                                Ready for the practical assessment
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {a.position} — the assessment test was passed.
+                              </p>
+                            </div>
+                            <Button size="sm" onClick={onStartPractical}>
+                              <Wrench className="mr-1.5 h-3.5 w-3.5" /> Record Practical Exam
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            {emptyNote(
+                              requiresTest
+                                ? "Practical exam unlocks after passing the assessment test."
+                                : "Practical exam unlocks after the interview assessment is passed (assessment test not required for this position).",
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                case "final":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <CheckCircle2 className="h-4 w-4 text-primary" /> Final Evaluation
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Whole-process verdict — resume screening, interview, assessment test and
+                            practical.
+                          </p>
+                        </div>
+
+                        {a.stage === "Hired" && (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/10 p-4">
+                            <div className="min-w-0">
+                              <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                <CheckCircle2 className="h-4 w-4 text-success" /> Hired
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                This applicant moved to New Hire Onboarding.
+                              </p>
+                            </div>
+                            {linkedHire?.startDate && (
+                              <Badge
+                                variant="outline"
+                                className="border-success/30 bg-background/70 text-success"
+                              >
+                                Start date {linkedHire.startDate}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        {final ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">
+                                Final evaluation recorded {final.date}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {final.overallRemarks || "No overall remarks recorded."}
                               </p>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge
                                 variant="outline"
-                                className="border-gold/40 bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
+                                className={cn(
+                                  final.recommendation === "Recommended for Hire"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : final.recommendation === "For Another Position"
+                                      ? "border-warning/40 bg-warning/10 text-warning"
+                                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                                )}
                               >
-                                {interview.status}
+                                {final.recommendation}
                               </Badge>
-                              {(() => {
-                                // Startable only inside the slot window
-                                // ([start, start + duration)) — not the whole day.
-                                const windowState = interview
-                                  ? getInterviewWindow(
-                                      interview.date,
-                                      interview.time,
-                                      interviewDurationMinutes(
-                                        interview.time,
-                                        interview.endTime,
-                                        slotDurationMinutes,
-                                      ),
-                                      new Date(),
-                                    )
-                                  : "past-day";
-                                if (windowState === "live") {
-                                  return interview.mode === "Virtual" ? (
-                                    <Button size="sm" onClick={onStartInterview}>
-                                      <Video className="mr-1.5 h-3.5 w-3.5" /> Start Zoom Interview
-                                    </Button>
-                                  ) : (
-                                    <Button size="sm" onClick={onStartInterview}>
-                                      <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start
-                                      Interview
-                                    </Button>
-                                  );
-                                }
-                                if (
-                                  !assessment &&
-                                  interview.status !== "Cancelled" &&
-                                  (windowState === "ended" || windowState === "past-day")
-                                ) {
-                                  return (
-                                    <Button size="sm" onClick={onStartInterview}>
-                                      <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Record
-                                      Evaluation
-                                    </Button>
-                                  );
-                                }
-                                return (
-                                  <span className="text-xs text-muted-foreground">
-                                    {windowState === "upcoming"
-                                      ? `Starts at ${interview.time} (${slotDurationMinutes} min)`
-                                      : windowState === "future-day"
-                                        ? "Available on interview day"
-                                        : "Interview window has passed"}
-                                  </span>
-                                );
-                              })()}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onViewFinal(final)}
+                              >
+                                <Eye className="mr-1.5 h-3.5 w-3.5" /> View Results
+                              </Button>
                             </div>
                           </div>
-                          {interview.mode === "Virtual" &&
-                            (interview.zoomJoinUrl ||
-                              interview.zoomContinueUrl ||
-                              interview.zoomPassword) && (
-                              <div className="mt-3 rounded-md border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900/40 dark:bg-blue-950/20">
-                                <p className="mb-1.5 flex items-center gap-1.5 font-semibold text-blue-800 dark:text-blue-200">
-                                  <Video className="h-3.5 w-3.5" /> Zoom details emailed to
-                                  applicant
-                                </p>
-                                {interview.zoomJoinUrl && (
-                                  <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
-                                    1st link — Join:{" "}
-                                    <a
-                                      href={interview.zoomJoinUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="underline"
-                                    >
-                                      {interview.zoomJoinUrl}
-                                    </a>
-                                  </p>
-                                )}
-                                {interview.zoomContinueUrl && (
-                                  <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
-                                    2nd link — Continue:{" "}
-                                    <a
-                                      href={interview.zoomContinueUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="underline"
-                                    >
-                                      {interview.zoomContinueUrl}
-                                    </a>
-                                  </p>
-                                )}
-                                <p className="text-blue-700 dark:text-blue-300">
-                                  {interview.zoomPassword
-                                    ? `Password: ${interview.zoomPassword} · `
-                                    : ""}
-                                  Interviewer: {interview.interviewer}
-                                </p>
-                              </div>
+                        ) : readyForFinal ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">
+                                Ready for the final evaluation
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {a.position} — all process stages completed.
+                              </p>
+                            </div>
+                            <Button size="sm" onClick={onStartFinal}>
+                              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Complete Final
+                              Evaluation
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            {emptyNote(
+                              "Final evaluation unlocks after the assessment test (and the practical, when required) is passed.",
                             )}
-                          {interview.interview_notes && interview.interview_notes.trim() !== "" && (
-                            <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
-                              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                                <FileText className="h-3.5 w-3.5 text-primary" /> Interviewer notes
-                              </p>
-                              <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
-                                {interview.interview_notes}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="mt-4">
-                          {emptyNote(
-                            "No interview yet. Book a slot from the Interview Pipeline tab in the main list.",
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        )}
 
-                      {!assessment && (
-                        <p className="mt-4 flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-                          <Info className="h-4 w-4 shrink-0" />
-                          <span>
-                            Booking and rescheduling stay in the{" "}
-                            <b className="font-semibold text-foreground">Interview Pipeline</b> tab.
-                            This section shows this applicant&apos;s interview record only.
-                          </span>
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              case "test":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <BookMarked className="h-4 w-4 text-primary" /> Assessment Test
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Job-specific test that unlocks after the interview assessment is passed.
-                          {!requiresTest && " This position does not require it (set in Core HCM)."}
-                        </p>
-                      </div>
-
-                      {!requiresTest ? (
-                        <div className="mt-2">
-                          {emptyNote(
-                            "This position does not require an assessment test (Core HCM).",
-                          )}
-                        </div>
-                      ) : test ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">{test.title}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {test.name} · {test.position} · {test.date}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-bold text-primary">
-                              {test.total}%
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                test.result === "Passed"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {test.result}
-                            </Badge>
-                            <Button size="sm" variant="outline" onClick={() => onViewTest(test)}>
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View
-                            </Button>
-                          </div>
-                        </div>
-                      ) : readyForTest ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              Ready for the assessment test
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {a.position} — the interview assessment was passed.
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={inviteBusy}
-                              onClick={() => onCopyTestLink?.()}
-                              title="Email a no-login test link the applicant opens to answer the test themselves (also copies it)"
-                            >
-                              {inviteBusy ? (
-                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Link2 className="mr-1.5 h-3.5 w-3.5" />
-                              )}
-                              Email applicant test link
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-2">
-                          {emptyNote(
-                            requiresTest
-                              ? "Assessment test unlocks after the interview stage is completed and passed."
-                              : "Assessment test is not required for this position (Core HCM) — proceed to the practical (when required) or final evaluation.",
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              case "practical":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <Wrench className="h-4 w-4 text-primary" /> Practical Assessment
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Hands-on practical exam — required only when the Core HCM position
-                          requires it.
-                        </p>
-                      </div>
-
-                      {!requiresPrac ? (
-                        <div className="mt-2">
-                          {emptyNote("This position does not require a practical assessment.")}
-                        </div>
-                      ) : practical ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              {practical.taskTitle}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {practical.name} · {practical.position} · {practical.date}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-bold text-primary">
-                              {practical.total}%
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                practical.result === "Passed"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {practical.result}
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onViewPractical(practical)}
-                            >
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View
-                            </Button>
-                          </div>
-                        </div>
-                      ) : readyForPractical ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              Ready for the practical assessment
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {a.position} — the assessment test was passed.
-                            </p>
-                          </div>
-                          <Button size="sm" onClick={onStartPractical}>
-                            <Wrench className="mr-1.5 h-3.5 w-3.5" /> Record Practical Exam
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="mt-2">
-                          {emptyNote(
-                            requiresTest
-                              ? "Practical exam unlocks after passing the assessment test."
-                              : "Practical exam unlocks after the interview assessment is passed (assessment test not required for this position).",
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              case "final":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <CheckCircle2 className="h-4 w-4 text-primary" /> Final Evaluation
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Whole-process verdict — resume screening, interview, assessment test and
-                          practical.
-                        </p>
-                      </div>
-
-                      {final ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              Final evaluation recorded {final.date}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {final.overallRemarks || "No overall remarks recorded."}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                final.recommendation === "Recommended for Hire"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : final.recommendation === "For Another Position"
-                                    ? "border-warning/40 bg-warning/10 text-warning"
-                                    : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {final.recommendation}
-                            </Badge>
-                            <Button size="sm" variant="outline" onClick={() => onViewFinal(final)}>
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View Results
-                            </Button>
-                          </div>
-                        </div>
-                      ) : readyForFinal ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              Ready for the final evaluation
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {a.position} — all process stages completed.
-                            </p>
-                          </div>
-                          <Button size="sm" onClick={onStartFinal}>
-                            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Complete Final
-                            Evaluation
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="mt-2">
-                          {emptyNote(
-                            "Final evaluation unlocks after the assessment test (and the practical, when required) is passed.",
-                          )}
-                        </div>
-                      )}
-
-                      {/* Offer status — the Final Evaluation modal is where the
+                        {/* Offer status — the Final Evaluation modal is where the
                           decision is made and the applicant's reply
                           (Accept / Decline applicant) is recorded. */}
-                      {final &&
-                        (() => {
-                          const offer = offerStateOf(a);
-                          return (
-                            <div className="mt-6 space-y-2">
-                              <h4 className="flex items-center gap-2 text-sm font-semibold">
-                                <Send className="h-4 w-4 text-primary" /> Offer Status
-                              </h4>
-                              {offer ? (
-                                <p
-                                  className={cn(
-                                    "text-xs font-semibold",
-                                    offer.status === "Accepted" && !offer.expired
-                                      ? "text-success"
-                                      : offer.status === "Pending" && !offer.expired
-                                        ? "text-warning"
-                                        : "text-destructive",
-                                  )}
-                                >
-                                  {offerStateLabel(offer)}
-                                  {offer.status !== "Pending" && a.offerResponseChannel && (
-                                    <span className="font-normal text-muted-foreground">
-                                      {" "}
-                                      · replied via {a.offerResponseChannel}
-                                      {a.offerResponseRecordedBy
-                                        ? ` (recorded by ${a.offerResponseRecordedBy})`
-                                        : ""}
-                                    </span>
-                                  )}
-                                  {offer.status === "Pending" && !offer.expired && (
-                                    <span className="font-normal text-muted-foreground">
-                                      {" "}
-                                      — record the reply (and how it arrived) via Record acceptance
-                                      / Record decline in the Final Evaluation modal.
-                                    </span>
-                                  )}
-                                </p>
-                              ) : final.recommendation === "Not Recommended" ? (
-                                <p className="text-xs font-semibold text-destructive">
-                                  Not passed — recorded as Failed in the Pipeline Overview.
-                                </p>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">
-                                  No offer email sent yet — send it from the Pipeline Overview
-                                  (Actions → Send offer email).
+                        {final &&
+                          (() => {
+                            const offer = offerStateOf(a);
+                            return (
+                              <div className="mt-6 space-y-2">
+                                <h4 className="flex items-center gap-2 text-sm font-semibold">
+                                  <Send className="h-4 w-4 text-primary" /> Offer Status
+                                </h4>
+                                {offer ? (
+                                  <p
+                                    className={cn(
+                                      "text-xs font-semibold",
+                                      offer.status === "Accepted" && !offer.expired
+                                        ? "text-success"
+                                        : offer.status === "Pending" && !offer.expired
+                                          ? "text-warning"
+                                          : "text-destructive",
+                                    )}
+                                  >
+                                    {offerStateLabel(offer)}
+                                    {offer.status !== "Pending" && a.offerResponseChannel && (
+                                      <span className="font-normal text-muted-foreground">
+                                        {" "}
+                                        · replied via {a.offerResponseChannel}
+                                        {a.offerResponseRecordedBy
+                                          ? ` (recorded by ${a.offerResponseRecordedBy})`
+                                          : ""}
+                                      </span>
+                                    )}
+                                    {offer.status === "Pending" && !offer.expired && (
+                                      <span className="font-normal text-muted-foreground">
+                                        {" "}
+                                        — record the reply (and how it arrived) via Record
+                                        acceptance / Record decline in the Final Evaluation modal.
+                                      </span>
+                                    )}
+                                  </p>
+                                ) : final.recommendation === "Not Recommended" ? (
+                                  <p className="text-xs font-semibold text-destructive">
+                                    Not passed — recorded as Failed in the Pipeline Overview.
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">
+                                    No offer email sent yet — send it from the Pipeline Overview
+                                    (Actions → Send offer email).
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                      </CardContent>
+                    </Card>
+                  );
+                case "activity":
+                  return (
+                    <Card className="border-border/70 shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <History className="h-4 w-4 text-primary" /> Activity
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Application events and milestones recorded for this applicant.
+                          </p>
+                        </div>
+
+                        <ol className="relative space-y-3 border-l border-border/70 pl-4">
+                          <li className="relative">
+                            <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
+                            <p className="text-xs font-semibold text-foreground">
+                              Application submitted
+                            </p>
+                            <p className="mt-0.5 text-[0.68rem] text-muted-foreground">
+                              {displayAppliedAt(a.appliedAt)} · {a.source}
+                            </p>
+                          </li>
+                          {audit.slice(0, 12).map((entry) => (
+                            <li key={entry.id} className="relative">
+                              <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-border ring-2 ring-background" />
+                              <p className="text-xs font-semibold text-foreground">
+                                {entry.actionType}
+                              </p>
+                              <p className="mt-0.5 text-[0.68rem] text-muted-foreground">
+                                {entry.date}
+                                {entry.time ? ` · ${entry.time}` : ""} · {entry.actorName}
+                              </p>
+                              {entry.details && (
+                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                  {entry.details}
                                 </p>
                               )}
-                            </div>
-                          );
-                        })()}
-                    </CardContent>
-                  </Card>
-                );
-              default:
-                return null;
-            }
-          })()}
+                            </li>
+                          ))}
+                        </ol>
+
+                        {audit.length === 0 && (
+                          <div className="mt-2">
+                            {emptyNote("No recorded events after the application was submitted.")}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                default:
+                  return null;
+              }
+            })()}
+          </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -7861,8 +7902,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** Pipeline Overview card — the metric cards scroll it into view after
    *  applying their quick filter. */
   const pipelineListRef = useRef<HTMLDivElement>(null);
-  /** Room Availability & Daily Schedule card — "View in calendar" scrolls here. */
-  const roomAvailabilityRef = useRef<HTMLDivElement>(null);
 
   const [search, setSearch] = useState("");
   const [review, setReview] = useState<Applicant | null>(null);
@@ -8094,6 +8133,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [viewingApplicant, setViewingApplicant] = useState<Applicant | null>(null);
   /** Right-hand quick profile panel opened by clicking an applicant's name. */
   const [previewApplicant, setPreviewApplicant] = useState<Applicant | null>(null);
+  /** Active tab in the quick profile panel (Stage / Documents / Activity). */
+  const [profileTab, setProfileTab] = useState<"stage" | "documents" | "activity">("stage");
+  /** Stage opened in the profile panel rail — null means "current stage". */
+  const [profileStage, setProfileStage] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (previewApplicant) {
+      setProfileTab("stage");
+      setProfileStage(null);
+    }
+  }, [previewApplicant]);
 
   /** Previous-applications history for the open View screen (HR strip). */
   const [viewHistory, setViewHistory] = useState<ApiApplicantHistory | null>(null);
@@ -8186,21 +8236,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  Schedule Preview "View list in Pipeline" action. */
   const [pipelineScheduledDate, setPipelineScheduledDate] = useState<string | null>(null);
   const [calSearch, setCalSearch] = useState("");
-  const [calStatusFilter, setCalStatusFilter] = useState<string>("all");
   const [slotSettings] = useState(DEFAULT_SLOT_SETTINGS);
-  /** Full calendar view. */
-  const [calViewOpen, setCalViewOpen] = useState(false);
-  /** Month shown in the full calendar view (independent from the mini calendar). */
-  const [calViewMonth, setCalViewMonth] = useState<Date>(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
+  /** Week shown in the Interview Schedule calendar — any date jumps its week. */
+  const [interviewWeekAnchor, setInterviewWeekAnchor] = useState<string>(TODAY_ISO);
+  /** Month shown in the calendar's date-jump popover. */
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    const d = new Date(`${TODAY_ISO}T00:00:00`);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
   });
-  /** Selected date (ISO yyyy-mm-dd) in the full calendar view. */
-  const [calViewDate, setCalViewDate] = useState<string>(() => isoOf(new Date()));
-  /** Facility selected in the full calendar view's schedule preview. */
-  const [calViewFacilityId, setCalViewFacilityId] = useState<string>("all");
-  /** Full calendar view panel — month grid, or the day detail (double-click a date). */
-  const [calViewPanel, setCalViewPanel] = useState<"calendar" | "day">("calendar");
+  const [calendarOpen, setCalendarOpen] = useState(false);
   /** Booking-mode layout — true once an applicant is picked for scheduling
    *  (Accept & schedule / Schedule interview / Reschedule / manual select).
    *  The Book an Interview card swaps into the merged card's right column and
@@ -9000,17 +9044,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }, 60);
   };
 
-  /** Opens the Interview Pipeline section, focused on today's date — both the
-   *  booking calendar AND the Room Availability & Daily Schedule calendar jump
-   *  to today, and the Pipeline Overview lists every applicant scheduled for
-   *  today. */
+  /** Opens the Interview Pipeline section, focused on today — the booking date
+   *  follows today and the Pipeline Overview lists every applicant scheduled
+   *  for today. */
   const goToTodayInterviews = () => {
     setTab("scheduling");
     setSchedule((s) => ({ ...s, date: TODAY_ISO }));
     const d = new Date(`${TODAY_ISO}T00:00:00`);
     setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-    setCalViewDate(TODAY_ISO);
-    setCalViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
     // Pipeline Overview → only the candidates booked for today.
     setPipelineScheduledDate(TODAY_ISO);
     setPipelineStage("all");
@@ -9018,7 +9059,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setPipelineResult("all");
     setPipelineSearch("");
     window.setTimeout(() => {
-      roomAvailabilityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 60);
   };
 
@@ -9050,56 +9091,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }, 60);
   };
 
-  /** Daily Schedule Preview row → select the applicant in the Pipeline
-   *  Overview (searches their name there) and scrolls the card into view. */
-  const selectInPipeline = (applicantName: string) => {
-    setTab("scheduling");
-    setPipelineStage("all");
-    setPipelinePosition("all");
-    setPipelineResult("all");
-    setPipelineSearch(applicantName);
-    window.setTimeout(() => {
-      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 60);
-  };
-
-  /** Daily Schedule Preview → "View list in Pipeline": shows every applicant
-   *  whose live interview is booked on the previewed day in the Pipeline
-   *  Overview (today's preview therefore lists today's candidates). */
-  const showScheduledInPipeline = (date: string) => {
-    setTab("scheduling");
-    setPipelineScheduledDate(date);
-    setPipelineStage("all");
-    setPipelinePosition("all");
-    setPipelineResult("all");
-    setPipelineSearch("");
-    window.setTimeout(() => {
-      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 60);
-  };
-
-  /** "View scheduled in the calendar" — jumps to the Interview Pipeline and
-   *  points the Room Availability & Daily Schedule calendar at the booked
-   *  interview's date (and reserved room, when one exists). */
+  /** "View interview schedule" — opens the applicant profile panel, where the
+   *  booked interview date, time, interviewer and location are shown. */
   const viewScheduledInCalendar = (a: Applicant) => {
-    const booked =
-      interviews.find((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled") ??
-      interviews.find((i) => matchesInterviewApplicant(i, a));
-    const date = booked?.date ?? TODAY_ISO;
-    const d = new Date(`${date}T00:00:00`);
     setTab("scheduling");
-    setCalViewDate(date);
-    setSchedule((s) => ({ ...s, date }));
-    if (!Number.isNaN(d.getTime())) {
-      setCalViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-    }
-    const room = booked?.facilityName
-      ? facilities.find((f) => f.name === booked.facilityName)
-      : undefined;
-    if (room) setCalViewFacilityId(room.id);
-    window.setTimeout(() => {
-      roomAvailabilityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 60);
+    setPreviewApplicant(a);
   };
 
   const applicantSort = useSort(filtered, {
@@ -10264,6 +10260,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               : (updateTarget.facilityStatus ?? ("Not Required" as FacilityStatus)),
       };
       setInterviews((prev) => prev.map((x) => (x.id === updateTarget.id ? updated : x)));
+      setInterviewWeekAnchor(schedule.date);
       // Re-book / reschedule always (re)activates the applicant into the
       // interview stage — e.g. Cancelled (Screened) or Rejected back to
       // Interview Scheduled so the pipeline resumes.
@@ -10401,6 +10398,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       ...(schedule.mode === "Virtual" ? mockZoomFor(`INT-${300 + interviews.length}`) : {}),
     };
     setInterviews((prev) => [newInt, ...prev]);
+    setInterviewWeekAnchor(schedule.date);
     if (facilityId && facilityId !== "none") {
       setFacilityStatuses((prev) => ({ ...prev, [newInt.id]: "Waiting for Facility Approval" }));
     }
@@ -11975,24 +11973,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     });
   }, [viewMonth]);
 
-  /** Month grid for the full calendar view (same 6x7 layout, own month state). */
-  const calViewCells = useMemo(() => {
-    const first = new Date(calViewMonth.getFullYear(), calViewMonth.getMonth(), 1);
-    const start = new Date(first);
-    start.setDate(first.getDate() - first.getDay());
-    return Array.from({ length: 42 }, (_, i) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + i);
-      return { date, inMonth: date.getMonth() === calViewMonth.getMonth() };
-    });
-  }, [calViewMonth]);
-
-  /** Non-cancelled interviews on the full-calendar selected date. */
-  const calViewDayInterviews = useMemo(
-    () => interviews.filter((i) => i.date === calViewDate && i.status !== "Cancelled"),
-    [interviews, calViewDate],
-  );
-
   const dailySchedule = useMemo(
     () =>
       buildSlotSchedule(
@@ -12018,42 +11998,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     () => dailySchedule.filter((s) => !s.isBreak).map((s) => s.label),
     [dailySchedule],
   );
-
-  /** Schedule preview for the full-calendar selected room/meeting + date.
-   *  Supports "all" to show every interview booked on the selected date. */
-  const calViewPreview = useMemo(() => {
-    const showAll = calViewFacilityId === "all";
-    const room = showAll
-      ? {
-          ...facilities[0]!,
-          name: "All rooms",
-          location: "All locations",
-          type: "On-site" as const,
-        }
-      : (facilities.find((f) => f.id === calViewFacilityId) ?? facilities[0]!);
-    const slotIndex = (label: string) => {
-      const idx = dailySchedule.findIndex((s) => s.label === label);
-      return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
-    };
-    const mapped = (
-      showAll
-        ? [...calViewDayInterviews]
-        : calViewDayInterviews.filter((i) => facilityOfInterview(i)?.id === room.id)
-    ).sort((a, b) => slotIndex(a.time) - slotIndex(b.time));
-    const rangeLabel = (label: string, endLabel?: string | null) => {
-      if (endLabel) return `${label} – ${endLabel}`;
-      const slot = dailySchedule.find((s) => s.label === label);
-      return slot ? `${slot.label} — ${slot.endLabel}` : label;
-    };
-    const slotsAvailable = showAll
-      ? Math.max(0, slotsForSelected.length * facilities.length - mapped.length)
-      : Math.max(0, slotsForSelected.length - mapped.length);
-    const unassignedOnSite =
-      showAll || room.type !== "On-site"
-        ? []
-        : calViewDayInterviews.filter((i) => i.mode === "On-site" && !facilityOfInterview(i));
-    return { room, mapped, rangeLabel, slotsAvailable, unassignedOnSite, showAll };
-  }, [calViewDayInterviews, calViewFacilityId, dailySchedule, slotsForSelected]);
 
   /** Maximum concurrent interviews per slot — limited by whichever is scarcer, interviewers or rooms. */
   const capacityPerSlot = Math.max(
@@ -12399,9 +12343,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     [interviews],
   );
 
-  /** Working week (Mon–Fri) that contains today — the interview week grid. */
+  /** Working week (Mon–Fri) that contains the selected anchor date — the
+   *  interview week grid. The anchor moves with the calendar controls and with
+   *  every successful booking/reschedule. */
   const interviewWeek = useMemo(() => {
-    const base = new Date(`${TODAY_ISO}T00:00:00`);
+    const base = new Date(`${interviewWeekAnchor}T00:00:00`);
     const monday = new Date(base);
     monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
     return Array.from({ length: 5 }, (_, i) => {
@@ -12409,7 +12355,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       d.setDate(monday.getDate() + i);
       return { date: d, iso: isoOf(d) };
     });
-  }, []);
+  }, [interviewWeekAnchor]);
+
+  /** Days shown in the date-jump popover (6 weeks, Monday-first). */
+  const calendarJumpCells = useMemo(() => {
+    const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const start = new Date(first);
+    start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+    return Array.from({ length: 42 }, (_, i) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
+      return { date, iso: isoOf(date), inMonth: date.getMonth() === calendarMonth.getMonth() };
+    });
+  }, [calendarMonth]);
 
   const interviewOverviewCounts = {
     scheduled: interviews.filter((i) => i.status === "Scheduled").length,
@@ -12422,8 +12380,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const booked = interviews.filter(
       (i) => i.status !== "Cancelled" && interviewWeek.some((d) => d.iso === i.date),
     );
-    const startHour = Math.min(9, ...booked.map((i) => hourOf(i.time)));
-    const endHour = Math.min(19, Math.max(14, ...booked.map((i) => hourOf(i.time) + 1)));
+    // Keep a predictable working-day frame (8 AM – 6 PM) so every hour stays
+    // readable; only stretch when an interview sits outside that window.
+    const startHour = Math.min(8, ...booked.map((i) => hourOf(i.time)));
+    const endHour = Math.min(23, Math.max(18, ...booked.map((i) => hourOf(i.time) + 1)));
     return {
       startHour,
       endHour,
@@ -12532,7 +12492,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   const assessmentAverages = useMemo(() => {
     const mean = (list: number[]) =>
-      list.length > 0 ? Math.round(list.reduce((t, n) => t + n, 0) / list.length) : null;
+      list.length > 0
+        ? Math.round((list.reduce((t, n) => t + n, 0) / list.length) * 10) / 10
+        : null;
     return {
       test: mean(assessmentTests.map((t) => t.total)),
       practical: mean(practicalTests.map((t) => t.total)),
@@ -12540,6 +12502,58 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       practicalCount: practicalTests.length,
     };
   }, [assessmentTests, practicalTests]);
+
+  /** Assessment analytics for the summary card — completion, outcomes and
+   *  averages, all derived from the live assessment queue. */
+  const assessmentProgress = useMemo(() => {
+    const testRows = assessmentBoardRows.filter((r) => r.requiresTest);
+    const practicalRows = assessmentBoardRows.filter((r) => r.requiresPrac);
+    const testCompleted = testRows.filter((r) => !!r.test).length;
+    const practicalCompleted = practicalRows.filter((r) => !!r.practical).length;
+    const total = testRows.length + practicalRows.length;
+    const completed = testCompleted + practicalCompleted;
+    const results = assessmentBoardRows.flatMap((r) =>
+      [r.test?.result, r.practical?.result].filter(
+        (v): v is PassFail => v === "Passed" || v === "Failed",
+      ),
+    );
+    const testResults = testRows.flatMap((r) => (r.test ? [r.test.result] : [])) as PassFail[];
+    const practicalResults = practicalRows.flatMap((r) =>
+      r.practical ? [r.practical.result] : [],
+    ) as PassFail[];
+    const passed = results.filter((r) => r === "Passed").length;
+    const scored = [
+      ...assessmentTests.map((t) => ({
+        name: t.name,
+        score: t.total,
+      })),
+      ...practicalTests.map((t) => ({
+        name: t.name,
+        score: t.total,
+      })),
+    ].sort((x, y) => y.score - x.score);
+    return {
+      rate: total > 0 ? Math.round((completed / total) * 100) : null,
+      total,
+      completed,
+      pending: Math.max(0, total - completed),
+      testTotal: testRows.length,
+      testCompleted,
+      testPending: Math.max(0, testRows.length - testCompleted),
+      practicalTotal: practicalRows.length,
+      practicalCompleted,
+      practicalPending: Math.max(0, practicalRows.length - practicalCompleted),
+      queueCount: assessmentBoardRows.length,
+      passed,
+      failed: results.length - passed,
+      passRate: results.length > 0 ? Math.round((passed / results.length) * 100) : null,
+      testPassed: testResults.filter((r) => r === "Passed").length,
+      testFailed: testResults.filter((r) => r === "Failed").length,
+      practicalPassed: practicalResults.filter((r) => r === "Passed").length,
+      practicalFailed: practicalResults.filter((r) => r === "Failed").length,
+      topPerformer: scored[0] ?? null,
+    };
+  }, [assessmentBoardRows, assessmentTests, practicalTests]);
 
   /** Final Evaluation queue: every applicant with a whole-process verdict
    *  (plus candidates already eligible for one). */
@@ -12602,19 +12616,35 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   const finalSummary = useMemo(() => {
     const withFinal = finalBoardRows.filter((r) => r.final);
-    const scores = withFinal
-      .map((r) => r.final?.overallScoreRounded ?? r.final?.overallScore ?? null)
-      .filter((n): n is number => n != null);
+    const mean = (values: (number | null | undefined)[]) => {
+      const numbers = values.filter((n): n is number => n != null);
+      return numbers.length > 0
+        ? Math.round((numbers.reduce((t, n) => t + n, 0) / numbers.length) * 10) / 10
+        : null;
+    };
+    const top = [...withFinal]
+      .filter((r) => (r.final?.overallScoreRounded ?? r.final?.overallScore ?? null) != null)
+      .sort(
+        (x, y) =>
+          (y.final?.overallScoreRounded ?? y.final?.overallScore ?? 0) -
+          (x.final?.overallScoreRounded ?? x.final?.overallScore ?? 0),
+      )[0];
+    const topScore = top?.final?.overallScoreRounded ?? top?.final?.overallScore ?? null;
     return {
       count: withFinal.length,
-      average:
-        scores.length > 0
-          ? Math.round((scores.reduce((t, n) => t + n, 0) / scores.length) * 10) / 10
-          : null,
+      average: mean(
+        withFinal.map((r) => r.final?.overallScoreRounded ?? r.final?.overallScore ?? null),
+      ),
       recommended: withFinal.filter((r) => r.final?.recommendation === "Recommended for Hire")
         .length,
       another: withFinal.filter((r) => r.final?.recommendation === "For Another Position").length,
       notRecommended: withFinal.filter((r) => r.final?.recommendation === "Not Recommended").length,
+      screening: mean(withFinal.map((r) => r.final?.screeningScore)),
+      interview: mean(withFinal.map((r) => r.final?.interviewScore)),
+      assessment: mean(withFinal.map((r) => r.final?.assessmentTestScore)),
+      practical: mean(withFinal.map((r) => r.final?.practicalTestScore)),
+      topPerformer: top ? { name: top.a.name, score: topScore } : null,
+      topScore,
     };
   }, [finalBoardRows]);
 
@@ -12701,6 +12731,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const viewedApplicant = viewingApplicant
     ? (rows.find((r) => r.id === viewingApplicant.id) ?? viewingApplicant)
     : null;
+
+  /** Live applicant for the right-side profile panel. */
+  const previewApplicantLive = previewApplicant
+    ? (rows.find((r) => r.id === previewApplicant.id) ?? previewApplicant)
+    : null;
+  const previewInterview = previewApplicantLive
+    ? (interviews.find(
+        (i) => matchesInterviewApplicant(i, previewApplicantLive) && i.status !== "Cancelled",
+      ) ?? interviews.find((i) => matchesInterviewApplicant(i, previewApplicantLive)))
+    : null;
+  const previewAudit = previewApplicantLive
+    ? auditLog.filter(
+        (e) =>
+          e.target.includes(previewApplicantLive.name) ||
+          e.target.includes(previewApplicantLive.id) ||
+          e.details.includes(previewApplicantLive.name) ||
+          e.details.includes(previewApplicantLive.id),
+      )
+    : [];
 
   return (
     <div>
@@ -12799,7 +12848,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         />
       ) : (
         <>
-          <div className="sticky top-16 z-20 -mx-1 mb-4 space-y-3 bg-background/95 px-1 pb-3 pt-1 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+          <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-4">
                 <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
@@ -12941,10 +12990,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           <Tabs value={tab} onValueChange={setTab}>
             {/* RANKING + TABLE */}
             <TabsContent value="ranking" className=" space-y-6">
-              <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+              <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
                 {/* Upcoming interviews */}
                 <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                  <CardContent className="flex h-full flex-col p-5">
+                  <CardContent className="flex flex-col p-5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h2 className="flex items-center gap-2 font-display text-base font-bold">
                         <CalendarDays className="h-4.5 w-4.5 text-primary" />
@@ -13026,16 +13075,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           );
                         })
                       )}
-                    </div>
-
-                    <div className="mt-3 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => setTab("scheduling")}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/70 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                      >
-                        <CalendarDays className="h-3.5 w-3.5" /> View Schedule
-                      </button>
                     </div>
                   </CardContent>
                 </Card>
@@ -13131,9 +13170,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <h2 className="font-display text-lg font-bold">
-                        Applicants (Application Stage)
-                      </h2>
+                      <h2 className="font-display text-lg font-bold">Applicants</h2>
                       {rankingFilter !== "all" && (
                         <Badge
                           variant="outline"
@@ -13221,7 +13258,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="name"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[24%]"
+                              className="w-[28%]"
                             >
                               Applicant
                             </SortHead>
@@ -13229,7 +13266,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="position"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[19%]"
+                              className="w-[22%]"
                             >
                               Position
                             </SortHead>
@@ -13237,7 +13274,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="applied"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[15%]"
+                              className="w-[18%]"
                             >
                               Applied Date
                             </SortHead>
@@ -13245,19 +13282,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="stage"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[15%]"
+                              className="w-[20%]"
                             >
                               Status
                             </SortHead>
-                            <SortHead
-                              sortKey="score"
-                              sort={applicantSort.sort}
-                              onSort={applicantSort.toggle}
-                              className="w-[16%]"
-                            >
-                              Match Score
-                            </SortHead>
-                            <TableHead className="w-[11%] text-center">Action</TableHead>
+                            <TableHead className="w-[12%] text-center">Action</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -13278,9 +13307,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   </TableCell>
                                   <TableCell>
                                     <Skeleton className="h-5 w-20 rounded-full" />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Skeleton className="h-4 w-24" />
                                   </TableCell>
                                   <TableCell>
                                     <Skeleton className="mx-auto h-7 w-16 rounded-full" />
@@ -13338,22 +13364,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       </span>
                                     </TableCell>
                                     <TableCell>
-                                      <div className="flex items-center gap-2">
-                                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-                                          <div
-                                            className={cn(
-                                              "h-full rounded-full",
-                                              a.score >= passing ? "bg-success" : "bg-caution",
-                                            )}
-                                            style={{ width: `${Math.min(100, a.score)}%` }}
-                                          />
-                                        </div>
-                                        <span className="text-xs font-semibold tabular-nums text-foreground">
-                                          {a.score}%
-                                        </span>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell>
                                       <div className="flex justify-center">
                                         <Button
                                           size="sm"
@@ -13391,140 +13401,127 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
             {/* SCREENING */}
             <TabsContent value="screening" className="mt-4 space-y-6">
-              <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-                {/* Screening results donut */}
-                <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                  <CardContent className="flex h-full flex-col p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h2 className="flex items-center gap-2 font-display text-base font-bold">
-                        <Target className="h-4.5 w-4.5 text-primary" />
-                        Screening Results
-                      </h2>
-                      <Select value={positionFilter} onValueChange={setPositionFilter}>
-                        <SelectTrigger className="h-8 w-44 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Positions</SelectItem>
-                          {displayPositions.map((p) => (
-                            <SelectItem key={p.id} value={p.title}>
-                              {p.title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="mt-3 flex flex-1 flex-col items-center justify-center gap-6 sm:flex-row sm:gap-10">
-                      <div className="relative flex h-[190px] w-[190px] shrink-0 items-center justify-center">
-                        {loading ? (
-                          <Skeleton className="h-[180px] w-[180px] rounded-full" />
-                        ) : (
-                          <>
-                            <PieChart width={190} height={190}>
-                              <Pie
-                                isAnimationActive={false}
-                                data={distribution}
-                                dataKey="value"
-                                nameKey="name"
-                                cx={95}
-                                cy={95}
-                                innerRadius={58}
-                                outerRadius={88}
-                                paddingAngle={3}
-                                cornerRadius={3}
-                                labelLine={false}
-                              >
-                                {distribution.map((d) => (
-                                  <Cell
-                                    key={d.key}
-                                    fill={statusChartColor[d.key]}
-                                    className="cursor-pointer transition-opacity hover:opacity-80"
-                                    onClick={() => goToStatus(d.key)}
-                                  />
-                                ))}
-                              </Pie>
-                              <RTooltip
-                                contentStyle={tooltipStyle}
-                                formatter={(value: number | string) => {
-                                  const n = Number(value);
-                                  const pct = screenedTotal
-                                    ? Math.round((n / screenedTotal) * 100)
-                                    : 0;
-                                  return [`${n} (${pct}%)`, "Resumes"] as [string, string];
-                                }}
-                              />
-                            </PieChart>
-                            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                              <span className="font-display text-2xl font-bold tracking-tight text-foreground">
-                                {screeningMatchRate}%
-                              </span>
-                              <span className="text-[0.62rem] font-medium text-muted-foreground">
-                                Match Rate
-                              </span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="flex w-full min-w-[190px] flex-1 flex-col gap-1">
-                        {distribution.map((d) => {
-                          const pct = screenedTotal
-                            ? Math.round((d.value / screenedTotal) * 100)
-                            : 0;
-                          return (
-                            <button
-                              type="button"
-                              key={d.key}
-                              title={`Filter by ${d.name}`}
-                              onClick={() => goToStatus(d.key)}
-                              className="group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50"
-                            >
-                              <span
-                                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                style={{ background: statusChartColor[d.key] }}
-                              />
-                              <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-                                {d.name}
-                              </span>
-                              <span className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
-                                {pct}%
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Screening criteria */}
-                <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                  <CardContent className="flex h-full flex-col p-5">
-                    <h3 className="flex items-center gap-2 font-display text-base font-bold">
-                      Screening Criteria
-                    </h3>
-                    <ul className="mt-3 flex flex-1 flex-col justify-center gap-2">
-                      {screeningCriteria
-                        .filter((c) => c.enabled)
-                        .map((c) => (
-                          <li
-                            key={c.name}
-                            className="flex items-center gap-2.5 rounded-lg bg-primary/[0.045] px-3 py-2.5"
-                          >
-                            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-                            <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-                              {c.name}
-                            </span>
-                            <span className="shrink-0 text-[0.65rem] text-muted-foreground">
-                              {c.weight}%
-                            </span>
-                          </li>
+              <Card className="w-full border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <CardContent className="p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <Target className="h-4.5 w-4.5 text-primary" />
+                      Screening Results
+                    </h2>
+                    <Select value={positionFilter} onValueChange={setPositionFilter}>
+                      <SelectTrigger className="h-8 w-44 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Positions</SelectItem>
+                        {displayPositions.map((p) => (
+                          <SelectItem key={p.id} value={p.title}>
+                            {p.title}
+                          </SelectItem>
                         ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              </div>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="mt-4 flex flex-col items-center gap-6 lg:flex-row lg:items-center lg:gap-10">
+                    <div className="relative flex h-[190px] w-[190px] shrink-0 items-center justify-center">
+                      {loading ? (
+                        <Skeleton className="h-[180px] w-[180px] rounded-full" />
+                      ) : (
+                        <>
+                          <PieChart width={190} height={190}>
+                            <Pie
+                              isAnimationActive={false}
+                              data={distribution}
+                              dataKey="value"
+                              nameKey="name"
+                              cx={95}
+                              cy={95}
+                              innerRadius={58}
+                              outerRadius={88}
+                              paddingAngle={3}
+                              cornerRadius={3}
+                              labelLine={false}
+                            >
+                              {distribution.map((d) => (
+                                <Cell
+                                  key={d.key}
+                                  fill={statusChartColor[d.key]}
+                                  className="cursor-pointer transition-opacity hover:opacity-80"
+                                  onClick={() => goToStatus(d.key)}
+                                />
+                              ))}
+                            </Pie>
+                            <RTooltip
+                              contentStyle={tooltipStyle}
+                              formatter={(value: number | string) => {
+                                const n = Number(value);
+                                const pct = screenedTotal
+                                  ? Math.round((n / screenedTotal) * 100)
+                                  : 0;
+                                return [`${n} (${pct}%)`, "Resumes"] as [string, string];
+                              }}
+                            />
+                          </PieChart>
+                          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="font-display text-2xl font-bold tracking-tight text-foreground">
+                              {screeningMatchRate}%
+                            </span>
+                            <span className="text-[0.62rem] font-medium text-muted-foreground">
+                              Match Rate
+                            </span>
+                            <span className="mt-0.5 text-[0.6rem] text-muted-foreground/80">
+                              {screenedTotal.toLocaleString()} resumes
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="grid w-full flex-1 gap-x-10 gap-y-2 sm:grid-cols-2">
+                      {distribution.map((d) => {
+                        const pct = screenedTotal ? Math.round((d.value / screenedTotal) * 100) : 0;
+                        return (
+                          <button
+                            type="button"
+                            key={d.key}
+                            title={`Filter by ${d.name}`}
+                            onClick={() => goToStatus(d.key)}
+                            className="group flex cursor-pointer items-center gap-3 rounded-md px-1 py-2 text-left transition-colors hover:bg-muted/40"
+                          >
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ background: statusChartColor[d.key] }}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-baseline justify-between gap-3">
+                                <span className="truncate text-xs font-medium text-foreground">
+                                  {d.name}
+                                </span>
+                                <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                                  {d.value.toLocaleString()}
+                                  <span className="ml-1 font-normal text-muted-foreground">
+                                    / {pct}%
+                                  </span>
+                                </span>
+                              </span>
+                              <span className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-muted">
+                                <span
+                                  className="h-full rounded-full transition-all"
+                                  style={{
+                                    width: `${pct}%`,
+                                    background: statusChartColor[d.key],
+                                  }}
+                                />
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Screening queue */}
               <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
@@ -13692,7 +13689,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
             {/* SCHEDULING */}
             <TabsContent value="scheduling" className="mt-4 space-y-6">
-              <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
                 <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
                   <CardContent className="p-4 sm:p-5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -13701,30 +13698,195 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         Interview Schedule
                       </h2>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {interviewWeek[0]?.date.toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                          {" – "}
-                          {interviewWeek[4]?.date.toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Previous week"
+                            onClick={() => {
+                              const d = new Date(`${interviewWeek[0]!.iso}T00:00:00`);
+                              d.setDate(d.getDate() - 7);
+                              setInterviewWeekAnchor(isoOf(d));
+                            }}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+
+                          <Popover
+                            open={calendarOpen}
+                            onOpenChange={(open) => {
+                              setCalendarOpen(open);
+                              if (open) {
+                                const d = new Date(`${interviewWeekAnchor}T00:00:00`);
+                                setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                              }
+                            }}
+                          >
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                              >
+                                <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                                {interviewWeek[0]?.date.toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                                {" – "}
+                                {interviewWeek[4]?.date.toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-[280px] p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  aria-label="Previous month"
+                                  onClick={() =>
+                                    setCalendarMonth(
+                                      new Date(
+                                        calendarMonth.getFullYear(),
+                                        calendarMonth.getMonth() - 1,
+                                        1,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <div className="flex items-baseline gap-1 text-sm font-semibold text-foreground">
+                                  {calendarMonth.toLocaleDateString("en-US", { month: "long" })}
+                                  <select
+                                    aria-label="Select year"
+                                    value={calendarMonth.getFullYear()}
+                                    onChange={(e) =>
+                                      setCalendarMonth(
+                                        new Date(
+                                          Number(e.target.value),
+                                          calendarMonth.getMonth(),
+                                          1,
+                                        ),
+                                      )
+                                    }
+                                    className="cursor-pointer rounded border border-transparent bg-transparent py-0.5 text-sm font-semibold text-foreground outline-none hover:border-border focus:border-primary"
+                                  >
+                                    {Array.from({ length: 11 }, (_, i) => {
+                                      const year = calendarMonth.getFullYear() - 5 + i;
+                                      return (
+                                        <option key={year} value={year}>
+                                          {year}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  aria-label="Next month"
+                                  onClick={() =>
+                                    setCalendarMonth(
+                                      new Date(
+                                        calendarMonth.getFullYear(),
+                                        calendarMonth.getMonth() + 1,
+                                        1,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              <div className="mt-2 grid grid-cols-7 text-center text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+                                  <span key={d} className="py-1">
+                                    {d}
+                                  </span>
+                                ))}
+                              </div>
+                              <div className="grid grid-cols-7 gap-y-0.5">
+                                {calendarJumpCells.map((cell) => {
+                                  const selected = cell.iso === interviewWeekAnchor;
+                                  const today = cell.iso === TODAY_ISO;
+                                  return (
+                                    <button
+                                      key={cell.iso}
+                                      type="button"
+                                      onClick={() => {
+                                        setInterviewWeekAnchor(cell.iso);
+                                        setCalendarOpen(false);
+                                      }}
+                                      className={cn(
+                                        "mx-auto flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-[0.72rem] tabular-nums transition-colors",
+                                        selected
+                                          ? "bg-primary font-semibold text-primary-foreground"
+                                          : cell.inMonth
+                                            ? "text-foreground hover:bg-muted"
+                                            : "text-muted-foreground/50 hover:bg-muted",
+                                        today && !selected && "font-semibold text-primary",
+                                      )}
+                                      aria-pressed={selected}
+                                      aria-label={cell.date.toLocaleDateString("en-US", {
+                                        month: "long",
+                                        day: "numeric",
+                                        year: "numeric",
+                                      })}
+                                    >
+                                      {cell.date.getDate()}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-2">
+                                <span className="text-[0.65rem] text-muted-foreground">
+                                  {calendarMonth.toLocaleDateString("en-US", { year: "numeric" })}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => {
+                                    setInterviewWeekAnchor(TODAY_ISO);
+                                    const d = new Date(`${TODAY_ISO}T00:00:00`);
+                                    setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                                    setCalendarOpen(false);
+                                  }}
+                                >
+                                  Today
+                                </Button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Next week"
+                            onClick={() => {
+                              const d = new Date(`${interviewWeek[4]!.iso}T00:00:00`);
+                              d.setDate(d.getDate() + 7);
+                              setInterviewWeekAnchor(isoOf(d));
+                            }}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+
                         <Button
                           size="sm"
                           className="h-8 gap-1.5 px-3 text-xs"
-                          onClick={() => {
-                            setBookingFocus(true);
-                            window.setTimeout(() => {
-                              roomAvailabilityRef.current?.scrollIntoView({
-                                behavior: "smooth",
-                                block: "start",
-                              });
-                            }, 60);
-                          }}
+                          onClick={() => setBookingFocus(true)}
                         >
                           <CalendarPlus className="h-3.5 w-3.5" /> Schedule Interview
                         </Button>
@@ -13732,10 +13894,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </div>
 
                     <div className="mt-4 overflow-x-auto">
-                      <div className="min-w-[620px]">
+                      <div className="min-w-[540px]">
                         <div
                           className="grid"
-                          style={{ gridTemplateColumns: "48px repeat(5, minmax(0, 1fr))" }}
+                          style={{ gridTemplateColumns: "44px repeat(5, minmax(0, 1fr))" }}
                         >
                           <div />
                           {interviewWeek.map((day) => {
@@ -13778,7 +13940,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                         <div
                           className="grid"
-                          style={{ gridTemplateColumns: "48px repeat(5, minmax(0, 1fr))" }}
+                          style={{ gridTemplateColumns: "44px repeat(5, minmax(0, 1fr))" }}
                         >
                           <div>
                             {Array.from(
@@ -13787,7 +13949,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             ).map((hour) => (
                               <div
                                 key={hour}
-                                className="flex h-14 items-start justify-end pr-2 pt-1 text-[0.62rem] text-muted-foreground"
+                                className="flex h-8 items-start justify-end pr-2 pt-0.5 text-[0.62rem] text-muted-foreground"
                               >
                                 {hour > 12
                                   ? `${hour - 12} PM`
@@ -13808,7 +13970,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 )}
                                 style={{
                                   height:
-                                    (interviewWeekGrid.endHour - interviewWeekGrid.startHour) * 56,
+                                    (interviewWeekGrid.endHour - interviewWeekGrid.startHour) * 32,
                                 }}
                               >
                                 {Array.from(
@@ -13816,7 +13978,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     length: interviewWeekGrid.endHour - interviewWeekGrid.startHour,
                                   },
                                   (_, i) => (
-                                    <div key={i} className="h-14 border-b border-border/40" />
+                                    <div key={i} className="h-8 border-b border-border/40" />
                                   ),
                                 )}
                                 {day.items.map(({ iv, top }) => {
@@ -13830,12 +13992,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       disabled={!applicant}
                                       title={`${iv.applicant} · ${iv.time} · ${iv.mode}`}
                                       className={cn(
-                                        "absolute inset-x-1 cursor-pointer overflow-hidden rounded-md border px-2 py-1 text-left shadow-sm transition-shadow hover:shadow-md",
+                                        "absolute inset-x-1 cursor-pointer overflow-hidden rounded-md border px-1.5 py-0.5 text-left shadow-sm transition-shadow hover:shadow-md",
                                         virtual
                                           ? "border-primary/30 bg-card"
                                           : "border-sky-200 bg-sky-100/80 dark:border-sky-900 dark:bg-sky-950/40",
                                       )}
-                                      style={{ top: `${top * 56 + 2}px`, height: 52 }}
+                                      style={{ top: `${top * 32 + 1}px`, height: 30 }}
                                     >
                                       <span className="flex items-center gap-1 truncate text-[0.65rem] font-semibold text-foreground">
                                         {virtual && (
@@ -13844,10 +14006,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         {iv.applicant}
                                       </span>
                                       <span className="block truncate text-[0.6rem] text-muted-foreground">
-                                        {iv.time}
-                                      </span>
-                                      <span className="block truncate text-[0.6rem] capitalize text-muted-foreground">
-                                        {virtual ? "Online" : "Onsite"}
+                                        {iv.time} · {virtual ? "Online" : "Onsite"}
                                       </span>
                                     </button>
                                   );
@@ -13957,2020 +14116,304 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </div>
               </div>
 
-              {/* Top row retired — the mini Interview Calendar + top Book an Interview
-              card stay mounted but hidden: the Book card hosts the slot-settings /
-              full-calendar dialogs (portaled overlays, still reachable from below).
-              The visible booking form only appears in booking mode inside the
-              Room Availability card below. */}
-              <div className="hidden">
-                {/* ?? Interview Calendar ??????????????????????????????? */}
-                <Card className="flex h-full flex-col rounded-xl border-border/70 shadow-sm">
-                  <CardContent className="flex flex-1 flex-col p-5">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center text-primary">
-                          <CalendarDays className="h-5 w-5" />
-                        </span>
-                        <div className="min-w-0">
-                          <h2 className="font-display text-2xl font-semibold">
-                            Interview Calendar
-                          </h2>
-                          <p className="text-xs text-muted-foreground">
-                            Pick a date to view availability and interviews.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center justify-end gap-2">
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const today = new Date();
-                              setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-                              setSchedule((s) => ({ ...s, date: isoOf(today) }));
-                            }}
-                          >
-                            Today
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            aria-label="Previous month"
-                            onClick={() =>
-                              setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))
-                            }
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            aria-label="Next month"
-                            onClick={() =>
-                              setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
-                            }
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            aria-label="Full calendar view"
-                            title="Full calendar view"
-                            onClick={() => {
-                              const today = new Date();
-                              setCalViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-                              setCalViewDate(isoOf(today));
-                              setCalViewPanel("calendar");
-                              setCalViewOpen(true);
-                            }}
-                          >
-                            <Maximize2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      </div>
-                    </div>
+              {/* BOOK AN INTERVIEW — modal opened by Schedule Interview, Reschedule,
+              Accept & Schedule and Re-book. Confirm closes it on success. */}
+              <Dialog open={bookingFocus} onOpenChange={setBookingFocus}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 font-display text-2xl">
+                      <CalendarClock className="h-5 w-5 text-primary" /> Book an Interview
+                    </DialogTitle>
+                    <DialogDescription>
+                      Fill in the details to schedule an interview and send the invite.
+                    </DialogDescription>
+                  </DialogHeader>
 
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className="mt-4 inline-flex items-center gap-2 self-start rounded-lg px-2 py-1 font-display text-lg font-semibold transition-colors hover:bg-muted"
-                        >
-                          {viewMonth.toLocaleDateString("en-US", {
-                            month: "long",
-                            year: "numeric",
-                          })}
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" className="w-64 space-y-3 p-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Month</Label>
-                          <Select
-                            value={String(viewMonth.getMonth())}
-                            onValueChange={(v) =>
-                              setViewMonth((m) => new Date(m.getFullYear(), Number(v), 1))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {monthNames.map((name, i) => (
-                                <SelectItem key={name} value={String(i)}>
-                                  {name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Year</Label>
-                          <Select
-                            value={String(viewMonth.getFullYear())}
-                            onValueChange={(v) =>
-                              setViewMonth((m) => new Date(Number(v), m.getMonth(), 1))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {yearOptions.map((y) => (
-                                <SelectItem key={y} value={String(y)}>
-                                  {y}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-
-                    <div className="mt-2 grid grid-cols-7 text-center text-[0.65rem] font-semibold tracking-wide text-muted-foreground">
-                      {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
-                        <span key={d} className="py-1.5">
-                          {d}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="grid flex-1 grid-cols-7 grid-rows-6 overflow-hidden rounded-lg border border-border">
-                      {monthCells.map((cell) => {
-                        const iso = isoOf(cell.date);
-                        // Cancelled bookings don't make a day "Booked/Full".
-                        const count = interviews.filter(
-                          (i) => i.date === iso && i.status !== "Cancelled",
-                        ).length;
-                        // A day is free only if the setter says it is schedulable;
-                        // full once every slot is booked.
-                        const dayName = DAY_NAMES[cell.date.getDay()]!;
-                        const schedulable = schedulableDays.includes(dayName);
-                        const free = count === 0 && schedulable;
-                        const full = count > 0 && schedulable && count >= capacityPerSlot;
-                        const selected = schedule.date === iso;
-                        const isToday = iso === TODAY_ISO;
-                        return (
-                          <button
-                            key={iso}
-                            type="button"
-                            aria-label={cell.date.toDateString()}
-                            aria-pressed={selected}
-                            onClick={() => {
-                              setSchedule((s) => ({ ...s, date: iso }));
-                            }}
-                            className={cn(
-                              "relative min-h-[2.9rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
-                              free &&
-                                !selected &&
-                                "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
-                              full &&
-                                !selected &&
-                                "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
-                              isToday &&
-                                !selected &&
-                                "bg-gold/30 ring-1 ring-inset ring-gold hover:bg-gold/40 hover:shadow-sm",
-                              !selected && !free && !full && "hover:bg-muted/50 hover:shadow-sm",
-                              count === 0 &&
-                                !schedulable &&
-                                (cell.inMonth
-                                  ? "text-muted-foreground/40"
-                                  : "opacity-40 text-muted-foreground/40"),
-                              count > 0 &&
-                                !selected &&
-                                !full &&
-                                "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
-                              selected &&
-                                free &&
-                                "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
-                              selected && full && "bg-red-700 font-semibold text-white",
-                              selected &&
-                                !free &&
-                                !full &&
-                                "bg-primary font-semibold text-primary-foreground",
-                            )}
-                          >
-                            {cell.date.getDate()}
-                            {count > 0 && (
-                              <span
-                                className={cn(
-                                  "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
-                                  selected && full
-                                    ? "bg-red-900"
-                                    : selected && free
-                                      ? "bg-foreground"
-                                      : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
-                                )}
-                              >
-                                {count}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full border border-border bg-card" /> Free
-                        day (schedulable)
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-destructive" /> Full (all slots
-                        booked)
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-[oklch(0.427_0.166_22.5)] dark:bg-primary" />{" "}
-                        Booked
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-gold" /> Today
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-muted-foreground/30" /> Not
-                        schedulable / No availability
+                  {rescheduling && (
+                    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
+                      <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        Rescheduling <b>{rescheduling.applicant}</b> from {rescheduling.date} ·{" "}
+                        {rescheduling.time} — confirm to update their existing interview.
                       </span>
                     </div>
-
-                    <div className="mt-4 flex flex-none flex-col">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-display text-base font-semibold">
-                          Interviews on{" "}
-                          {new Date(`${schedule.date}T00:00:00`).toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </p>
-                        <Badge
-                          variant="outline"
-                          className="border-primary/30 bg-primary/10 text-primary"
-                        >
-                          {interviews.filter((i) => i.date === schedule.date).length}
-                        </Badge>
-                        <div className="ml-auto flex min-w-0 items-center gap-1.5">
-                          <div className="relative w-28">
-                            <Search className="pointer-events-none absolute top-1/2 left-2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                              value={calSearch}
-                              onChange={(e) => setCalSearch(e.target.value)}
-                              placeholder="Search"
-                              className="h-7 pl-6 text-xs"
-                            />
-                          </div>
-                          <Select value={calStatusFilter} onValueChange={setCalStatusFilter}>
-                            <SelectTrigger className="h-7 w-[92px] text-xs">
-                              <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All status</SelectItem>
-                              <SelectItem value="Scheduled">Scheduled</SelectItem>
-                              <SelectItem value="Completed">Completed</SelectItem>
-                              <SelectItem value="Cancelled">Cancelled</SelectItem>
-                              <SelectItem value="No Show">No Show</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      <div className="relative mt-2 h-[10.5rem]">
-                        <div className="absolute inset-0 space-y-2 overflow-y-auto pr-1.5">
-                          {interviews
-                            .filter((i) => i.date === schedule.date)
-                            .filter((i) =>
-                              calStatusFilter === "all" ? true : i.status === calStatusFilter,
-                            )
-                            .filter((i) =>
-                              calSearch
-                                ? `${i.applicant} ${i.position} ${i.interviewer}`
-                                    .toLowerCase()
-                                    .includes(calSearch.toLowerCase())
-                                : true,
-                            )
-                            .map((i) => (
-                              <div
-                                key={i.id}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => toast(`Viewing interview — ${i.applicant}`)}
-                                className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/70 bg-muted/20 p-2.5 text-left transition-colors hover:bg-muted/40"
-                              >
-                                {i.status === "Cancelled" ? (
-                                  <span className="shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs font-semibold text-destructive line-through">
-                                    {i.time}
-                                  </span>
-                                ) : (
-                                  <span className="shrink-0 rounded-md bg-card px-2.5 py-1.5 text-xs font-semibold text-primary shadow-sm">
-                                    {i.time}
-                                  </span>
-                                )}
-                                <span className="grid min-w-0 gap-1 sm:grid-cols-2">
-                                  <span className="min-w-0">
-                                    <span className="block truncate text-sm font-medium">
-                                      {i.applicant}
-                                    </span>
-                                    <span className="block truncate text-xs text-muted-foreground">
-                                      {i.position}
-                                    </span>
-                                  </span>
-                                  <span className="min-w-0">
-                                    <span className="block truncate text-sm font-medium">
-                                      {i.interviewer}
-                                    </span>
-                                    <span className="block truncate text-xs text-muted-foreground">
-                                      {i.mode}
-                                    </span>
-                                  </span>
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  {i.status === "Cancelled" && (
-                                    <Badge
-                                      variant="outline"
-                                      className="shrink-0 border-destructive/40 bg-destructive/10 text-destructive"
-                                    >
-                                      Cancelled
-                                    </Badge>
-                                  )}
-                                  {i.status !== "Cancelled" && (
-                                    <button
-                                      type="button"
-                                      aria-label={`Delete interview for ${i.applicant}`}
-                                      title="Delete interview"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setCancelInterview(
-                                          interviews.find((x) => x.id === i.id) ?? null,
-                                        );
-                                      }}
-                                      className="rounded-md p-1 text-destructive transition-colors hover:bg-destructive/10"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  )}
-                                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                </span>
-                              </div>
-                            ))}
-                          {interviews.filter((i) => i.date === schedule.date).length === 0 && (
-                            <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                              No interviews booked — the whole day is free.
-                            </p>
-                          )}
-                        </div>
-                        {interviews.filter((i) => i.date === schedule.date).length > 3 && (
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-lg bg-gradient-to-t from-card to-transparent" />
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* ?? Book an Interview — top slot (stays mounted for its dialogs;
-                hidden while bookingFocus shows the shared-state copy below) */}
-                <Card
-                  className={cn(
-                    "flex h-full flex-col rounded-xl border-border/70 shadow-sm",
-                    bookingFocus && "hidden",
                   )}
-                >
-                  <CardContent className="flex flex-1 flex-col p-5">
-                    <div className="flex items-start gap-2.5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center text-primary">
-                        <CalendarClock className="h-5 w-5" />
-                      </span>
-                      <div className="min-w-0">
-                        <h2 className="font-display text-xl font-semibold">Book an Interview</h2>
-                        <p className="text-xs text-muted-foreground">
-                          Fill in the details to schedule an interview and send an invite.
-                        </p>
+
+                  <div className="space-y-4 py-1">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-sm">Filter by Department</Label>
+                        <Select
+                          value={scheduleDept}
+                          onValueChange={(v) => {
+                            setScheduleDept(v);
+                            setSchedulePosition("all");
+                            setSchedule((p) => ({ ...p, applicant: "" }));
+                            setRescheduling(null);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="All departments" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All departments</SelectItem>
+                            {displayDepartments.map((d) => (
+                              <SelectItem key={d.code} value={d.name}>
+                                <span className="flex items-center gap-2">
+                                  {d.name}
+                                  {deptHasPosting(d.name) && (
+                                    <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
+                                      Posting
+                                    </span>
+                                  )}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm">Position</Label>
+                        <Select
+                          value={schedulePosition}
+                          onValueChange={(v) => {
+                            setSchedulePosition(v);
+                            setSchedule((p) => ({ ...p, applicant: "" }));
+                            setRescheduling(null);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="All positions" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All positions</SelectItem>
+                            {displayPositions
+                              .filter(
+                                (p) => scheduleDept === "all" || p.department === scheduleDept,
+                              )
+                              .map((p) => (
+                                <SelectItem key={p.id} value={p.title}>
+                                  <span className="flex items-center gap-2">
+                                    {p.title}
+                                    {activeJobTitles.has(p.title) && (
+                                      <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
+                                        Posting
+                                      </span>
+                                    )}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 
-                    {/* Booking progress removed per user request */ undefined}
-
-                    <div className="mt-3 flex flex-1 flex-col">
-                      <div className="flex-1 space-y-2">
-                        {/* ?? Full calendar view ????????????????????????????? */}
-                        <Dialog open={calViewOpen} onOpenChange={setCalViewOpen}>
-                          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[min(1400px,96vw)]">
-                            <DialogHeader>
-                              <DialogTitle className="flex items-center gap-2 font-display text-2xl">
-                                <CalendarDays className="h-5 w-5 text-primary" /> Interview Calendar
-                              </DialogTitle>
-                            </DialogHeader>
-
-                            {calViewPanel === "calendar" ? (
-                              <>
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <button
-                                        type="button"
-                                        className="inline-flex items-center gap-2 rounded-lg px-2 py-1 font-display text-lg font-semibold transition-colors hover:bg-muted"
-                                      >
-                                        {calViewMonth.toLocaleDateString("en-US", {
-                                          month: "long",
-                                          year: "numeric",
-                                        })}
-                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                      </button>
-                                    </PopoverTrigger>
-                                    <PopoverContent align="start" className="w-64 space-y-3 p-3">
-                                      <div className="space-y-1.5">
-                                        <Label className="text-xs">Month</Label>
-                                        <Select
-                                          value={String(calViewMonth.getMonth())}
-                                          onValueChange={(v) =>
-                                            setCalViewMonth(
-                                              (mo) => new Date(mo.getFullYear(), Number(v), 1),
-                                            )
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {monthNames.map((name, i) => (
-                                              <SelectItem key={name} value={String(i)}>
-                                                {name}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div className="space-y-1.5">
-                                        <Label className="text-xs">Year</Label>
-                                        <Select
-                                          value={String(calViewMonth.getFullYear())}
-                                          onValueChange={(v) =>
-                                            setCalViewMonth(
-                                              (mo) => new Date(Number(v), mo.getMonth(), 1),
-                                            )
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {yearOptions.map((y) => (
-                                              <SelectItem key={y} value={String(y)}>
-                                                {y}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
-                                  <div className="flex items-center gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        const today = new Date();
-                                        setCalViewMonth(
-                                          new Date(today.getFullYear(), today.getMonth(), 1),
-                                        );
-                                        setCalViewDate(isoOf(today));
-                                      }}
-                                    >
-                                      Today
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      aria-label="Previous month"
-                                      onClick={() =>
-                                        setCalViewMonth(
-                                          (mo) => new Date(mo.getFullYear(), mo.getMonth() - 1, 1),
-                                        )
-                                      }
-                                    >
-                                      <ChevronLeft className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      aria-label="Next month"
-                                      onClick={() =>
-                                        setCalViewMonth(
-                                          (mo) => new Date(mo.getFullYear(), mo.getMonth() + 1, 1),
-                                        )
-                                      }
-                                    >
-                                      <ChevronRight className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                <div className="mt-2 grid grid-cols-7 text-center text-[0.65rem] font-semibold tracking-wide text-muted-foreground">
-                                  {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
-                                    <span key={d} className="py-1.5">
-                                      {d}
-                                    </span>
-                                  ))}
-                                </div>
-
-                                <div className="grid grid-cols-7 grid-rows-6 overflow-hidden rounded-lg border border-border">
-                                  {calViewCells.map((cell) => {
-                                    const iso = isoOf(cell.date);
-                                    // Cancelled bookings don't make a day "Booked/Full".
-                                    const count = interviews.filter(
-                                      (i) => i.date === iso && i.status !== "Cancelled",
-                                    ).length;
-                                    const dayName = DAY_NAMES[cell.date.getDay()]!;
-                                    const schedulable = schedulableDays.includes(dayName);
-                                    const free = count === 0 && schedulable;
-                                    const full =
-                                      count > 0 && schedulable && count >= capacityPerSlot;
-                                    const selected = calViewDate === iso;
-                                    const isToday = iso === TODAY_ISO;
-                                    return (
-                                      <button
-                                        key={iso}
-                                        type="button"
-                                        aria-label={cell.date.toDateString()}
-                                        aria-pressed={selected}
-                                        onClick={() => setCalViewDate(iso)}
-                                        onDoubleClick={() => {
-                                          setCalViewDate(iso);
-                                          setCalViewPanel("day");
-                                        }}
-                                        className={cn(
-                                          "relative min-h-[3.5rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
-                                          free &&
-                                            !selected &&
-                                            "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
-                                          full &&
-                                            !selected &&
-                                            "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
-                                          isToday &&
-                                            !selected &&
-                                            "bg-gold/30 ring-1 ring-inset ring-gold hover:bg-gold/40 hover:shadow-sm",
-                                          !selected &&
-                                            !free &&
-                                            !full &&
-                                            "hover:bg-muted/50 hover:shadow-sm",
-                                          count === 0 &&
-                                            !schedulable &&
-                                            (cell.inMonth
-                                              ? "text-muted-foreground/40"
-                                              : "opacity-40 text-muted-foreground/40"),
-                                          count > 0 &&
-                                            !selected &&
-                                            !full &&
-                                            "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
-                                          selected &&
-                                            free &&
-                                            "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
-                                          selected && full && "bg-red-700 font-semibold text-white",
-                                          selected &&
-                                            !free &&
-                                            !full &&
-                                            "bg-primary font-semibold text-primary-foreground",
-                                        )}
-                                      >
-                                        {cell.date.getDate()}
-                                        {count > 0 && (
-                                          <span
-                                            className={cn(
-                                              "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
-                                              selected && full
-                                                ? "bg-red-900"
-                                                : selected && free
-                                                  ? "bg-foreground"
-                                                  : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
-                                            )}
-                                          >
-                                            {count}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </>
-                            ) : (
-                              <div className="mt-1">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setCalViewPanel("calendar")}
-                                >
-                                  <ChevronLeft className="h-4 w-4" /> Back to calendar
-                                </Button>
-                              </div>
-                            )}
-
-                            {calViewPanel === "day" &&
-                              (() => {
-                                const [yy, mm, dd] = calViewDate.split("-").map(Number);
-                                const selectedDate = new Date(yy ?? 1970, (mm ?? 1) - 1, dd ?? 1);
-                                const onSiteRooms = facilities.filter((f) => f.type === "On-site");
-                                const virtualRoom =
-                                  facilities.find((f) => f.type === "Virtual") ?? null;
-                                const reservedCount = (id: string) =>
-                                  calViewDayInterviews.filter(
-                                    (i) => facilityOfInterview(i)?.id === id,
-                                  ).length;
-                                const virtualCount = virtualRoom
-                                  ? reservedCount(virtualRoom.id)
-                                  : 0;
-                                return (
-                                  <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
-                                    {/* ?? Places — rooms + virtual for the selected date */}
-                                    <Card className="rounded-xl border-border/70 shadow-sm">
-                                      <CardContent className="p-5">
-                                        <p className="text-xs font-semibold tracking-widest">
-                                          PLACES
-                                        </p>
-                                        <div className="mt-1 flex items-end gap-2">
-                                          <span className="font-display text-5xl font-bold leading-none">
-                                            {selectedDate.getDate()}
-                                          </span>
-                                          <span className="pb-1 text-sm text-muted-foreground">
-                                            {selectedDate.toLocaleDateString("en-US", {
-                                              month: "long",
-                                              year: "numeric",
-                                              weekday: "long",
-                                            })}
-                                          </span>
-                                        </div>
-
-                                        <p className="mt-5 text-center text-xs font-semibold tracking-widest underline underline-offset-4">
-                                          ON-SITE
-                                        </p>
-                                        <div className="mt-3 flex flex-1 items-center justify-center gap-3 px-2 sm:gap-8">
-                                          {onSiteRooms.map((room) => {
-                                            const count = reservedCount(room.id);
-                                            const isSelected = calViewFacilityId === room.id;
-                                            return (
-                                              <button
-                                                key={room.id}
-                                                type="button"
-                                                onClick={() => setCalViewFacilityId(room.id)}
-                                                aria-pressed={isSelected}
-                                                title={`${room.name} — ${count > 0 ? `${count} booked` : "free"}`}
-                                                className={cn(
-                                                  "flex flex-col items-center gap-1.5 rounded-xl p-2 transition-colors hover:bg-muted/60",
-                                                  isSelected &&
-                                                    "bg-muted/60 ring-2 ring-inset ring-primary",
-                                                )}
-                                              >
-                                                <span className="relative">
-                                                  <span
-                                                    className={cn(
-                                                      count > 0
-                                                        ? "text-green-700 dark:text-green-400"
-                                                        : "text-foreground",
-                                                    )}
-                                                  >
-                                                    <DoorIcon highlighted={count > 0} />
-                                                  </span>
-                                                  {count > 0 && (
-                                                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-white">
-                                                      {count}
-                                                    </span>
-                                                  )}
-                                                </span>
-                                                <span className="text-xs font-semibold tracking-wide">
-                                                  {room.name.toUpperCase()}
-                                                </span>
-                                                <span className="text-[0.65rem] text-muted-foreground">
-                                                  {count > 0 ? `${count} booked` : "Free"}
-                                                </span>
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-
-                                        <div className="my-4 border-t border-border/70" />
-
-                                        <p className="text-center text-xs font-semibold tracking-widest underline underline-offset-4">
-                                          VIRTUAL
-                                        </p>
-                                        {virtualRoom && (
-                                          <div className="mt-3 flex justify-center">
-                                            <button
-                                              type="button"
-                                              onClick={() => setCalViewFacilityId(virtualRoom.id)}
-                                              aria-pressed={calViewFacilityId === virtualRoom.id}
-                                              title={`${virtualRoom.name} — ${virtualCount > 0 ? `${virtualCount} booked` : "free"}`}
-                                              className={cn(
-                                                "flex flex-col items-center gap-1.5 rounded-xl p-2 transition-colors hover:bg-muted/60",
-                                                calViewFacilityId === virtualRoom.id &&
-                                                  "bg-muted/60 ring-2 ring-inset ring-primary",
-                                              )}
-                                            >
-                                              <span className="relative">
-                                                <span
-                                                  className={cn(
-                                                    "flex h-16 w-24 items-center justify-center rounded-lg border-2",
-                                                    virtualCount > 0
-                                                      ? "border-green-700 bg-green-700/15 text-green-700 dark:border-green-400/20 dark:bg-green-400/10 dark:text-green-400"
-                                                      : "border-foreground/70 text-foreground",
-                                                  )}
-                                                >
-                                                  <Video className="h-8 w-8" />
-                                                </span>
-                                                {virtualCount > 0 && (
-                                                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-white">
-                                                    {virtualCount}
-                                                  </span>
-                                                )}
-                                              </span>
-                                              <span className="text-xs font-semibold tracking-wide">
-                                                ONLINE INTERVIEW
-                                              </span>
-                                              <span className="text-[0.65rem] text-muted-foreground">
-                                                {virtualCount > 0
-                                                  ? `${virtualCount} booked`
-                                                  : "Free"}
-                                              </span>
-                                            </button>
-                                          </div>
-                                        )}
-                                      </CardContent>
-                                    </Card>
-
-                                    {/* ?? Daily schedule preview for the selected room/meeting */}
-                                    <Card className="rounded-xl border-border/70 shadow-sm">
-                                      <CardContent className="p-5">
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                          <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
-                                            <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE
-                                            PREVIEW
-                                          </p>
-                                          <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
-                                            {calViewPreview.slotsAvailable} slots available
-                                          </span>
-                                        </div>
-                                        <div className="mt-3">
-                                          <Select
-                                            value={calViewFacilityId}
-                                            onValueChange={setCalViewFacilityId}
-                                          >
-                                            <SelectTrigger className="font-display text-lg font-semibold">
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="all">
-                                                Show all — All rooms
-                                              </SelectItem>
-                                              {facilities.map((f) => (
-                                                <SelectItem key={f.id} value={f.id}>
-                                                  {f.name} · {f.type}
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                          <p className="mt-1 text-xs text-muted-foreground">
-                                            {calViewPreview.room.location} ·{" "}
-                                            {selectedDate.toLocaleDateString("en-US", {
-                                              month: "long",
-                                              day: "numeric",
-                                              year: "numeric",
-                                            })}
-                                          </p>
-                                        </div>
-                                        <div className="mt-3 flex-1 space-y-2">
-                                          {calViewPreview.mapped.map((i) => (
-                                            <button
-                                              type="button"
-                                              key={i.id}
-                                              title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
-                                              onClick={() => selectInPipeline(i.applicant)}
-                                              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
-                                            >
-                                              <span className="shrink-0 text-xs font-medium">
-                                                {calViewPreview.rangeLabel(i.time, i.endTime)}
-                                              </span>
-                                              <span className="truncate text-right text-xs font-semibold">
-                                                {i.applicant}
-                                                {calViewPreview.showAll && (
-                                                  <span className="ml-1.5 font-normal text-muted-foreground">
-                                                    · {facilityOfInterview(i)?.name ?? "No room"}
-                                                  </span>
-                                                )}
-                                              </span>
-                                            </button>
-                                          ))}
-                                          {calViewPreview.mapped.length === 0 && (
-                                            <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                                              No interviews booked — the whole day is free.
-                                            </p>
-                                          )}
-                                          {calViewPreview.unassignedOnSite.length > 0 && (
-                                            <p className="text-[0.7rem] text-muted-foreground">
-                                              + {calViewPreview.unassignedOnSite.length} on-site
-                                              interview(s) without a reserved room are not listed
-                                              here.
-                                            </p>
-                                          )}
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  </div>
-                                );
-                              })()}
-                          </DialogContent>
-                        </Dialog>
-
-                        {rescheduling && (
-                          <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
-                            <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            <span>
-                              Rescheduling <b>{rescheduling.applicant}</b> from {rescheduling.date}{" "}
-                              · {rescheduling.time} — confirm to update their existing interview.
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label className="text-sm">Filter by Department</Label>
-                            <Select
-                              value={scheduleDept}
-                              onValueChange={(v) => {
-                                setScheduleDept(v);
-                                setSchedulePosition("all");
-                                setSchedule((p) => ({ ...p, applicant: "" }));
-                                setRescheduling(null);
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="All departments" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">All departments</SelectItem>
-                                {displayDepartments.map((d) => (
-                                  <SelectItem key={d.code} value={d.name}>
-                                    <span className="flex items-center gap-2">
-                                      {d.name}
-                                      {deptHasPosting(d.name) && (
-                                        <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                          Posting
-                                        </span>
-                                      )}
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">Position</Label>
-                            <Select
-                              value={schedulePosition}
-                              onValueChange={(v) => {
-                                setSchedulePosition(v);
-                                setSchedule((p) => ({ ...p, applicant: "" }));
-                                setRescheduling(null);
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="All positions" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">All positions</SelectItem>
-                                {displayPositions
-                                  .filter(
-                                    (p) => scheduleDept === "all" || p.department === scheduleDept,
-                                  )
-                                  .map((p) => (
-                                    <SelectItem key={p.id} value={p.title}>
-                                      <span className="flex items-center gap-2">
-                                        {p.title}
-                                        {activeJobTitles.has(p.title) && (
-                                          <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                            Posting
-                                          </span>
-                                        )}
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label className="text-sm">
-                            <span className="text-primary">1.</span> Select Applicant
-                          </Label>
-                          <Select
-                            value={schedule.applicant}
-                            onValueChange={(v) => {
-                              setSchedule({ ...schedule, applicant: v });
-                              if (v !== rescheduling?.applicant) setRescheduling(null);
-                              if (v) setBookingFocus(true);
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select applicant" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {scheduleApplicants.length === 0 && (
-                                <div className="px-2 py-3 text-xs text-muted-foreground">
-                                  No accepted applicants available in this department.
-                                </div>
-                              )}
-                              {scheduleApplicants.map((a) => (
-                                <SelectItem key={a.id} value={a.name}>
-                                  {a.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label className="text-sm">
-                            <span className="text-primary">2.</span> Interview Date
-                          </Label>
-                          <Input
-                            type="date"
-                            value={schedule.date}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (!val) return;
-                              setSchedule((p) => ({ ...p, date: val }));
-                              // Sync calendar view to the selected date
-                              const d = new Date(val);
-                              if (!isNaN(d.getTime())) {
-                                setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-                              }
-                            }}
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <Label className="text-sm">
-                              <span className="text-primary">3.</span> Select Time Slot
-                            </Label>
-                            <span className="text-[0.7rem] text-muted-foreground">
-                              {slotSettings.slotCount} slots — {capacityPerSlot} applicants each
-                            </span>
-                          </div>
-                          <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                            <Input
-                              type="time"
-                              aria-label="Custom start time"
-                              className="h-9 w-full"
-                              value={customTime}
-                              onChange={(e) => applyCustomRange("start", e.target.value)}
-                            />
-                            <span className="text-center text-xs text-muted-foreground">to</span>
-                            <Input
-                              type="time"
-                              aria-label="Custom end time"
-                              className="h-9 w-full"
-                              value={customEnd}
-                              onChange={(e) => applyCustomRange("end", e.target.value)}
-                            />
-                          </div>
-                          {((customEnd && !schedule.endTime) ||
-                            (customTime && schedule.endTime) ||
-                            !customTime) && (
-                            <p className="text-[0.7rem] text-muted-foreground">
-                              {customEnd && !schedule.endTime ? (
-                                <span className="text-destructive">
-                                  {customTime
-                                    ? "End time can't equal the start time."
-                                    : "Enter a start time first."}
-                                </span>
-                              ) : customTime && schedule.endTime ? (
-                                `Using ${schedule.time} – ${schedule.endTime}.`
-                              ) : (
-                                "Pick a start time — e.g. 10:00."
-                              )}
-                            </p>
+                    <div className="space-y-2">
+                      <Label className="text-sm">
+                        <span className="text-primary">1.</span> Select Applicant
+                      </Label>
+                      <Select
+                        value={schedule.applicant}
+                        onValueChange={(v) => {
+                          setSchedule({ ...schedule, applicant: v });
+                          if (v !== rescheduling?.applicant) setRescheduling(null);
+                        }}
+                      >
+                        <SelectTrigger ref={bookSelectRef}>
+                          <SelectValue placeholder="Select applicant" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {scheduleApplicants.length === 0 && (
+                            <div className="px-2 py-3 text-xs text-muted-foreground">
+                              No accepted applicants available in this department.
+                            </div>
                           )}
-                        </div>
+                          {scheduleApplicants.map((a) => (
+                            <SelectItem key={a.id} value={a.name}>
+                              {a.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <Label className="text-sm">
-                              <span className="text-primary">4.</span> Interview Details
-                            </Label>
-                            <Select
-                              value={schedule.mode}
-                              onValueChange={(v) =>
-                                setSchedule({
-                                  ...schedule,
-                                  mode: v,
-                                  // Virtual needs no room — drop any picked facility.
-                                  facilityId: v === "Virtual" ? "" : schedule.facilityId,
-                                })
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="On-site">On-site</SelectItem>
-                                <SelectItem value="Virtual">Virtual</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">
-                              <span className="text-primary">5.</span> Interviewer
-                            </Label>
-                            <Select
-                              value={schedule.interviewer}
-                              onValueChange={(v) => setSchedule({ ...schedule, interviewer: v })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select interviewer" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {scheduleInterviewers.map((s) => (
-                                  <SelectItem key={s.id} value={s.name}>
-                                    {s.name} — {s.role}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">
-                              <span className="text-primary">6.</span>{" "}
-                              {schedule.mode === "On-site" ? "Request Facility" : "Facility"}
-                            </Label>
-                            {schedule.mode === "On-site" ? (
-                              <Select
-                                value={schedule.facilityId}
-                                onValueChange={(v) => setSchedule({ ...schedule, facilityId: v })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select facility" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {facilities
-                                    .filter((f) => f.type === schedule.mode)
-                                    .map((f) => (
-                                      <SelectItem key={f.id} value={f.id}>
-                                        {f.name} · {f.type} — cap. {f.capacity}
-                                      </SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
-                                <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                <span>
-                                  No facility request needed — Virtual interviews are held over
-                                  Zoom. The applicant is emailed the <b>1st Join link</b>,{" "}
-                                  <b>2nd Continue link</b>, password and interviewer name.
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-sm">
+                          <span className="text-primary">2.</span> Interview Date
+                        </Label>
+                        <Input
+                          type="date"
+                          value={schedule.date}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) return;
+                            setSchedule((p) => ({ ...p, date: val }));
+                            const d = new Date(val);
+                            if (!isNaN(d.getTime())) {
+                              setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                            }
+                          }}
+                        />
                       </div>
-                      <div className="mt-2 space-y-2 border-t border-border/30 pt-2">
-                        <Button
-                          className="w-full"
-                          size="lg"
-                          disabled={bookingMissingFields.length > 0}
-                          onClick={confirmSchedule}
-                          title={
-                            bookingMissingFields.length > 0
-                              ? `Please fill in: ${bookingMissingFields.join(", ")}`
-                              : undefined
+                      <div className="space-y-2">
+                        <Label className="text-sm">
+                          <span className="text-primary">3.</span> Interview Details
+                        </Label>
+                        <Select
+                          value={schedule.mode}
+                          onValueChange={(v) =>
+                            setSchedule({
+                              ...schedule,
+                              mode: v,
+                              facilityId: v === "Virtual" ? "" : schedule.facilityId,
+                            })
                           }
                         >
-                          <Mail className="mr-2 h-4 w-4" />{" "}
-                          {schedule.mode === "On-site"
-                            ? "Request Facility to Scheduled"
-                            : "Schedule Interview"}
-                        </Button>
-                        {bookingMissingFields.length > 0 && (
-                          <p className="text-center text-xs text-muted-foreground">
-                            Fill in:{" "}
-                            <span className="font-medium">{bookingMissingFields.join(", ")}</span>{" "}
-                            to enable.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Merged full-calendar + day detail — always visible (Image 1 + Image 2).
-              Left: calendar on top with PLACES stretched horizontally below.
-              Right: DAILY SCHEDULE PREVIEW. The day detail shows immediately
-              for the selected date — no click needed. */}
-              {bookingFocus && (
-                <Card ref={roomAvailabilityRef} className="scroll-mt-4 border-border/70">
-                  <CardContent className="p-5 sm:p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                          <CalendarDays className="h-5 w-5 text-primary" />
-                          Room Availability & Daily Schedule
-                        </h2>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {bookingFocus ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setBookingFocus(false)}
-                          >
-                            <ChevronLeft className="mr-2 h-4 w-4" /> Back to overview
-                          </Button>
-                        ) : (
-                          <Button size="sm" onClick={() => setBookingFocus(true)}>
-                            <CalendarPlus className="mr-2 h-4 w-4" /> Book an Interview
-                          </Button>
-                        )}
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="On-site">On-site</SelectItem>
+                            <SelectItem value="Virtual">Virtual</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 
-                    {(() => {
-                      const [yy, mm, dd] = calViewDate.split("-").map(Number);
-                      const selectedDate = new Date(yy ?? 1970, (mm ?? 1) - 1, dd ?? 1);
-                      const onSiteRooms = facilities.filter((f) => f.type === "On-site");
-                      const virtualRoom = facilities.find((f) => f.type === "Virtual") ?? null;
-                      const reservedCount = (id: string) =>
-                        calViewDayInterviews.filter((i) => facilityOfInterview(i)?.id === id)
-                          .length;
-                      const virtualCount = virtualRoom ? reservedCount(virtualRoom.id) : 0;
-                      return (
-                        <div className="mt-4 grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-                          {/* LEFT — calendar on top, PLACES stretched horizontally below.
-                        No h-full here: the grid's items-stretch sizes this column,
-                        and a percentage height would cancel the stretch. */}
-                          <div className="flex min-h-0 min-w-0 flex-col space-y-4">
-                            <div className="min-w-0 rounded-xl border border-border/70 bg-card p-4 shadow-sm">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center gap-2 rounded-lg px-2 py-1 font-display text-lg font-semibold transition-colors hover:bg-muted"
-                                    >
-                                      {calViewMonth.toLocaleDateString("en-US", {
-                                        month: "long",
-                                        year: "numeric",
-                                      })}
-                                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                    </button>
-                                  </PopoverTrigger>
-                                  <PopoverContent align="start" className="w-64 space-y-3 p-3">
-                                    <div className="space-y-1.5">
-                                      <Label className="text-xs">Month</Label>
-                                      <Select
-                                        value={String(calViewMonth.getMonth())}
-                                        onValueChange={(v) =>
-                                          setCalViewMonth(
-                                            (mo) => new Date(mo.getFullYear(), Number(v), 1),
-                                          )
-                                        }
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {monthNames.map((name, i) => (
-                                            <SelectItem key={name} value={String(i)}>
-                                              {name}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                      <Label className="text-xs">Year</Label>
-                                      <Select
-                                        value={String(calViewMonth.getFullYear())}
-                                        onValueChange={(v) =>
-                                          setCalViewMonth(
-                                            (mo) => new Date(Number(v), mo.getMonth(), 1),
-                                          )
-                                        }
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {yearOptions.map((y) => (
-                                            <SelectItem key={y} value={String(y)}>
-                                              {y}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      const today = new Date();
-                                      setCalViewMonth(
-                                        new Date(today.getFullYear(), today.getMonth(), 1),
-                                      );
-                                      setCalViewDate(isoOf(today));
-                                      setSchedule((s) => ({ ...s, date: isoOf(today) }));
-                                      setViewMonth(
-                                        new Date(today.getFullYear(), today.getMonth(), 1),
-                                      );
-                                    }}
-                                  >
-                                    Today
-                                  </Button>
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    aria-label="Previous month"
-                                    onClick={() =>
-                                      setCalViewMonth(
-                                        (mo) => new Date(mo.getFullYear(), mo.getMonth() - 1, 1),
-                                      )
-                                    }
-                                  >
-                                    <ChevronLeft className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    aria-label="Next month"
-                                    onClick={() =>
-                                      setCalViewMonth(
-                                        (mo) => new Date(mo.getFullYear(), mo.getMonth() + 1, 1),
-                                      )
-                                    }
-                                  >
-                                    <ChevronRight className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="mt-2 grid grid-cols-7 text-center text-[0.65rem] font-semibold tracking-wide text-muted-foreground">
-                                {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
-                                  <span key={d} className="py-1.5">
-                                    {d}
-                                  </span>
-                                ))}
-                              </div>
-
-                              <div className="grid grid-cols-7 grid-rows-6 overflow-hidden rounded-lg border border-border">
-                                {calViewCells.map((cell) => {
-                                  const iso = isoOf(cell.date);
-                                  const count = interviews.filter(
-                                    (i) => i.date === iso && i.status !== "Cancelled",
-                                  ).length;
-                                  const dayName = DAY_NAMES[cell.date.getDay()]!;
-                                  const schedulable = schedulableDays.includes(dayName);
-                                  const free = count === 0 && schedulable;
-                                  const full = count > 0 && schedulable && count >= capacityPerSlot;
-                                  const selected = calViewDate === iso;
-                                  const isToday = iso === TODAY_ISO;
-                                  return (
-                                    <button
-                                      key={iso}
-                                      type="button"
-                                      aria-label={cell.date.toDateString()}
-                                      aria-pressed={selected}
-                                      onClick={() => {
-                                        setCalViewDate(iso);
-                                        setSchedule((s) => ({ ...s, date: iso }));
-                                        setViewMonth(
-                                          new Date(
-                                            cell.date.getFullYear(),
-                                            cell.date.getMonth(),
-                                            1,
-                                          ),
-                                        );
-                                      }}
-                                      className={cn(
-                                        "relative min-h-[4.5rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
-                                        free &&
-                                          !selected &&
-                                          "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
-                                        full &&
-                                          !selected &&
-                                          "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
-                                        isToday &&
-                                          !selected &&
-                                          "bg-gold/30 ring-1 ring-inset ring-gold hover:bg-gold/40 hover:shadow-sm",
-                                        !selected &&
-                                          !free &&
-                                          !full &&
-                                          "hover:bg-muted/50 hover:shadow-sm",
-                                        count === 0 &&
-                                          !schedulable &&
-                                          (cell.inMonth
-                                            ? "text-muted-foreground/40"
-                                            : "opacity-40 text-muted-foreground/40"),
-                                        count > 0 &&
-                                          !selected &&
-                                          !full &&
-                                          "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
-                                        selected &&
-                                          free &&
-                                          "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
-                                        selected && full && "bg-red-700 font-semibold text-white",
-                                        selected &&
-                                          !free &&
-                                          !full &&
-                                          "bg-primary font-semibold text-primary-foreground",
-                                      )}
-                                    >
-                                      {cell.date.getDate()}
-                                      {count > 0 && (
-                                        <span
-                                          className={cn(
-                                            "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
-                                            selected && full
-                                              ? "bg-red-900"
-                                              : selected && free
-                                                ? "bg-foreground"
-                                                : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
-                                          )}
-                                        >
-                                          {count}
-                                        </span>
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {bookingFocus && (
-                              /* DAILY SCHEDULE PREVIEW — booking-mode copy under the calendar
-                         (shared state with the right-column copy above PLACES).
-                         flex-1 fills the stretched left column so this card's bottom
-                         edge always lines up with the Book an Interview card. */
-                              <Card className="flex min-h-0 flex-1 flex-col rounded-xl border-border/70 shadow-sm">
-                                <CardContent className="flex min-h-0 flex-1 flex-col p-5">
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
-                                      <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE
-                                      PREVIEW
-                                    </p>
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
-                                        {calViewPreview.slotsAvailable} slots available
-                                      </span>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-6 cursor-pointer gap-1 px-2 text-[0.65rem]"
-                                        title={`Show every applicant scheduled on ${calViewDate} in the Pipeline Overview`}
-                                        onClick={() => showScheduledInPipeline(calViewDate)}
-                                      >
-                                        <Eye className="h-3 w-3" /> View list in Pipeline
-                                      </Button>
-                                    </div>
-                                  </div>
-                                  <div className="mt-3">
-                                    <Select
-                                      value={calViewFacilityId}
-                                      onValueChange={setCalViewFacilityId}
-                                    >
-                                      <SelectTrigger className="font-display text-lg font-semibold">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="all">Show all — All rooms</SelectItem>
-                                        {facilities.map((f) => (
-                                          <SelectItem key={f.id} value={f.id}>
-                                            {f.name} · {f.type}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                      {calViewPreview.room.location} ·{" "}
-                                      {selectedDate.toLocaleDateString("en-US", {
-                                        month: "long",
-                                        day: "numeric",
-                                        year: "numeric",
-                                      })}
-                                    </p>
-                                  </div>
-                                  {/* Flexible list: fills the stretched card (flex-1) so the card
-                              bottom stays aligned with Book an Interview even with few
-                              items; caps + scrolls once it exceeds ~5 rows. */}
-                                  <div className="mt-3 flex max-h-72 min-h-[10rem] flex-1 flex-col space-y-2 overflow-y-auto pr-1">
-                                    {calViewPreview.mapped.map((i) => (
-                                      <button
-                                        type="button"
-                                        key={i.id}
-                                        title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
-                                        onClick={() => selectInPipeline(i.applicant)}
-                                        className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
-                                      >
-                                        <span className="shrink-0 text-xs font-medium">
-                                          {calViewPreview.rangeLabel(i.time, i.endTime)}
-                                        </span>
-                                        <span className="truncate text-right text-xs font-semibold">
-                                          {i.applicant}
-                                          {calViewPreview.showAll && (
-                                            <span className="ml-1.5 font-normal text-muted-foreground">
-                                              · {facilityOfInterview(i)?.name ?? "No room"}
-                                            </span>
-                                          )}
-                                        </span>
-                                      </button>
-                                    ))}
-                                    {calViewPreview.mapped.length === 0 && (
-                                      <p className="flex w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                                        No interviews booked — the whole day is free.
-                                      </p>
-                                    )}
-                                    {calViewPreview.unassignedOnSite.length > 0 && (
-                                      <p className="text-[0.7rem] text-muted-foreground">
-                                        + {calViewPreview.unassignedOnSite.length} on-site
-                                        interview(s) without a reserved room are not listed here.
-                                      </p>
-                                    )}
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            )}
-
-                            {/* PLACES — compact strip stretched horizontally below the calendar.
-                          Content height only (same full column width); the taller
-                          calendar cells above take the freed space. */}
-                            <Card
-                              className={cn(
-                                "flex flex-col rounded-xl border-border/70 shadow-sm",
-                                bookingFocus && "hidden",
-                              )}
-                            >
-                              <CardContent className="flex flex-col px-6 py-4">
-                                <div className="flex flex-wrap items-end justify-between gap-2">
-                                  <div>
-                                    <p className="text-xs font-semibold tracking-widest">PLACES</p>
-                                    <div className="mt-1 flex items-end gap-2">
-                                      <span className="font-display text-3xl font-bold leading-none">
-                                        {selectedDate.getDate()}
-                                      </span>
-                                      <span className="pb-1 text-sm text-muted-foreground">
-                                        {selectedDate.toLocaleDateString("en-US", {
-                                          month: "long",
-                                          year: "numeric",
-                                          weekday: "long",
-                                        })}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <p className="text-[0.7rem] text-muted-foreground">
-                                    Select a room to preview its schedule
-                                  </p>
-                                </div>
-
-                                <div className="mt-2 flex flex-col justify-center gap-4 py-2 sm:flex-row sm:items-stretch">
-                                  <div className="flex min-w-0 flex-1 flex-col justify-center">
-                                    <p className="text-center text-xs font-semibold tracking-widest underline underline-offset-4">
-                                      ON-SITE
-                                    </p>
-                                    <div className="mt-2 flex items-start justify-center gap-2 sm:gap-6">
-                                      {onSiteRooms.map((room) => {
-                                        const count = reservedCount(room.id);
-                                        const isSelected = calViewFacilityId === room.id;
-                                        return (
-                                          <button
-                                            key={room.id}
-                                            type="button"
-                                            onClick={() => setCalViewFacilityId(room.id)}
-                                            aria-pressed={isSelected}
-                                            title={`${room.name} — ${count > 0 ? `${count} booked` : "free"}`}
-                                            className={cn(
-                                              "flex flex-col items-center gap-1 rounded-xl p-1.5 transition-colors hover:bg-muted/60",
-                                              isSelected &&
-                                                "bg-muted/60 ring-2 ring-inset ring-primary",
-                                            )}
-                                          >
-                                            <span className="relative">
-                                              <span
-                                                className={cn(
-                                                  count > 0
-                                                    ? "text-green-700 dark:text-green-400"
-                                                    : "text-foreground",
-                                                )}
-                                              >
-                                                <DoorIcon
-                                                  highlighted={count > 0}
-                                                  className="h-12 w-9"
-                                                />
-                                              </span>
-                                              {count > 0 && (
-                                                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-white">
-                                                  {count}
-                                                </span>
-                                              )}
-                                            </span>
-                                            <span className="text-xs font-semibold tracking-wide">
-                                              {room.name.toUpperCase()}
-                                            </span>
-                                            <span className="text-[0.65rem] text-muted-foreground">
-                                              {count > 0 ? `${count} booked` : "Free"}
-                                            </span>
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-
-                                  <div
-                                    className="w-px self-stretch bg-border/70 max-sm:hidden"
-                                    aria-hidden="true"
-                                  />
-                                  <div
-                                    className="border-t border-border/70 sm:hidden"
-                                    aria-hidden="true"
-                                  />
-
-                                  <div className="flex min-w-0 flex-col justify-center sm:w-56 sm:shrink-0">
-                                    <p className="text-center text-xs font-semibold tracking-widest underline underline-offset-4">
-                                      VIRTUAL
-                                    </p>
-                                    {virtualRoom && (
-                                      <div className="mt-2 flex items-center justify-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => setCalViewFacilityId(virtualRoom.id)}
-                                          aria-pressed={calViewFacilityId === virtualRoom.id}
-                                          title={`${virtualRoom.name} — ${virtualCount > 0 ? `${virtualCount} booked` : "free"}`}
-                                          className={cn(
-                                            "flex flex-col items-center gap-1 rounded-xl p-1.5 transition-colors hover:bg-muted/60",
-                                            calViewFacilityId === virtualRoom.id &&
-                                              "bg-muted/60 ring-2 ring-inset ring-primary",
-                                          )}
-                                        >
-                                          <span className="relative">
-                                            <span
-                                              className={cn(
-                                                "flex h-12 w-20 items-center justify-center rounded-lg border-2",
-                                                virtualCount > 0
-                                                  ? "border-green-700 bg-green-700/15 text-green-700 dark:border-green-400/20 dark:bg-green-400/10 dark:text-green-400"
-                                                  : "border-foreground/70 text-foreground",
-                                              )}
-                                            >
-                                              <Video className="h-6 w-6" />
-                                            </span>
-                                            {virtualCount > 0 && (
-                                              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-white">
-                                                {virtualCount}
-                                              </span>
-                                            )}
-                                          </span>
-                                          <span className="text-xs font-semibold tracking-wide">
-                                            ONLINE INTERVIEW
-                                          </span>
-                                          <span className="text-[0.65rem] text-muted-foreground">
-                                            {virtualCount > 0 ? `${virtualCount} booked` : "Free"}
-                                          </span>
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          </div>
-
-                          {bookingFocus && (
-                            /* BOOK AN INTERVIEW — booking-mode copy in the preview slot.
-                       Shared state with the top card (its dialogs stay mounted
-                       there); keep the two copies in sync when editing.
-                       No h-full: self-stretch (with auto height) is what makes
-                       this card fill the row so its bottom edge aligns with the
-                       DAILY SCHEDULE PREVIEW card. */
-                            <Card className="flex min-h-0 flex-col self-stretch rounded-xl border-border/70 shadow-sm">
-                              <CardContent className="flex min-h-0 flex-1 flex-col p-4">
-                                <div className="flex items-start gap-2.5">
-                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center text-primary">
-                                    <CalendarClock className="h-5 w-5" />
-                                  </span>
-                                  <div className="min-w-0">
-                                    <h2 className="font-display text-xl font-semibold">
-                                      Book an Interview
-                                    </h2>
-                                    <p className="text-xs text-muted-foreground">
-                                      Fill in the details to schedule an interview and send an
-                                      invite.
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="mt-3 flex flex-1 flex-col">
-                                  <div className="flex-1 space-y-2">
-                                    {rescheduling && (
-                                      <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
-                                        <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                        <span>
-                                          Rescheduling <b>{rescheduling.applicant}</b> from{" "}
-                                          {rescheduling.date} · {rescheduling.time} — confirm to
-                                          update their existing interview.
-                                        </span>
-                                      </div>
-                                    )}
-
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      <div className="space-y-2">
-                                        <Label className="text-sm">Filter by Department</Label>
-                                        <Select
-                                          value={scheduleDept}
-                                          onValueChange={(v) => {
-                                            setScheduleDept(v);
-                                            setSchedulePosition("all");
-                                            setSchedule((p) => ({ ...p, applicant: "" }));
-                                            setRescheduling(null);
-                                          }}
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="All departments" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="all">All departments</SelectItem>
-                                            {displayDepartments.map((d) => (
-                                              <SelectItem key={d.code} value={d.name}>
-                                                <span className="flex items-center gap-2">
-                                                  {d.name}
-                                                  {deptHasPosting(d.name) && (
-                                                    <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                                      Posting
-                                                    </span>
-                                                  )}
-                                                </span>
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label className="text-sm">Position</Label>
-                                        <Select
-                                          value={schedulePosition}
-                                          onValueChange={(v) => {
-                                            setSchedulePosition(v);
-                                            setSchedule((p) => ({ ...p, applicant: "" }));
-                                            setRescheduling(null);
-                                          }}
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="All positions" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="all">All positions</SelectItem>
-                                            {displayPositions
-                                              .filter(
-                                                (p) =>
-                                                  scheduleDept === "all" ||
-                                                  p.department === scheduleDept,
-                                              )
-                                              .map((p) => (
-                                                <SelectItem key={p.id} value={p.title}>
-                                                  <span className="flex items-center gap-2">
-                                                    {p.title}
-                                                    {activeJobTitles.has(p.title) && (
-                                                      <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                                        Posting
-                                                      </span>
-                                                    )}
-                                                  </span>
-                                                </SelectItem>
-                                              ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      <Label className="text-sm">
-                                        <span className="text-primary">1.</span> Select Applicant
-                                      </Label>
-                                      <Select
-                                        value={schedule.applicant}
-                                        onValueChange={(v) => {
-                                          setSchedule({ ...schedule, applicant: v });
-                                          if (v !== rescheduling?.applicant) setRescheduling(null);
-                                          if (v) setBookingFocus(true);
-                                        }}
-                                      >
-                                        <SelectTrigger ref={bookSelectRef}>
-                                          <SelectValue placeholder="Select applicant" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {scheduleApplicants.length === 0 && (
-                                            <div className="px-2 py-3 text-xs text-muted-foreground">
-                                              No accepted applicants available in this department.
-                                            </div>
-                                          )}
-                                          {scheduleApplicants.map((a) => (
-                                            <SelectItem key={a.id} value={a.name}>
-                                              {a.name}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      <Label className="text-sm">
-                                        <span className="text-primary">2.</span> Interview Date
-                                      </Label>
-                                      <Input
-                                        type="date"
-                                        value={schedule.date}
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          if (!val) return;
-                                          setSchedule((p) => ({ ...p, date: val }));
-                                          // Sync calendar view to the selected date
-                                          const d = new Date(val);
-                                          if (!isNaN(d.getTime())) {
-                                            setViewMonth(
-                                              new Date(d.getFullYear(), d.getMonth(), 1),
-                                            );
-                                          }
-                                        }}
-                                      />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <Label className="text-sm">
-                                          <span className="text-primary">3.</span> Select Time Slot
-                                        </Label>
-                                        <span className="text-[0.7rem] text-muted-foreground">
-                                          {slotSettings.slotCount} slots — {capacityPerSlot}{" "}
-                                          applicants each
-                                        </span>
-                                      </div>
-                                      <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                                        <Input
-                                          type="time"
-                                          aria-label="Custom start time"
-                                          className="h-9 w-full"
-                                          value={customTime}
-                                          onChange={(e) =>
-                                            applyCustomRange("start", e.target.value)
-                                          }
-                                        />
-                                        <span className="text-center text-xs text-muted-foreground">
-                                          to
-                                        </span>
-                                        <Input
-                                          type="time"
-                                          aria-label="Custom end time"
-                                          className="h-9 w-full"
-                                          value={customEnd}
-                                          onChange={(e) => applyCustomRange("end", e.target.value)}
-                                        />
-                                      </div>
-                                      {((customEnd && !schedule.endTime) ||
-                                        (customTime && schedule.endTime) ||
-                                        !customTime) && (
-                                        <p className="text-[0.7rem] text-muted-foreground">
-                                          {customEnd && !schedule.endTime ? (
-                                            <span className="text-destructive">
-                                              {customTime
-                                                ? "End time can't equal the start time."
-                                                : "Enter a start time first."}
-                                            </span>
-                                          ) : customTime && schedule.endTime ? (
-                                            `Using ${schedule.time} – ${schedule.endTime}.`
-                                          ) : (
-                                            "Pick a start time — e.g. 10:00."
-                                          )}
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    <div className="space-y-3">
-                                      <div className="space-y-2">
-                                        <Label className="text-sm">
-                                          <span className="text-primary">4.</span> Interview Details
-                                        </Label>
-                                        <Select
-                                          value={schedule.mode}
-                                          onValueChange={(v) =>
-                                            setSchedule({
-                                              ...schedule,
-                                              mode: v,
-                                              // Virtual needs no room — drop any picked facility.
-                                              facilityId:
-                                                v === "Virtual" ? "" : schedule.facilityId,
-                                            })
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="On-site">On-site</SelectItem>
-                                            <SelectItem value="Virtual">Virtual</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label className="text-sm">
-                                          <span className="text-primary">5.</span> Interviewer
-                                        </Label>
-                                        <Select
-                                          value={schedule.interviewer}
-                                          onValueChange={(v) =>
-                                            setSchedule({ ...schedule, interviewer: v })
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="Select interviewer" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {scheduleInterviewers.map((s) => (
-                                              <SelectItem key={s.id} value={s.name}>
-                                                {s.name} — {s.role}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label className="text-sm">
-                                          <span className="text-primary">6.</span>{" "}
-                                          {schedule.mode === "On-site"
-                                            ? "Request Facility"
-                                            : "Facility"}
-                                        </Label>
-                                        {schedule.mode === "On-site" ? (
-                                          <Select
-                                            value={schedule.facilityId}
-                                            onValueChange={(v) =>
-                                              setSchedule({ ...schedule, facilityId: v })
-                                            }
-                                          >
-                                            <SelectTrigger>
-                                              <SelectValue placeholder="Select facility" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {facilities
-                                                .filter((f) => f.type === schedule.mode)
-                                                .map((f) => (
-                                                  <SelectItem key={f.id} value={f.id}>
-                                                    {f.name} · {f.type} — cap. {f.capacity}
-                                                  </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                          </Select>
-                                        ) : (
-                                          <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
-                                            <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                            <span>
-                                              No facility request needed — Virtual interviews are
-                                              held over Zoom. The applicant is emailed the{" "}
-                                              <b>1st Join link</b>, <b>2nd Continue link</b>,
-                                              password and interviewer name.
-                                            </span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="mt-2 space-y-2 border-t border-border/30 pt-2">
-                                    <Button
-                                      className="w-full"
-                                      size="lg"
-                                      disabled={bookingMissingFields.length > 0}
-                                      onClick={confirmSchedule}
-                                      title={
-                                        bookingMissingFields.length > 0
-                                          ? `Please fill in: ${bookingMissingFields.join(", ")}`
-                                          : undefined
-                                      }
-                                    >
-                                      <Mail className="mr-2 h-4 w-4" />{" "}
-                                      {schedule.mode === "On-site"
-                                        ? "Request Facility to Scheduled"
-                                        : "Schedule Interview"}
-                                    </Button>
-                                    {bookingMissingFields.length > 0 && (
-                                      <p className="text-center text-xs text-muted-foreground">
-                                        Fill in:{" "}
-                                        <span className="font-medium">
-                                          {bookingMissingFields.join(", ")}
-                                        </span>{" "}
-                                        to enable.
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Label className="text-sm">
+                          <span className="text-primary">4.</span> Select Time Slot
+                        </Label>
+                        <span className="text-[0.7rem] text-muted-foreground">
+                          {slotSettings.slotCount} slots — {capacityPerSlot} applicants each
+                        </span>
+                      </div>
+                      <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                        <Input
+                          type="time"
+                          aria-label="Custom start time"
+                          className="h-9 w-full"
+                          value={customTime}
+                          onChange={(e) => applyCustomRange("start", e.target.value)}
+                        />
+                        <span className="text-center text-xs text-muted-foreground">to</span>
+                        <Input
+                          type="time"
+                          aria-label="Custom end time"
+                          className="h-9 w-full"
+                          value={customEnd}
+                          onChange={(e) => applyCustomRange("end", e.target.value)}
+                        />
+                      </div>
+                      {((customEnd && !schedule.endTime) ||
+                        (customTime && schedule.endTime) ||
+                        !customTime) && (
+                        <p className="text-[0.7rem] text-muted-foreground">
+                          {customEnd && !schedule.endTime ? (
+                            <span className="text-destructive">
+                              {customTime
+                                ? "End time can't equal the start time."
+                                : "Enter a start time first."}
+                            </span>
+                          ) : customTime && schedule.endTime ? (
+                            `Using ${schedule.time} – ${schedule.endTime}.`
+                          ) : (
+                            "Pick a start time — e.g. 10:00."
                           )}
+                        </p>
+                      )}
+                    </div>
 
-                          {/* RIGHT — DAILY SCHEDULE PREVIEW in normal mode;
-                        hidden while bookingFocus (a copy sits under the calendar
-                        and Book an Interview takes this slot) */}
-                          <Card
-                            className={cn(
-                              "flex min-h-0 flex-col self-stretch rounded-xl border-border/70 shadow-sm",
-                              bookingFocus && "hidden",
-                            )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-sm">
+                          <span className="text-primary">5.</span> Interviewer
+                        </Label>
+                        <Select
+                          value={schedule.interviewer}
+                          onValueChange={(v) => setSchedule({ ...schedule, interviewer: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select interviewer" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {scheduleInterviewers.map((s) => (
+                              <SelectItem key={s.id} value={s.name}>
+                                {s.name} — {s.role}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm">
+                          <span className="text-primary">6.</span>{" "}
+                          {schedule.mode === "On-site" ? "Request Facility" : "Facility"}
+                        </Label>
+                        {schedule.mode === "On-site" ? (
+                          <Select
+                            value={schedule.facilityId}
+                            onValueChange={(v) => setSchedule({ ...schedule, facilityId: v })}
                           >
-                            <CardContent className="flex min-h-0 flex-1 flex-col p-5">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
-                                  <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE PREVIEW
-                                </p>
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
-                                    {calViewPreview.slotsAvailable} slots available
-                                  </span>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-6 cursor-pointer gap-1 px-2 text-[0.65rem]"
-                                    title={`Show every applicant scheduled on ${calViewDate} in the Pipeline Overview`}
-                                    onClick={() => showScheduledInPipeline(calViewDate)}
-                                  >
-                                    <Eye className="h-3 w-3" /> View list in Pipeline
-                                  </Button>
-                                </div>
-                              </div>
-                              <div className="mt-3">
-                                <Select
-                                  value={calViewFacilityId}
-                                  onValueChange={setCalViewFacilityId}
-                                >
-                                  <SelectTrigger className="font-display text-lg font-semibold">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="all">Show all — All rooms</SelectItem>
-                                    {facilities.map((f) => (
-                                      <SelectItem key={f.id} value={f.id}>
-                                        {f.name} · {f.type}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {calViewPreview.room.location} ·{" "}
-                                  {selectedDate.toLocaleDateString("en-US", {
-                                    month: "long",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  })}
-                                </p>
-                              </div>
-                              <div className="mt-3 flex min-h-0 flex-1 flex-col space-y-2">
-                                {calViewPreview.mapped.map((i) => (
-                                  <button
-                                    type="button"
-                                    key={i.id}
-                                    title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
-                                    onClick={() => selectInPipeline(i.applicant)}
-                                    className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
-                                  >
-                                    <span className="shrink-0 text-xs font-medium">
-                                      {calViewPreview.rangeLabel(i.time, i.endTime)}
-                                    </span>
-                                    <span className="truncate text-right text-xs font-semibold">
-                                      {i.applicant}
-                                      {calViewPreview.showAll && (
-                                        <span className="ml-1.5 font-normal text-muted-foreground">
-                                          · {facilityOfInterview(i)?.name ?? "No room"}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </button>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select facility" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {facilities
+                                .filter((f) => f.type === schedule.mode)
+                                .map((f) => (
+                                  <SelectItem key={f.id} value={f.id}>
+                                    {f.name} · {f.type} — cap. {f.capacity}
+                                  </SelectItem>
                                 ))}
-                                {calViewPreview.mapped.length === 0 && (
-                                  <p className="flex w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                                    No interviews booked — the whole day is free.
-                                  </p>
-                                )}
-                                {calViewPreview.unassignedOnSite.length > 0 && (
-                                  <p className="text-[0.7rem] text-muted-foreground">
-                                    + {calViewPreview.unassignedOnSite.length} on-site interview(s)
-                                    without a reserved room are not listed here.
-                                  </p>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </div>
-                      );
-                    })()}
-                  </CardContent>
-                </Card>
-              )}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
+                            <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              No facility request needed — Virtual interviews are held over Zoom.
+                              The applicant is emailed the <b>1st Join link</b>,{" "}
+                              <b>2nd Continue link</b>, password and interviewer name.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <DialogFooter className="flex-col gap-2 sm:flex-col">
+                    {bookingMissingFields.length > 0 && (
+                      <p className="text-center text-xs text-muted-foreground">
+                        Fill in:{" "}
+                        <span className="font-medium">{bookingMissingFields.join(", ")}</span> to
+                        enable.
+                      </p>
+                    )}
+                    <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button variant="outline" onClick={() => setBookingFocus(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        disabled={bookingMissingFields.length > 0}
+                        onClick={confirmSchedule}
+                        title={
+                          bookingMissingFields.length > 0
+                            ? `Please fill in: ${bookingMissingFields.join(", ")}`
+                            : undefined
+                        }
+                      >
+                        <Mail className="mr-2 h-4 w-4" />{" "}
+                        {schedule.mode === "On-site"
+                          ? "Request Facility to Scheduled"
+                          : "Schedule Interview"}
+                      </Button>
+                    </div>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               {/* Pipeline Overview list — schedule + pipeline actions live here */}
               <Card ref={pipelineListRef} className="scroll-mt-4 border-border/70">
@@ -16968,7 +15411,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 onClick={() => viewScheduledInCalendar(a)}
                                               >
                                                 <CalendarDays className="mr-2 h-3.5 w-3.5" /> View
-                                                scheduled in calendar
+                                                interview schedule
                                               </DropdownMenuItem>
                                             ) : null}
                                             {/* Administrative Actions */}
@@ -17078,41 +15521,207 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
             {/* ASSESSMENT */}
             <TabsContent value="assessment" className="mt-4 space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">Assessment Test</p>
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <ClipboardCheck className="h-5 w-5" />
-                      </span>
-                    </div>
-                    <p className="mt-4 font-display text-4xl font-bold leading-none tabular-nums text-foreground">
-                      {assessmentAverages.test == null
-                        ? "—"
-                        : `${assessmentAverages.test.toFixed(1)}%`}
-                    </p>
-                    <p className="mt-1.5 text-xs text-muted-foreground">Avg. Score</p>
-                  </CardContent>
-                </Card>
+              <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <CardContent className="p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <ClipboardCheck className="h-4.5 w-4.5 text-primary" />
+                      Assessment Analytics
+                    </h2>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-[0.68rem] font-semibold tabular-nums text-muted-foreground">
+                      {assessmentProgress.queueCount.toLocaleString()} in queue
+                    </span>
+                  </div>
 
-                <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">Practical Test</p>
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gold-soft text-gold">
-                        <Wrench className="h-5 w-5" />
+                  <div className="mt-5 grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] lg:gap-8">
+                    <div className="flex items-center gap-5 lg:pr-2">
+                      <div className="relative flex h-[132px] w-[132px] shrink-0 items-center justify-center">
+                        <PieChart width={132} height={132}>
+                          <Pie
+                            isAnimationActive={false}
+                            data={[
+                              { name: "Completed", value: assessmentProgress.completed },
+                              { name: "Pending", value: assessmentProgress.pending },
+                            ]}
+                            dataKey="value"
+                            nameKey="name"
+                            cx={66}
+                            cy={66}
+                            innerRadius={42}
+                            outerRadius={60}
+                            paddingAngle={2}
+                            cornerRadius={4}
+                            labelLine={false}
+                          >
+                            <Cell fill="var(--color-primary)" />
+                            <Cell fill="var(--color-gold)" />
+                          </Pie>
+                          <RTooltip
+                            contentStyle={tooltipStyle}
+                            formatter={(value: number | string, name: string | number) =>
+                              [`${Number(value).toLocaleString()}`, String(name)] as [
+                                string,
+                                string,
+                              ]
+                            }
+                          />
+                        </PieChart>
+                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="font-display text-2xl font-bold leading-none tabular-nums text-foreground">
+                            {assessmentProgress.rate == null ? "—" : `${assessmentProgress.rate}%`}
+                          </span>
+                          <span className="mt-1 text-center text-[0.58rem] font-medium leading-tight text-muted-foreground">
+                            Completion
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-[0.72rem]">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                          <span className="text-muted-foreground">Completed</span>
+                          <span className="font-semibold tabular-nums text-foreground">
+                            {assessmentProgress.completed}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full bg-gold" />
+                          <span className="text-muted-foreground">Pending</span>
+                          <span className="font-semibold tabular-nums text-foreground">
+                            {assessmentProgress.pending}
+                          </span>
+                        </div>
+                        <div className="mt-2 border-t border-border/60 pt-2">
+                          <p className="text-[0.62rem] uppercase tracking-wide text-muted-foreground">
+                            Outcome
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold text-foreground">
+                            {assessmentProgress.passRate == null
+                              ? "No results yet"
+                              : `${assessmentProgress.passRate}% pass rate`}
+                          </p>
+                          <p className="mt-0.5 text-[0.68rem] text-muted-foreground">
+                            <span className="font-semibold text-success">
+                              {assessmentProgress.passed}
+                            </span>{" "}
+                            passed ·{" "}
+                            <span className="font-semibold text-destructive">
+                              {assessmentProgress.failed}
+                            </span>{" "}
+                            failed
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border/60 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <FileText className="h-4 w-4" />
+                        </span>
+                        <p className="text-sm font-semibold text-foreground">Written Test</p>
+                        <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[0.62rem] font-semibold tabular-nums text-muted-foreground">
+                          {assessmentProgress.testCompleted}/{assessmentProgress.testTotal}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex items-end justify-between gap-3">
+                        <p className="font-display text-4xl font-bold leading-none tabular-nums text-foreground">
+                          {assessmentAverages.test == null
+                            ? "—"
+                            : `${assessmentAverages.test.toFixed(1)}%`}
+                        </p>
+                        <p className="pb-1 text-[0.68rem] text-muted-foreground">Average score</p>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${Math.min(100, assessmentAverages.test ?? 0)}%` }}
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2 text-[0.68rem]">
+                        <span className="text-muted-foreground">
+                          <b className="text-foreground">{assessmentProgress.testPending}</b>{" "}
+                          pending
+                        </span>
+                        <span className="text-muted-foreground">
+                          <b className="text-success">{assessmentProgress.testPassed}</b> passed
+                          {assessmentProgress.testFailed > 0 && (
+                            <>
+                              {" "}
+                              · <b className="text-destructive">
+                                {assessmentProgress.testFailed}
+                              </b>{" "}
+                              failed
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border/60 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-soft text-gold">
+                          <Wrench className="h-4 w-4" />
+                        </span>
+                        <p className="text-sm font-semibold text-foreground">Practical Test</p>
+                        <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[0.62rem] font-semibold tabular-nums text-muted-foreground">
+                          {assessmentProgress.practicalCompleted}/
+                          {assessmentProgress.practicalTotal}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex items-end justify-between gap-3">
+                        <p className="font-display text-4xl font-bold leading-none tabular-nums text-foreground">
+                          {assessmentAverages.practical == null
+                            ? "—"
+                            : `${assessmentAverages.practical.toFixed(1)}%`}
+                        </p>
+                        <p className="pb-1 text-[0.68rem] text-muted-foreground">Average score</p>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-gold"
+                          style={{ width: `${Math.min(100, assessmentAverages.practical ?? 0)}%` }}
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2 text-[0.68rem]">
+                        <span className="text-muted-foreground">
+                          <b className="text-foreground">{assessmentProgress.practicalPending}</b>{" "}
+                          pending
+                        </span>
+                        <span className="text-muted-foreground">
+                          <b className="text-success">{assessmentProgress.practicalPassed}</b>{" "}
+                          passed
+                          {assessmentProgress.practicalFailed > 0 && (
+                            <>
+                              {" "}
+                              ·{" "}
+                              <b className="text-destructive">
+                                {assessmentProgress.practicalFailed}
+                              </b>{" "}
+                              failed
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {assessmentProgress.topPerformer && (
+                    <div className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 pt-3 text-[0.7rem] text-muted-foreground">
+                      <Trophy className="h-3.5 w-3.5 text-gold" />
+                      <span>Top score</span>
+                      <span className="font-semibold text-foreground">
+                        {assessmentProgress.topPerformer.name}
+                      </span>
+                      <span className="font-semibold tabular-nums text-foreground">
+                        {assessmentProgress.topPerformer.score}%
                       </span>
                     </div>
-                    <p className="mt-4 font-display text-4xl font-bold leading-none tabular-nums text-foreground">
-                      {assessmentAverages.practical == null
-                        ? "—"
-                        : `${assessmentAverages.practical.toFixed(1)}%`}
-                    </p>
-                    <p className="mt-1.5 text-xs text-muted-foreground">Avg. Score</p>
-                  </CardContent>
-                </Card>
-              </div>
+                  )}
+                </CardContent>
+              </Card>
 
               <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
                 <CardContent className="p-4 sm:p-5">
@@ -17314,70 +15923,217 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
             {/* FINAL EVALUATION */}
             <TabsContent value="final" className="mt-4 space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Overall Score</p>
-                        <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-                          Weighted across screening, interview and assessments.
-                        </p>
-                      </div>
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gold-soft text-gold">
-                        <Star className="h-5 w-5 fill-current" />
-                      </span>
-                    </div>
-                    <p className="mt-4 font-display text-4xl font-bold leading-none tabular-nums text-foreground">
-                      {finalSummary.average == null ? "—" : `${finalSummary.average.toFixed(1)}%`}
-                    </p>
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      {finalSummary.count} final evaluation{finalSummary.count === 1 ? "" : "s"}
-                    </p>
-                  </CardContent>
-                </Card>
+              <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <CardContent className="p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <Trophy className="h-4.5 w-4.5 text-gold" /> Final Evaluation Analytics
+                    </h2>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-[0.68rem] font-semibold tabular-nums text-muted-foreground">
+                      {finalSummary.count.toLocaleString()} evaluated
+                    </span>
+                  </div>
 
-                <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Recommendation</p>
-                        <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-                          Final verdict across all recorded evaluations.
-                        </p>
+                  <div className="mt-5 grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] lg:gap-8">
+                    <div className="flex flex-col items-center lg:pr-2">
+                      <div className="relative flex h-[150px] w-[150px] items-center justify-center">
+                        <PieChart width={150} height={150}>
+                          <Pie
+                            isAnimationActive={false}
+                            data={[
+                              { name: "Overall Score", value: finalSummary.average ?? 0 },
+                              {
+                                name: "Remaining",
+                                value: Math.max(0, 100 - (finalSummary.average ?? 0)),
+                              },
+                            ]}
+                            dataKey="value"
+                            nameKey="name"
+                            cx={75}
+                            cy={75}
+                            innerRadius={48}
+                            outerRadius={66}
+                            startAngle={90}
+                            endAngle={-270}
+                            cornerRadius={4}
+                            labelLine={false}
+                          >
+                            <Cell fill="var(--color-primary)" />
+                            <Cell fill="var(--color-muted)" />
+                          </Pie>
+                          <RTooltip contentStyle={tooltipStyle} />
+                        </PieChart>
+                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="font-display text-3xl font-bold leading-none tabular-nums text-foreground">
+                            {finalSummary.average == null
+                              ? "—"
+                              : `${finalSummary.average.toFixed(1)}%`}
+                          </span>
+                          <span className="mt-1 text-[0.6rem] font-medium text-muted-foreground">
+                            Overall average
+                          </span>
+                        </div>
                       </div>
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10 text-success">
-                        <CheckCircle2 className="h-5 w-5" />
+
+                      <span
+                        className={cn(
+                          "mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold",
+                          finalSummary.count === 0
+                            ? "bg-muted text-muted-foreground"
+                            : finalSummary.recommended > 0
+                              ? "bg-primary/10 text-primary"
+                              : finalSummary.another > 0
+                                ? "bg-gold-soft text-gold"
+                                : "bg-destructive/10 text-destructive",
+                        )}
+                      >
+                        <Star className="h-3.5 w-3.5 fill-current" />
+                        {finalSummary.count === 0
+                          ? "Awaiting evaluations"
+                          : finalSummary.recommended > 0
+                            ? "For Hire"
+                            : finalSummary.another > 0
+                              ? "For Another Position"
+                              : "Not Recommended"}
                       </span>
+
+                      {finalSummary.topPerformer && (
+                        <p className="mt-3 max-w-[150px] text-center text-[0.66rem] leading-relaxed text-muted-foreground">
+                          Top score
+                          <span className="block truncate font-semibold text-foreground">
+                            {finalSummary.topPerformer.name} · {finalSummary.topScore}%
+                          </span>
+                        </p>
+                      )}
                     </div>
-                    <p className="mt-4 font-display text-4xl font-bold leading-none text-foreground">
-                      {finalSummary.recommended > 0
-                        ? "For Hire"
-                        : finalSummary.count === 0
-                          ? "—"
-                          : "Hold"}
-                    </p>
-                    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.7rem] text-muted-foreground">
-                      <li>
-                        <span className="font-semibold text-success">
-                          {finalSummary.recommended}
-                        </span>{" "}
-                        for hire
-                      </li>
-                      <li>
-                        <span className="font-semibold text-gold">{finalSummary.another}</span>{" "}
-                        another role
-                      </li>
-                      <li>
-                        <span className="font-semibold text-destructive">
-                          {finalSummary.notRecommended}
-                        </span>{" "}
-                        not recommended
-                      </li>
-                    </ul>
-                  </CardContent>
-                </Card>
-              </div>
+
+                    <div className="border-t border-border/60 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+                      <p className="flex items-center justify-between gap-2 text-sm font-semibold text-foreground">
+                        Score breakdown
+                        <span className="text-[0.62rem] font-medium text-muted-foreground">
+                          stage averages
+                        </span>
+                      </p>
+                      <div className="mt-4 space-y-3.5">
+                        {[
+                          {
+                            label: "Screening",
+                            value: finalSummary.screening,
+                            weight: FINAL_EVALUATION_WEIGHTS.screening,
+                          },
+                          {
+                            label: "Interview",
+                            value: finalSummary.interview,
+                            weight: FINAL_EVALUATION_WEIGHTS.interview,
+                          },
+                          {
+                            label: "Assessment",
+                            value: finalSummary.assessment,
+                            weight: FINAL_EVALUATION_WEIGHTS.assessment,
+                          },
+                          {
+                            label: "Practical Test",
+                            value: finalSummary.practical,
+                            weight: FINAL_EVALUATION_WEIGHTS.practical,
+                          },
+                        ].map((item) => (
+                          <div key={item.label}>
+                            <div className="flex items-baseline justify-between gap-3 text-[0.7rem]">
+                              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                                {item.label}
+                                <span className="rounded bg-muted px-1 py-0.5 text-[0.55rem] font-semibold tabular-nums text-muted-foreground">
+                                  {item.weight}%
+                                </span>
+                              </span>
+                              <span className="font-semibold tabular-nums text-foreground">
+                                {item.value == null ? "—" : `${item.value.toFixed(1)}%`}
+                              </span>
+                            </div>
+                            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full bg-primary transition-all"
+                                style={{
+                                  width: `${Math.min(100, Math.max(0, item.value ?? 0))}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border/60 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+                      <p className="text-sm font-semibold text-foreground">Hiring decision</p>
+                      {finalSummary.count === 0 ? (
+                        <p className="mt-3 rounded-lg border border-dashed border-border p-4 text-center text-[0.7rem] text-muted-foreground">
+                          No final evaluations recorded yet.
+                        </p>
+                      ) : (
+                        <>
+                          <div className="mt-4 flex h-2.5 overflow-hidden rounded-full bg-muted">
+                            <span
+                              className="bg-primary"
+                              style={{
+                                width: `${(finalSummary.recommended / finalSummary.count) * 100}%`,
+                              }}
+                            />
+                            <span
+                              className="bg-gold"
+                              style={{
+                                width: `${(finalSummary.another / finalSummary.count) * 100}%`,
+                              }}
+                            />
+                            <span
+                              className="bg-destructive/70"
+                              style={{
+                                width: `${
+                                  (finalSummary.notRecommended / finalSummary.count) * 100
+                                }%`,
+                              }}
+                            />
+                          </div>
+
+                          <ul className="mt-4 space-y-2.5 text-[0.72rem]">
+                            {[
+                              {
+                                label: "Recommended for Hire",
+                                value: finalSummary.recommended,
+                                dot: "bg-primary",
+                                text: "text-primary",
+                              },
+                              {
+                                label: "For Another Position",
+                                value: finalSummary.another,
+                                dot: "bg-gold",
+                                text: "text-gold",
+                              },
+                              {
+                                label: "Not Recommended",
+                                value: finalSummary.notRecommended,
+                                dot: "bg-destructive/70",
+                                text: "text-destructive",
+                              },
+                            ].map((item) => (
+                              <li key={item.label} className="flex items-center gap-2">
+                                <span className={cn("h-2 w-2 rounded-full", item.dot)} />
+                                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                                  {item.label}
+                                </span>
+                                <span className="font-semibold tabular-nums text-foreground">
+                                  {item.value}
+                                </span>
+                                <span className="w-9 text-right tabular-nums text-muted-foreground">
+                                  {Math.round((item.value / finalSummary.count) * 100)}%
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
                 <CardContent className="p-4 sm:p-5">
@@ -17934,165 +16690,674 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </DialogContent>
       </Dialog>
 
-      {/* APPLICANT QUICK VIEW — opened by clicking any applicant name in a
-          stage table. The full profile opens from the panel footer. */}
+      {/* APPLICANT PROFILE — right-side drawer opened by clicking any applicant
+          name in a stage table. Maroon header, identity + match score, a
+          clickable five-stage rail (current stage selected first) and
+          Stage / Documents / Activity tabs. "View" still opens the whole record. */}
       <Dialog
-        open={!!previewApplicant}
+        open={!!previewApplicantLive}
         onOpenChange={(open) => {
           if (!open) setPreviewApplicant(null);
         }}
       >
-        <DialogContent className="left-auto right-0 top-0 flex h-full max-h-full w-full max-w-md translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-l p-0 duration-200 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-md [&>button]:hidden">
-          {previewApplicant && (
-            <>
-              <div className="flex items-start gap-3 bg-primary px-5 py-4 text-primary-foreground">
-                <Avatar className="h-12 w-12 shrink-0 border border-primary-foreground/30">
-                  <AvatarFallback className="bg-primary-foreground/15 text-sm font-semibold text-primary-foreground">
-                    {initials(previewApplicant.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <DialogTitle className="truncate font-display text-base font-bold text-primary-foreground">
-                    {previewApplicant.name}
-                  </DialogTitle>
-                  <p className="truncate text-xs text-primary-foreground/80">
-                    {previewApplicant.position}
-                  </p>
-                  <p className="truncate text-[0.68rem] text-primary-foreground/70">
-                    {previewApplicant.id} · {previewApplicant.source}
-                  </p>
-                </div>
-                <DialogDescription className="sr-only">
-                  Quick profile summary for {previewApplicant.name}
-                </DialogDescription>
-                <button
-                  type="button"
-                  onClick={() => setPreviewApplicant(null)}
-                  aria-label="Close applicant panel"
-                  className="shrink-0 cursor-pointer rounded-md p-1 text-primary-foreground/80 transition-colors hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+        <DialogContent className="left-auto right-0 top-0 flex h-full max-h-full w-full max-w-[460px] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-l p-0 duration-200 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-[460px] [&>button]:hidden">
+          {previewApplicantLive &&
+            (() => {
+              const a = previewApplicantLive;
+              const iv = previewInterview;
+              const stageIndex = applicantProfileStageIndex(a);
+              const activeStage = profileStage ?? stageIndex;
+              const assessment = assessments.find((x) => x.applicantId === a.id);
+              const test = assessmentTests.find((t) => t.applicantId === a.id);
+              const practical = practicalTests.find((t) => t.applicantId === a.id);
+              const final = finalEvaluations.find((f) => f.applicantId === a.id);
+              const stageTitles = APPLICANT_PROFILE_STEPS.map((s) => s.label);
+              const qualification =
+                a.status === "fit"
+                  ? "Qualified"
+                  : a.status === "other-role"
+                    ? "Other Role"
+                    : a.status === "credential"
+                      ? "Credential Issue"
+                      : "Not Fit";
+              const interviewDate = iv
+                ? (() => {
+                    const d = new Date(`${iv.date}T00:00:00`);
+                    return Number.isNaN(d.getTime())
+                      ? iv.date
+                      : d.toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        });
+                  })()
+                : null;
+              return (
+                <>
+                  <div className="flex items-center justify-between gap-3 bg-primary px-5 py-3.5 text-primary-foreground">
+                    <DialogTitle className="font-display text-xl font-semibold tracking-wide text-primary-foreground">
+                      Applicant Profile
+                    </DialogTitle>
+                    <DialogDescription className="sr-only">
+                      Applicant profile for {a.name}
+                    </DialogDescription>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewApplicant(null)}
+                      aria-label="Close applicant panel"
+                      className="shrink-0 cursor-pointer rounded-md p-1 text-primary-foreground/85 transition-colors hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
 
-              <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={cn(
-                      "inline-flex rounded-md px-2.5 py-1 text-[0.7rem] font-semibold",
-                      stagePillMeta(previewApplicant.stage).className,
-                    )}
-                  >
-                    {stagePillMeta(previewApplicant.stage).label}
-                  </span>
-                  <span
-                    className={cn(
-                      "inline-flex rounded-md border px-2.5 py-1 text-[0.7rem] font-semibold",
-                      statusMeta[previewApplicant.status].className,
-                    )}
-                  >
-                    {statusMeta[previewApplicant.status].label}
-                  </span>
-                </div>
+                  <div className="flex-1 overflow-y-auto bg-muted/15">
+                    <div className="flex items-center gap-3.5 px-5 pt-5">
+                      <Avatar className="h-16 w-16 shrink-0 border-2 border-card shadow-sm">
+                        <AvatarFallback className="bg-secondary font-display text-lg font-semibold text-secondary-foreground">
+                          {initials(a.name)}
+                        </AvatarFallback>
+                      </Avatar>
 
-                <div className="rounded-xl border border-border/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">Match Score</span>
-                    <span className="font-display text-lg font-bold tabular-nums text-foreground">
-                      {previewApplicant.score}%
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn(
-                        "h-full rounded-full",
-                        previewApplicant.score >= passing ? "bg-success" : "bg-caution",
-                      )}
-                      style={{ width: `${Math.min(100, previewApplicant.score)}%` }}
-                    />
-                  </div>
-                </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-display text-lg font-bold leading-tight text-foreground">
+                          {a.name}
+                        </p>
+                        <p className="mt-0.5 truncate text-[0.72rem] text-muted-foreground">
+                          {a.position} · {a.id}
+                        </p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold",
+                              statusMeta[a.status].className,
+                            )}
+                          >
+                            {qualification}
+                          </span>
+                        </div>
+                      </div>
 
-                <dl className="grid grid-cols-1 gap-3 text-xs">
-                  <div className="flex items-start gap-3">
-                    <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <dt className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-                        Email
-                      </dt>
-                      <dd className="truncate font-medium text-foreground">
-                        {previewApplicant.email}
-                      </dd>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Phone className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <dt className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-                        Phone
-                      </dt>
-                      <dd className="truncate font-medium text-foreground">
-                        {previewApplicant.phone}
-                      </dd>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <dt className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-                        Applied
-                      </dt>
-                      <dd className="font-medium text-foreground">
-                        {formatDisplayDate(previewApplicant.appliedAt).date}
-                      </dd>
-                    </div>
-                  </div>
-                </dl>
-
-                {previewApplicant.entities.length > 0 && (
-                  <div>
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Highlights
-                    </p>
-                    <ul className="mt-2 flex flex-wrap gap-1.5">
-                      {previewApplicant.entities.slice(0, 6).map((e, i) => (
-                        <li
-                          key={`${e.label}-${e.value}-${i}`}
-                          className="rounded-md bg-muted/60 px-2 py-1 text-[0.68rem] text-foreground"
+                      <div className="w-[92px] shrink-0 rounded-xl border border-gold/30 bg-gold-soft/40 px-2.5 py-2 text-center">
+                        <p className="flex items-center justify-center gap-1 text-[0.58rem] font-semibold text-muted-foreground">
+                          <Target className="h-3 w-3 text-gold" /> Match
+                        </p>
+                        <p
+                          className={cn(
+                            "mt-0.5 font-display text-2xl font-bold leading-none tabular-nums",
+                            a.score >= passing ? "text-success" : "text-caution",
+                          )}
                         >
-                          <span className="mr-1 text-muted-foreground">{e.label}</span>
-                          {e.value}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                          {a.score}%
+                        </p>
+                      </div>
+                    </div>
 
-                {previewApplicant.summary && (
-                  <div>
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Summary
-                    </p>
-                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                      {previewApplicant.summary}
-                    </p>
-                  </div>
-                )}
-              </div>
+                    <div className="mt-5 px-4">
+                      <ProfileStageRail
+                        stageIndex={stageIndex}
+                        activeStage={activeStage}
+                        onSelect={setProfileStage}
+                      />
+                    </div>
 
-              <div className="border-t border-border/60 p-4">
-                <Button
-                  className="w-full gap-1.5"
-                  onClick={() => {
-                    setViewingApplicant(previewApplicant);
-                    setPreviewApplicant(null);
-                  }}
-                >
-                  View Full Profile <ArrowRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </>
-          )}
+                    <div className="mt-4 grid grid-cols-3 gap-1 px-4">
+                      {[
+                        { key: "stage" as const, label: "Stage", icon: CalendarDays },
+                        { key: "documents" as const, label: "Profile", icon: FileText },
+                        { key: "activity" as const, label: "Activity", icon: History },
+                      ].map((tab) => {
+                        const TabIcon = tab.icon;
+                        const active = profileTab === tab.key;
+                        return (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setProfileTab(tab.key)}
+                            aria-pressed={active}
+                            className={cn(
+                              "flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[0.7rem] font-semibold transition-colors",
+                              active
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-card text-foreground hover:bg-muted/60",
+                            )}
+                          >
+                            <TabIcon className="h-3.5 w-3.5" />
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {profileTab === "stage" && (
+                      <div className="mt-4 space-y-3 px-4 pb-6">
+                        <div className="flex items-center justify-between gap-2 px-1">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            {stageTitles[activeStage]}
+                          </p>
+                          {activeStage === stageIndex ? (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[0.6rem] font-semibold text-primary">
+                              Current stage
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setProfileStage(null)}
+                              className="cursor-pointer text-[0.62rem] font-semibold text-primary hover:underline"
+                            >
+                              Back to current
+                            </button>
+                          )}
+                        </div>
+
+                        {activeStage === 0 && (
+                          <div className="rounded-xl border border-border/70 bg-card p-4">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                  <ScanLine className="h-4 w-4" />
+                                </span>
+                                Screening result
+                              </p>
+                              <span
+                                className={cn(
+                                  "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold",
+                                  statusMeta[a.status].className,
+                                )}
+                              >
+                                {statusMeta[a.status].label}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 flex items-end justify-between gap-3">
+                              <p className="font-display text-3xl font-bold leading-none tabular-nums text-foreground">
+                                {a.score}%
+                              </p>
+                              <p className="pb-1 text-[0.68rem] text-muted-foreground">
+                                Score to job requirements
+                              </p>
+                            </div>
+
+                            {a.breakdown.length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {a.breakdown.slice(0, 4).map((b, i) => (
+                                  <div key={`${b.criterion}-${i}`}>
+                                    <div className="flex items-baseline justify-between gap-3 text-[0.68rem]">
+                                      <span className="truncate text-muted-foreground">
+                                        {b.criterion}
+                                      </span>
+                                      <span className="font-semibold tabular-nums text-foreground">
+                                        {b.score}%
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                                      <div
+                                        className="h-full rounded-full bg-primary"
+                                        style={{
+                                          width: `${Math.min(100, Math.max(0, b.score))}%`,
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-3 rounded-lg border border-dashed border-border p-3 text-center text-[0.7rem] text-muted-foreground">
+                                No criteria breakdown recorded.
+                              </p>
+                            )}
+
+                            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-border/60 pt-2 text-[0.68rem] text-muted-foreground">
+                              <span>
+                                Applied{" "}
+                                <b className="font-semibold text-foreground">
+                                  {formatDisplayDate(a.appliedAt).date}
+                                </b>
+                              </span>
+                              <span>
+                                Source <b className="font-semibold text-foreground">{a.source}</b>
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {activeStage === 1 && (
+                          <>
+                            {iv ? (
+                              <div className="rounded-xl border border-border/70 bg-card p-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                      <Users className="h-4 w-4" />
+                                    </span>
+                                    Interview
+                                  </p>
+                                  <span className="rounded-full bg-gold-soft px-2.5 py-0.5 text-[0.62rem] font-semibold text-gold">
+                                    {iv.status}
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 flex items-center gap-2 rounded-lg bg-primary/[0.045] px-3 py-2.5">
+                                  <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {interviewDate} · {iv.time}
+                                  </p>
+                                </div>
+
+                                <dl className="mt-2 space-y-1.5 text-[0.68rem]">
+                                  <div className="flex justify-between gap-3">
+                                    <dt className="text-muted-foreground">Interviewer</dt>
+                                    <dd className="truncate font-medium text-foreground">
+                                      {iv.interviewer}
+                                    </dd>
+                                  </div>
+                                  <div className="flex justify-between gap-3">
+                                    <dt className="text-muted-foreground">Mode</dt>
+                                    <dd className="font-medium text-foreground">{iv.mode}</dd>
+                                  </div>
+                                  <div className="flex justify-between gap-3">
+                                    <dt className="text-muted-foreground">Location</dt>
+                                    <dd className="truncate font-medium text-foreground">
+                                      {iv.mode === "Virtual"
+                                        ? "Online meeting"
+                                        : (iv.facilityName ?? "To be assigned")}
+                                    </dd>
+                                  </div>
+                                </dl>
+
+                                <div className="mt-3 grid gap-2">
+                                  {iv.mode === "Virtual" && iv.zoomJoinUrl && (
+                                    <Button asChild className="w-full">
+                                      <a href={iv.zoomJoinUrl} target="_blank" rel="noreferrer">
+                                        <Video className="h-4 w-4" /> Join Meeting
+                                      </a>
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    className="w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
+                                    disabled={isInterviewLocked(iv)}
+                                    onClick={() => {
+                                      rescheduleInterview(iv);
+                                      setPreviewApplicant(null);
+                                    }}
+                                  >
+                                    <CalendarPlus className="h-4 w-4" /> Reschedule Interview
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-dashed border-border bg-card p-4 text-center">
+                                <CalendarDays className="mx-auto h-6 w-6 text-muted-foreground/60" />
+                                <p className="mt-2 text-sm font-semibold text-foreground">
+                                  No interview scheduled
+                                </p>
+                                <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                                  {applicantNextStep(a, false)}
+                                </p>
+                                {(a.stage === "Screened" || a.stage === "Accepted") && (
+                                  <Button
+                                    className="mt-3 w-full"
+                                    onClick={() => {
+                                      setPreviewApplicant(null);
+                                      if (a.stage === "Screened") openReview(a);
+                                      else acceptAndSchedule(a);
+                                    }}
+                                  >
+                                    <CalendarPlus className="h-4 w-4" /> Schedule Interview
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {activeStage === 2 && (
+                          <div className="rounded-xl border border-border/70 bg-card p-4">
+                            <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <ClipboardCheck className="h-4 w-4" />
+                              </span>
+                              Assessment results
+                            </p>
+
+                            <div className="mt-3 space-y-2">
+                              {[
+                                {
+                                  label: "Written test",
+                                  score: test?.total ?? null,
+                                  result: test?.result ?? null,
+                                  onView: test
+                                    ? () => {
+                                        setViewingAssessmentTest(test);
+                                        setPreviewApplicant(null);
+                                      }
+                                    : null,
+                                },
+                                {
+                                  label: "Practical test",
+                                  score: practical?.total ?? null,
+                                  result: practical?.result ?? null,
+                                  onView: practical
+                                    ? () => {
+                                        setViewingPractical(practical);
+                                        setPreviewApplicant(null);
+                                      }
+                                    : null,
+                                },
+                                {
+                                  label: "Interview assessment",
+                                  score: assessment?.total ?? null,
+                                  result: assessment?.result ?? null,
+                                  onView: assessment
+                                    ? () => {
+                                        setViewingInterview(assessment);
+                                        setPreviewApplicant(null);
+                                      }
+                                    : null,
+                                },
+                              ].map((row) => (
+                                <div
+                                  key={row.label}
+                                  className="flex items-center gap-2.5 rounded-lg bg-muted/40 px-3 py-2.5"
+                                >
+                                  <span className="min-w-0 flex-1 truncate text-[0.72rem] font-medium text-foreground">
+                                    {row.label}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "shrink-0 text-[0.72rem] font-semibold tabular-nums",
+                                      row.score == null
+                                        ? "text-muted-foreground"
+                                        : row.result === "Failed"
+                                          ? "text-destructive"
+                                          : "text-foreground",
+                                    )}
+                                  >
+                                    {row.score == null ? "Pending" : `${row.score}%`}
+                                  </span>
+                                  {row.onView && (
+                                    <button
+                                      type="button"
+                                      onClick={row.onView}
+                                      className="shrink-0 cursor-pointer text-[0.62rem] font-semibold text-primary hover:underline"
+                                    >
+                                      View
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            {!test && !practical && !assessment && (
+                              <p className="mt-2 text-center text-[0.68rem] text-muted-foreground">
+                                Results appear here once a test is recorded.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {activeStage === 3 && (
+                          <>
+                            {final ? (
+                              <div className="rounded-xl border border-border/70 bg-card p-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gold-soft text-gold">
+                                      <Award className="h-4 w-4" />
+                                    </span>
+                                    Final evaluation
+                                  </p>
+                                  <span
+                                    className={cn(
+                                      "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold",
+                                      final.recommendation === "Recommended for Hire"
+                                        ? "bg-primary/10 text-primary"
+                                        : final.recommendation === "For Another Position"
+                                          ? "bg-gold-soft text-gold"
+                                          : "bg-destructive/10 text-destructive",
+                                    )}
+                                  >
+                                    {final.recommendation}
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 flex items-end justify-between gap-3">
+                                  <p className="font-display text-3xl font-bold leading-none tabular-nums text-foreground">
+                                    {final.overallScoreRounded ?? final.overallScore ?? "—"}
+                                    {final.overallScoreRounded != null || final.overallScore != null
+                                      ? "%"
+                                      : ""}
+                                  </p>
+                                  <p className="pb-1 text-[0.68rem] text-muted-foreground">
+                                    Overall score
+                                  </p>
+                                </div>
+
+                                {final.scoreBreakdown && final.scoreBreakdown.length > 0 && (
+                                  <div className="mt-3 space-y-1.5 border-t border-border/60 pt-2">
+                                    {final.scoreBreakdown
+                                      .filter((b) => b.applied)
+                                      .map((b) => (
+                                        <div
+                                          key={b.key}
+                                          className="flex items-center justify-between gap-3 text-[0.68rem]"
+                                        >
+                                          <span className="text-muted-foreground">{b.label}</span>
+                                          <span className="font-semibold tabular-nums text-foreground">
+                                            {b.score == null ? "—" : `${b.score}%`}
+                                          </span>
+                                        </div>
+                                      ))}
+                                  </div>
+                                )}
+
+                                {final.overallRemarks && (
+                                  <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-[0.68rem] leading-relaxed text-muted-foreground">
+                                    {final.overallRemarks}
+                                  </p>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingFinal(final);
+                                    setPreviewApplicant(null);
+                                  }}
+                                  className="mt-3 flex cursor-pointer items-center gap-1 text-[0.68rem] font-semibold text-primary hover:underline"
+                                >
+                                  Open full evaluation <ArrowRight className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-dashed border-border bg-card p-4 text-center">
+                                <Award className="mx-auto h-6 w-6 text-muted-foreground/60" />
+                                <p className="mt-2 text-sm font-semibold text-foreground">
+                                  No final evaluation yet
+                                </p>
+                                <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                                  {applicantNextStep(a, !!iv)}
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {activeStage === 4 && (
+                          <div className="rounded-xl border border-border/70 bg-card p-4 text-center">
+                            <span
+                              className={cn(
+                                "mx-auto flex h-9 w-9 items-center justify-center rounded-full",
+                                a.stage === "Hired"
+                                  ? "bg-success/15 text-success"
+                                  : "bg-muted text-muted-foreground",
+                              )}
+                            >
+                              <Check className="h-4.5 w-4.5" />
+                            </span>
+                            <p className="mt-2 text-sm font-semibold text-foreground">
+                              {a.stage === "Hired" ? "Hired" : "Not hired yet"}
+                            </p>
+                            <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                              {a.stage === "Hired"
+                                ? "This applicant moved to New Hire Onboarding."
+                                : "The hiring decision is recorded in the final evaluation."}
+                            </p>
+                          </div>
+                        )}
+
+                        {activeStage === stageIndex && (
+                          <div className="flex items-start gap-2.5 rounded-xl border border-gold/30 bg-gold-soft/30 p-3">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gold/15 text-gold">
+                              <Info className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-gold">Next step</p>
+                              <p className="mt-0.5 text-[0.7rem] leading-relaxed text-foreground/80">
+                                {applicantNextStep(a, !!iv)}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {profileTab === "documents" && (
+                      <div className="mt-4 space-y-4 px-4 pb-6">
+                        <div className="rounded-xl border border-border/70 bg-card p-4">
+                          <p className="text-xs font-semibold text-foreground">Contact</p>
+                          <dl className="mt-2 space-y-2 text-[0.72rem]">
+                            {[
+                              { icon: Mail, label: "Email", value: a.email },
+                              { icon: Phone, label: "Phone", value: a.phone },
+                              {
+                                icon: MapPin,
+                                label: "Address",
+                                value: a.address ?? "Not provided",
+                              },
+                              {
+                                icon: CalendarDays,
+                                label: "Applied",
+                                value: formatDisplayDate(a.appliedAt).date,
+                              },
+                              { icon: Briefcase, label: "Source", value: a.source },
+                            ].map((row) => {
+                              const RowIcon = row.icon;
+                              return (
+                                <div key={row.label} className="flex items-start gap-2.5">
+                                  <RowIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                  <dt className="w-16 shrink-0 text-muted-foreground">
+                                    {row.label}
+                                  </dt>
+                                  <dd className="min-w-0 flex-1 break-words font-medium text-foreground">
+                                    {row.value}
+                                  </dd>
+                                </div>
+                              );
+                            })}
+                          </dl>
+                        </div>
+
+                        <div className="rounded-xl border border-border/70 bg-card p-4">
+                          <p className="text-xs font-semibold text-foreground">Documents</p>
+                          <div className="mt-2 flex items-center justify-between gap-3 text-[0.72rem]">
+                            <span className="text-muted-foreground">Supporting documents</span>
+                            <span className="font-semibold text-foreground">
+                              {a.docCount == null ? "—" : a.docCount}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-3 text-[0.72rem]">
+                            <span className="text-muted-foreground">Resume</span>
+                            {a.resumeUrl ? (
+                              <a
+                                href={a.resumeUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                              >
+                                Open <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : (
+                              <span className="font-medium text-muted-foreground">
+                                Not uploaded
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {a.entities.length > 0 && (
+                          <div className="rounded-xl border border-border/70 bg-card p-4">
+                            <p className="text-xs font-semibold text-foreground">Highlights</p>
+                            <dl className="mt-2 space-y-1.5 text-[0.72rem]">
+                              {a.entities.slice(0, 5).map((e, i) => (
+                                <div
+                                  key={`${e.label}-${e.value}-${i}`}
+                                  className="flex items-start justify-between gap-3"
+                                >
+                                  <dt className="shrink-0 text-muted-foreground">{e.label}</dt>
+                                  <dd className="min-w-0 flex-1 truncate text-right font-medium text-foreground">
+                                    {e.value}
+                                  </dd>
+                                </div>
+                              ))}
+                            </dl>
+                            {a.entities.length > 5 && (
+                              <p className="mt-2 text-[0.65rem] text-muted-foreground">
+                                +{a.entities.length - 5} more in the full record
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {a.summary && (
+                          <div className="rounded-xl border border-border/70 bg-card p-4">
+                            <p className="text-xs font-semibold text-foreground">Summary</p>
+                            <p className="mt-1.5 text-[0.72rem] leading-relaxed text-muted-foreground">
+                              {a.summary}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {profileTab === "activity" && (
+                      <div className="mt-4 px-4 pb-6">
+                        <ol className="relative space-y-3 border-l border-border/70 pl-4">
+                          <li className="relative">
+                            <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
+                            <p className="text-xs font-semibold text-foreground">
+                              Application submitted
+                            </p>
+                            <p className="mt-0.5 text-[0.66rem] text-muted-foreground">
+                              {formatDisplayDate(a.appliedAt).date} · {a.source}
+                            </p>
+                          </li>
+                          {previewAudit.slice(0, 8).map((entry) => (
+                            <li key={entry.id} className="relative">
+                              <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-border ring-2 ring-background" />
+                              <p className="text-xs font-semibold text-foreground">
+                                {entry.actionType}
+                              </p>
+                              <p className="mt-0.5 text-[0.66rem] text-muted-foreground">
+                                {entry.date} · {entry.time} · {entry.actorName}
+                              </p>
+                              <p className="mt-1 line-clamp-3 text-[0.68rem] leading-relaxed text-muted-foreground">
+                                {entry.details}
+                              </p>
+                            </li>
+                          ))}
+                        </ol>
+                        {previewAudit.length === 0 && (
+                          <p className="mt-3 rounded-lg border border-dashed border-border p-4 text-center text-[0.7rem] text-muted-foreground">
+                            No recorded activity after the application was submitted.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
         </DialogContent>
       </Dialog>
 
