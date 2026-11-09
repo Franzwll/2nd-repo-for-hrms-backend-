@@ -10,7 +10,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Upload, FileCheck, FileText, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { essApi } from "@/lib/api";
@@ -46,17 +52,25 @@ export function DocumentUploadModal({
       const res = await essApi.uploadDocument({
         title: docName,
         category: docCategory,
-        file_path: `/storage/documents/${file.name}`,
+        file,
+        ...(expiryDate ? { expiry_date: expiryDate } : {}),
       });
 
       const uploadedDoc = {
         id: res?.document?.document_code || `DOC-${Date.now().toString().slice(-3)}`,
+        dbId: res?.document?.document_id,
         title: docName,
         category: docCategory,
         status: "Submitted",
-        date: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+        date: new Date().toLocaleDateString("en-US", {
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+        }),
         size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        downloadUrl: res?.document?.file_path || `/storage/documents/${file.name}`,
+        downloadUrl: res?.document?.document_id
+          ? essApi.documentFileUrl(res.document.document_id)
+          : null,
       };
 
       onUploadSuccess?.(uploadedDoc);

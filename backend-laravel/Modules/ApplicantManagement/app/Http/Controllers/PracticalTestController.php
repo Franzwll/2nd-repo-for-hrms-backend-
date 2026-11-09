@@ -17,7 +17,7 @@ class PracticalTestController extends Controller
     /* GET /api/v1/practical-tests */
     public function index(Request $request): JsonResponse
     {
-        $query = PracticalTest::with('applicant.jobPost.department')
+        $query = PracticalTest::with(['applicant.jobPost.department', 'assessor'])
             ->orderByDesc('test_date')
             ->orderByDesc('practical_test_id');
 
@@ -120,7 +120,7 @@ class PracticalTestController extends Controller
 
         // Helpful-only: practical scores stay in audit log. No bell for intermediate steps.
 
-        return response()->json(new PracticalTestResource($practical->load('applicant.jobPost.department')), 201);
+        return response()->json(new PracticalTestResource($practical->load(['applicant.jobPost.department', 'assessor'])), 201);
     }
 
     /* PUT /api/v1/practical-tests/{practicalTest} */
@@ -140,6 +140,6 @@ class PracticalTestController extends Controller
 
         $model->update($data);
 
-        return response()->json(new PracticalTestResource($model->load('applicant.jobPost.department')));
+        return response()->json(new PracticalTestResource($model->load(['applicant.jobPost.department', 'assessor'])));
     }
 }

@@ -124,7 +124,14 @@ export function AuditLogs() {
     auditLogApi
       .stats()
       .then((res) => setStats(res.data))
-      .catch(() => toast.error("Unable to load audit statistics."));
+      .catch((error) =>
+        toast.error("Unable to load audit statistics.", {
+          description:
+            error instanceof Error && error.message
+              ? error.message
+              : "Check your connection and try again.",
+        }),
+      );
   }, []);
 
   useEffect(() => {
@@ -146,8 +153,15 @@ export function AuditLogs() {
             setEntries(res.data);
             setMeta(res.meta ?? EMPTY_META);
           })
-          .catch(() => {
-            if (!cancelled) toast.error("Unable to load audit logs.");
+          .catch((error) => {
+            if (!cancelled) {
+              toast.error("Unable to load audit logs.", {
+                description:
+                  error instanceof Error && error.message
+                    ? error.message
+                    : "Check your connection and try again.",
+              });
+            }
           })
           .finally(() => {
             if (!cancelled) setLoading(false);

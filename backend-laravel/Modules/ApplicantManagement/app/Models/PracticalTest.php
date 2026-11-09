@@ -37,4 +37,9 @@ class PracticalTest extends Model
     {
         return $this->belongsTo(Applicant::class, 'applicant_id', 'applicant_id');
     }
+
+    public function assessor(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\SystemUser::class, 'assessor_user_id', 'system_user_id');
+    }
 }

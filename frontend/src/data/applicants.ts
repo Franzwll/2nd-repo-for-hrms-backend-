@@ -542,6 +542,7 @@ export type FacilityStatus =
 export type Interview = {
   id: string;
   dbId?: number;
+  applicantId?: string;
   applicant: string;
   position: string;
   date: string;
@@ -657,6 +658,8 @@ export type PracticalTestRow = {
   result: PassFail;
   date: string;
   remarks: string;
+  /** Full name of the SystemUser who assessed the practical test. */
+  assessor?: string | null;
 };
 
 export type FinalRecommendation =

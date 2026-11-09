@@ -15,6 +15,7 @@ class PracticalTestResource extends JsonResource
             'practical_test_id' => $this->practical_test_id,
             'applicant_id'      => $this->applicant_id,
             'assessor_user_id'  => $this->assessor_user_id,
+            'assessor_name'     => $this->assessor?->full_name,
             'task_title'        => $this->task_title,
             'criteria_json'     => $this->criteria_json ?? [],
             'scores_json'       => $this->scores_json ?? [],

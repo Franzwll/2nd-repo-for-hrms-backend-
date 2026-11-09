@@ -3179,6 +3179,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /** Canvas container — used to locate a block's editor control for auto-focus. */
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  /** Explicit confirmation shown after a job post is created or updated. */
+  const [publishedJob, setPublishedJob] = useState<{
+    title: string;
+    department: string;
+    platforms: string[];
+    editing: boolean;
+  } | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -5483,6 +5490,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           ? `“${jobPayload.title}” template updated`
           : `“${jobPayload.title}” published to ${chosen.join(", ")}`,
       );
+      setPublishedJob({
+        title: jobPayload.title,
+        department: jobPayload.department,
+        platforms: chosen,
+        editing: Boolean(editingJobId),
+      });
     } catch (e) {
       console.warn("Could not persist job post to database API:", e);
       const err = e as {
@@ -5502,6 +5515,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             prev.map((j) => (j.id === jobPayload.id ? { ...j, dbId: dupId } : j)),
           );
           toast.success(`“${jobPayload.title}” template updated`);
+          setPublishedJob({
+            title: jobPayload.title,
+            department: jobPayload.department,
+            platforms: chosen,
+            editing: true,
+          });
         } catch (retryErr) {
           console.warn("Retry-as-update for duplicate job post failed:", retryErr);
           toast.error(
@@ -6591,6 +6610,49 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   return (
     <div>
       {confirmDialog}
+      <Dialog open={!!publishedJob} onOpenChange={(o) => !o && setPublishedJob(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">
+              {publishedJob?.editing ? "Template updated" : "Job post published"}
+            </DialogTitle>
+            <DialogDescription>
+              {publishedJob?.editing
+                ? "The job post template was saved and is live on the careers website."
+                : "The job post is now live on the careers website."}
+            </DialogDescription>
+          </DialogHeader>
+          {publishedJob && (
+            <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 px-4 py-3 text-sm">
+              <p>
+                <span className="text-muted-foreground">Title: </span>
+                <span className="font-medium">{publishedJob.title}</span>
+              </p>
+              <p>
+                <span className="text-muted-foreground">Department: </span>
+                <span className="font-medium">{publishedJob.department}</span>
+              </p>
+              <p>
+                <span className="text-muted-foreground">Channel: </span>
+                <span className="font-medium">{publishedJob.platforms.join(", ")}</span>
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublishedJob(null)}>
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setPublishedJob(null);
+                setTab("postings");
+              }}
+            >
+              View postings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <PageHeader
         title="Recruitment Management"
         description="Job post builder with website preview, vacancy status and posting list."

@@ -3,9 +3,9 @@
 namespace Modules\Profile\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
 {
@@ -47,9 +47,50 @@ class ProfileController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the authenticated user's own account fields.
+     *
+     * Only safe, account-owned attributes are accepted here. Employment,
+     * role, status and 201 data must go through their owning modules.
      */
-    public function update(Request $request, $id) {}
+    public function update(Request $request, $id = null)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'full_name' => ['sometimes', 'string', 'max:160'],
+            'email' => [
+                'sometimes',
+                'email',
+                'max:190',
+                Rule::unique('system_users', 'email')->ignore(
+                    $user->system_user_id,
+                    'system_user_id',
+                ),
+            ],
+            'gender' => ['sometimes', 'nullable', Rule::in(['Male', 'Female', 'Other'])],
+        ]);
+
+        if (array_key_exists('full_name', $validated)) {
+            $user->full_name = $validated['full_name'];
+        }
+        if (array_key_exists('email', $validated)) {
+            $user->email = $validated['email'];
+        }
+        if (array_key_exists('gender', $validated)) {
+            $user->gender = $validated['gender'];
+        }
+        $user->save();
+
+        return response()->json([
+            'message' => 'Profile updated successfully.',
+            'user' => [
+                'system_user_id' => $user->system_user_id,
+                'full_name' => $user->full_name,
+                'email' => $user->email,
+                'gender' => $user->gender,
+            ],
+        ]);
+    }
 
     /**
      * Remove the specified resource from storage.

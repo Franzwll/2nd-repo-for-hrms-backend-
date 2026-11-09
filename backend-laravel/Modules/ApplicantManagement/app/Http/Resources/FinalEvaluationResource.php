@@ -15,6 +15,7 @@ class FinalEvaluationResource extends JsonResource
             'final_evaluation_id'      => $this->final_evaluation_id,
             'applicant_id'             => $this->applicant_id,
             'evaluated_by_user_id'     => $this->evaluated_by_user_id,
+            'evaluated_by_name'        => $this->evaluatedBy?->full_name,
             'evaluation_date'          => $this->evaluation_date?->toDateString(),
             // Snapshot of every preceding stage (preview material)
             'screening_score'          => $this->screening_score !== null ? (float) $this->screening_score : null,

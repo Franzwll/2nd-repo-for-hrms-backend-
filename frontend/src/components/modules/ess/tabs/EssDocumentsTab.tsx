@@ -105,8 +105,14 @@ export function EssDocumentsTab() {
   };
 
   const handleDownloadDoc = (doc: any) => {
-    if (doc.downloadUrl && doc.downloadUrl !== "#") {
-      window.open(doc.downloadUrl, "_blank");
+    const url =
+      doc.dbId != null
+        ? essApi.documentFileUrl(doc.dbId)
+        : doc.downloadUrl && doc.downloadUrl !== "#"
+          ? doc.downloadUrl
+          : null;
+    if (url) {
+      window.open(url, "_blank");
       toast.success(`Opening ${doc.title}...`);
       return;
     }

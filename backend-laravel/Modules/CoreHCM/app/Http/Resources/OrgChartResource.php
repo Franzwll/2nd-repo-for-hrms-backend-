@@ -14,11 +14,18 @@ class OrgChartResource extends JsonResource
             'code' => $this->code,
             'name' => $this->name,
             'head' => $this->whenLoaded('head', function () {
-                return $this->head ? [
-                    'employee_id' => $this->head->employee_id,
-                    'full_name' => $this->head->full_name,
-                    'position_title' => $this->head->position?->title,
-                ] : null;
+                $head = $this->head;
+
+                // A separated employee must never be presented as a head.
+                if (! $head || in_array($head->status, ['Resigned', 'Terminated', 'Retired'], true)) {
+                    return null;
+                }
+
+                return [
+                    'employee_id' => $head->employee_id,
+                    'full_name' => $head->full_name,
+                    'position_title' => $head->position?->title,
+                ];
             }),
             'headcount' => $this->positions->sum('headcount'),
             'filled' => $this->positions->sum('filled_count'),

@@ -109,6 +109,7 @@ function HeaderActions({ children }: { children: ReactNode }) {
 }
 import {
   auditLogApi,
+  ermApi,
   hcmApi,
   requisitionsApi,
   type ApiAuditLog,
@@ -557,8 +558,12 @@ function toUiSalaryGrade(g: ApiSalaryGrade): SalaryGrade {
   };
 }
 
+const SEPARATED_STATUSES = ["Resigned", "Terminated", "Retired"];
+
 function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode {
-  const gm = employees.find((e) => e.position_title === "General Manager");
+  // Exited employees must not appear as department heads or members.
+  const activeEmployees = employees.filter((e) => !SEPARATED_STATUSES.includes(e.status));
+  const gm = activeEmployees.find((e) => e.position_title === "General Manager");
   const root: OrgNode = {
     name: gm?.full_name || "Ricardo Villanueva",
     title: gm?.position_title || "General Manager",
@@ -567,7 +572,7 @@ function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode
     children: [],
   };
   for (const node of orgNodes) {
-    const staff = employees.filter((e) => e.department_id === node.department_id);
+    const staff = activeEmployees.filter((e) => e.department_id === node.department_id);
     const head = node.head || staff.find((e) => e.position_title.toLowerCase().includes("manager") || e.position_title.toLowerCase().includes("director"));
     const headName = head?.full_name || (node.code === "DEP-HR" ? "Juan Dela Cruz" : node.name);
     const headTitle = head?.position_title || (node.code === "DEP-HR" ? "HR & Administration Manager" : `${node.name} Head`);
@@ -1519,18 +1524,12 @@ function EmployeeListManager({
       return;
     }
     try {
+      // Core HCM owns the employment master only.
       await hcmApi.employees.update(dbId, {
         first_name: editEmpForm.firstName,
         middle_name: editEmpForm.middleName || null,
         last_name: editEmpForm.lastName,
         email: editEmpForm.email,
-        personal_email: editEmpForm.personalEmail || null,
-        phone: editEmpForm.phone || null,
-        address: editEmpForm.address || null,
-        birth_date: editEmpForm.birthDate || null,
-        gender: editEmpForm.gender || null,
-        civil_status: editEmpForm.civilStatus || null,
-        nationality: editEmpForm.nationality || null,
         position_id: pos.position_id,
         department_id: dept.department_id,
         supervisor_employee_id: sup?.employee_id ?? null,
@@ -1539,22 +1538,46 @@ function EmployeeListManager({
         status: editEmpForm.status,
         salary_grade_id: sg?.salary_grade_id ?? null,
         salary_step: editEmpForm.salaryStep || null,
+      });
+
+      // Personal / 201 fields are owned by Employee Records (ERM).
+      await ermApi.employees.updateDossier(dbId, {
+        personal_email: editEmpForm.personalEmail || null,
+        phone: editEmpForm.phone || null,
+        address: editEmpForm.address || null,
+        birth_date: editEmpForm.birthDate || null,
+        gender: editEmpForm.gender || null,
+        civil_status: editEmpForm.civilStatus || null,
+        nationality: editEmpForm.nationality || null,
         sss_number: editEmpForm.sssNumber || null,
         philhealth_number: editEmpForm.philhealthNumber || null,
         pagibig_number: editEmpForm.pagibigNumber || null,
         tin_number: editEmpForm.tinNumber || null,
-        emergency_contacts: editEmpForm.emergencyName
-          ? [
-            {
-              name: editEmpForm.emergencyName,
-              relationship: editEmpForm.emergencyRelation || null,
-              phone: editEmpForm.emergencyPhone || null,
-              address: null,
-              is_primary: 1,
-            },
-          ]
-          : [],
       });
+
+      // Emergency contacts have their own ERM endpoints.
+      const { contacts } = await ermApi.employees.contacts(dbId);
+      const primaryContact = contacts.find((c) => c.is_primary) ?? contacts[0];
+      if (editEmpForm.emergencyName) {
+        const contactPayload = {
+          name: editEmpForm.emergencyName,
+          relationship: editEmpForm.emergencyRelation || null,
+          phone: editEmpForm.emergencyPhone || null,
+          address: null,
+          is_primary: true,
+        };
+        if (primaryContact) {
+          await ermApi.employees.updateContact(
+            dbId,
+            primaryContact.emergency_contact_id,
+            contactPayload,
+          );
+        } else {
+          await ermApi.employees.addContact(dbId, contactPayload);
+        }
+      } else if (primaryContact) {
+        await ermApi.employees.removeContact(dbId, primaryContact.emergency_contact_id);
+      }
       toast.success(`${editEmpForm.firstName} ${editEmpForm.lastName}'s profile updated.`);
       await refreshHcm();
     } catch (err) {

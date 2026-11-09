@@ -219,6 +219,16 @@ class EmployeeController extends Controller
                 $request->string('notes') ?: ('Regularized via performance evaluation (' . $recommendation->evaluation_score . '%).'),
                 'regularize',
             );
+
+            // Keep the onboarding pipeline in step: Core HCM regularization is
+            // the authoritative signal, so the hire must leave the
+            // "Awaiting Evaluation" state instead of staying on Probationary.
+            \Modules\NewHireOnboarding\Models\NewHire::where('employee_id', $employee->employee_id)
+                ->update([
+                    'stage' => 'Regular',
+                    'evaluation_requested_at' => null,
+                    'completed_at' => now(),
+                ]);
         });
 
         $this->markRecommendationProcessed($recommendation);

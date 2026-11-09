@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/select";
 import type { Role } from "@/lib/nav";
 import { getUser, setUser } from "@/lib/auth";
-import { essApi, profileApi } from "@/lib/api";
+import { essApi, ermApi, profileApi } from "@/lib/api";
 
 // Preset profile images — defaults picked by gender, plus the full gallery
 // the user can choose from (Choose preset dialog).
@@ -279,6 +279,8 @@ export function ProfilePage({ role }: { role: Role }) {
   const [profile, setProfile] = useState<ProfileState>(initialProfile);
   const [draft, setDraft] = useState<ProfileState>(initialProfile);
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [employeeDbId, setEmployeeDbId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("profile");
   // Start from the saved server URL so the uploaded JPG survives reloads
   // (null = no photo yet, show the chosen preset instead).
@@ -341,6 +343,7 @@ export function ProfilePage({ role }: { role: Role }) {
         .then((ov) => {
           if (!ov?.employee) return;
           const employee = ov.employee;
+          setEmployeeDbId(employee.id ?? null);
           const emergency = employee.emergency_contacts ?? [];
           const primary = emergency[0];
           const secondary = emergency[1];
@@ -405,6 +408,91 @@ export function ProfilePage({ role }: { role: Role }) {
 
   function set<K extends keyof ProfileState>(key: K, v: ProfileState[K]) {
     setDraft((d) => ({ ...d, [key]: v }));
+  }
+
+  /** Persist the draft through the owning module (ERM dossier for linked
+   *  employees, profile endpoint for account-only users). */
+  async function saveProfile(successMessage: string) {
+    const next = draft;
+    try {
+      setSaving(true);
+
+      if (employeeDbId != null) {
+        await ermApi.employees.updateDossier(employeeDbId, {
+          personal_email: next.personalEmail || null,
+          phone: next.phone || null,
+          address: next.currentAddress || null,
+          civil_status: next.civilStatus || null,
+          gender: next.gender ?? null,
+          sss_number: next.sssNumber || null,
+          philhealth_number: next.philHealthNumber || null,
+          pagibig_number: next.pagIbigNumber || null,
+          tin_number: next.tinNumber || null,
+        });
+
+        const { contacts } = await ermApi.employees.contacts(employeeDbId);
+        const primary = contacts.find((c) => c.is_primary) ?? contacts[0];
+        const secondary = contacts.find((c) => c !== primary);
+
+        const upsertContact = async (
+          existing: (typeof contacts)[number] | undefined,
+          data: { name: string; relationship: string; phone: string; address?: string },
+          isPrimary: boolean,
+        ) => {
+          if (!data.name) return;
+          const payload = {
+            name: data.name,
+            relationship: data.relationship || null,
+            phone: data.phone || null,
+            address: data.address || null,
+            is_primary: isPrimary,
+          };
+          if (existing) {
+            await ermApi.employees.updateContact(
+              employeeDbId,
+              existing.emergency_contact_id,
+              payload,
+            );
+          } else {
+            await ermApi.employees.addContact(employeeDbId, payload);
+          }
+        };
+
+        await upsertContact(
+          primary,
+          {
+            name: next.emergencyName,
+            relationship: next.emergencyRelationship,
+            phone: next.emergencyPhone,
+            address: next.emergencyAddress,
+          },
+          true,
+        );
+        await upsertContact(
+          secondary,
+          {
+            name: next.emergencySecondaryName,
+            relationship: next.emergencySecondaryRelationship,
+            phone: next.emergencySecondaryPhone,
+          },
+          false,
+        );
+      } else {
+        await profileApi.update({
+          full_name: next.fullName,
+          email: next.email,
+          gender: next.gender ?? null,
+        });
+      }
+
+      setProfile(next);
+      setEditing(false);
+      toast.success(successMessage);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save profile changes.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function onPickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
@@ -750,13 +838,10 @@ export function ProfilePage({ role }: { role: Role }) {
                             </Button>
                             <Button
                               className="cursor-pointer shadow-sm bg-primary hover:bg-primary/90"
-                              onClick={() => {
-                                setProfile(draft);
-                                setEditing(false);
-                                toast.success("Profile details saved successfully");
-                              }}
+                              disabled={saving}
+                              onClick={() => void saveProfile("Profile details saved successfully")}
                             >
-                              Save Changes
+                              {saving ? "Saving..." : "Save Changes"}
                             </Button>
                           </>
                         ) : (
@@ -1292,13 +1377,10 @@ export function ProfilePage({ role }: { role: Role }) {
                           </Button>
                           <Button
                             className="cursor-pointer shadow-sm bg-primary hover:bg-primary/90"
-                            onClick={() => {
-                              setProfile(draft);
-                              setEditing(false);
-                              toast.success("Employee 201 record saved successfully");
-                            }}
+                            disabled={saving}
+                            onClick={() => void saveProfile("Employee 201 record saved successfully")}
                           >
-                            Save Changes
+                            {saving ? "Saving..." : "Save Changes"}
                           </Button>
                         </>
                       ) : (

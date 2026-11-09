@@ -105,12 +105,27 @@ class SystemUser extends Authenticatable
 
     public function isSuperAdmin(): bool
     {
-        // Prefer the explicit role flag; fall back to the legacy role_id = 1
-        // convention so existing sessions/records keep behaving correctly.
-        if ($this->relationLoaded('role') && $this->role) {
-            return (bool) $this->role->is_super_admin;
+        // Prefer the explicit role flag. Load the relation when it is missing:
+        // the old implementation only checked role_id = 1 unless the relation
+        // happened to be eager-loaded, so a Super Admin role with any other id
+        // was denied by PermissionMiddleware.
+        if (! $this->relationLoaded('role')) {
+            $this->loadMissing('role');
+        }
+        $role = $this->role;
+
+        if ($role) {
+            if ((bool) $role->is_super_admin) {
+                return true;
+            }
+
+            // Legacy databases created before the is_super_admin column existed.
+            if ($role->getAttribute('is_super_admin') === null && $role->role_name === 'Super Admin') {
+                return true;
+            }
         }
 
+        // Legacy convention: role_id 1 has always been the Super Admin role.
         return (int) $this->role_id === 1;
     }
 

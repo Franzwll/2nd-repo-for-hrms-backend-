@@ -41,9 +41,53 @@ class EssPortalController extends Controller
      */
     private function resolveBaseSalary(?Employee $employee): float
     {
-        $grade = $employee?->salaryGrade ?? $employee?->position?->salaryGrade;
-        $min = $grade?->min_salary;
-        return $min !== null ? (float) $min : 0.0;
+        return $this->resolveSalaryBasis($employee)[0];
+    }
+
+    /**
+     * Resolve the employee's pay basis plus where it came from.
+     *
+     * Order: the employee's salary grade -> the position's grade -> the latest
+     * released payroll record (gross or its basic-pay item). Only returns 0
+     * when none of those exist, so a linked payroll history still drives the
+     * ESS payslip even if the grade was never assigned.
+     *
+     * @return array{0: float, 1: string}
+     */
+    private function resolveSalaryBasis(?Employee $employee): array
+    {
+        if (! $employee) {
+            return [0.0, 'none'];
+        }
+
+        $grade = $employee->salaryGrade ?? $employee->position?->salaryGrade;
+        if ($grade?->min_salary !== null) {
+            return [(float) $grade->min_salary, $employee->salaryGrade ? 'grade' : 'position'];
+        }
+
+        $released = DB::table('payroll_records')
+            ->where('employee_id', $employee->employee_id)
+            ->where('status', 'Released')
+            ->orderByDesc('pay_period_end')
+            ->first();
+
+        if ($released && (float) $released->gross_pay > 0) {
+            return [(float) $released->gross_pay, 'payroll'];
+        }
+
+        $basic = DB::table('payroll_items')
+            ->join('payroll_records', 'payroll_records.payroll_record_id', '=', 'payroll_items.payroll_record_id')
+            ->where('payroll_records.employee_id', $employee->employee_id)
+            ->where('payroll_items.item_type', 'Earning')
+            ->where('payroll_items.label', 'like', '%basic%')
+            ->orderByDesc('payroll_records.pay_period_end')
+            ->value('payroll_items.amount');
+
+        if ($basic !== null && (float) $basic > 0) {
+            return [(float) $basic, 'payroll'];
+        }
+
+        return [0.0, 'none'];
     }
 
     /**
@@ -961,7 +1005,7 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'Employee not found.'], 404);
         }
 
-        $baseSalary = $this->resolveBaseSalary($employee);
+        [$baseSalary, $baseSalarySource] = $this->resolveSalaryBasis($employee);
         // Contributions are only estimated when there is a real salary basis;
         // an employee without a salary grade must not see fabricated negative net pay.
         $sss = $baseSalary > 0 ? round($baseSalary * 0.045, 2) : 0.0;
@@ -1060,6 +1104,7 @@ class EssPortalController extends Controller
                 'tin' => $employee->tin_number ?? '',
             ],
             'baseSalary' => $baseSalary,
+            'base_salary_source' => $baseSalarySource,
             'allowances' => $allowances,
             'gross' => $gross,
             'net' => $net,
@@ -1150,6 +1195,7 @@ class EssPortalController extends Controller
                 if (str_starts_with($relative, 'storage/')) {
                     $relative = substr($relative, strlen('storage/'));
                 }
+                $hasFile = $relative !== '' && Storage::disk('public')->exists($relative);
                 return [
                     'id' => $doc->document_id,
                     'code' => $doc->document_code,
@@ -1161,9 +1207,13 @@ class EssPortalController extends Controller
                     'expiryDate' => $doc->expiry_date ? Carbon::parse($doc->expiry_date)->format('M d, Y') : 'No Expiry',
                     'fileSize' => $doc->file_size_bytes ? round($doc->file_size_bytes / 1048576, 1) . ' MB' : '—',
                     'fileType' => $doc->file_path ? 'PDF Document' : '—',
-                    'downloadUrl' => $doc->file_path,
+                    // Only advertise a URL when the bytes actually exist; the
+                    // authenticated file endpoint streams them with the token.
+                    'downloadUrl' => $hasFile
+                        ? url('/api/v1/ess/my-documents/' . $doc->document_id . '/file')
+                        : null,
                     // True only when real bytes exist on disk (new uploads).
-                    'has_file' => $relative !== '' && Storage::disk('public')->exists($relative),
+                    'has_file' => $hasFile,
                 ];
             }),
         ]);

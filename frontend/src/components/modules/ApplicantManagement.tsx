@@ -566,6 +566,7 @@ function transformApiInterview(i: ApiInterview): Interview {
   return {
     id: i.interview_code || `INT-${i.interview_id}`,
     dbId: i.interview_id,
+    applicantId: i.applicant?.applicant_code ?? `APP-${i.applicant_id}`,
     applicant: i.applicant?.name ?? `Applicant #${i.applicant_id}`,
     position: i.applicant?.position || "Front Desk Receptionist",
     date: i.scheduled_date,
@@ -638,6 +639,7 @@ function transformApiPracticalTest(a: ApiPracticalTest): PracticalTestRow {
     result: a.result,
     date: a.test_date,
     remarks: a.remarks ?? "",
+    assessor: a.assessor_name ?? null,
   };
 }
 
@@ -684,6 +686,7 @@ function transformApiFinalEvaluation(f: ApiFinalEvaluation): FinalEvaluationRow 
     recommendedPositionTitle: f.recommended_position_title ?? null,
     overallRemarks: f.overall_remarks ?? "",
     date: f.evaluation_date,
+    evaluatedBy: f.evaluated_by_name ?? null,
     evaluatedById: f.evaluated_by_user_id ?? null,
   };
 }
@@ -11940,6 +11943,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     ? (rows.find((r) => r.id === viewingApplicant.id) ?? viewingApplicant)
     : null;
 
+  /** Latest actor per applicant for the compact "Processed by" column. The
+   *  list APIs return newest-first, so the first hit wins. */
+  const processedByApplicant = useMemo(() => {
+    const map = new Map<string, { interviewer?: string; assessor?: string; evaluator?: string }>();
+    const entry = (id: string) => {
+      let current = map.get(id);
+      if (!current) {
+        current = {};
+        map.set(id, current);
+      }
+      return current;
+    };
+    for (const i of interviews) {
+      if (i.applicantId && i.interviewer) entry(i.applicantId).interviewer ??= i.interviewer;
+    }
+    for (const p of practicalTests) {
+      if (p.applicantId && p.assessor) entry(p.applicantId).assessor ??= p.assessor;
+    }
+    for (const f of finalEvaluations) {
+      if (f.applicantId && f.evaluatedBy) entry(f.applicantId).evaluator ??= f.evaluatedBy;
+    }
+    return map;
+  }, [interviews, practicalTests, finalEvaluations]);
+
   return (
     <div>
       {gateDialog}
@@ -12609,7 +12636,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       {/* `min-w` keeps every column readable on phones: the shared
                           Table wrapper already scrolls horizontally, so the table
                           slides instead of squeezing the labels together. */}
-                      <Table className="table-fixed text-xs min-w-[840px]">
+                      <Table className="table-fixed text-xs min-w-[980px]">
                         <TableHeader>
                           <TableRow>
                             <SortHead
@@ -12664,11 +12691,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="stage"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[9%]"
+                              className="w-[8%]"
                             >
                               Stage
                             </SortHead>
-                            <TableHead className="w-[16%] text-right">Actions</TableHead>
+                            <TableHead className="hidden w-[14%] lg:table-cell">
+                              Processed by
+                            </TableHead>
+                            <TableHead className="w-[12%] text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -12702,6 +12732,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   </TableCell>
                                   <TableCell className="max-w-0 truncate">
                                     <Skeleton className="h-4 w-20" />
+                                  </TableCell>
+                                  <TableCell className="hidden lg:table-cell">
+                                    <Skeleton className="h-4 w-28" />
                                   </TableCell>
                                   <TableCell>
                                     <Skeleton className="h-7 w-24" />
@@ -12781,6 +12814,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   </TableCell>
                                   <TableCell className="max-w-0 truncate" title={a.stage}>
                                     {a.stage}
+                                  </TableCell>
+                                  <TableCell className="hidden max-w-0 lg:table-cell">
+                                    {(() => {
+                                      const actors = processedByApplicant.get(a.id);
+                                      if (!actors) {
+                                        return <span className="text-muted-foreground">—</span>;
+                                      }
+                                      return (
+                                        <div className="space-y-0.5 text-[0.7rem] leading-tight">
+                                          <p className="truncate" title={actors.interviewer ?? undefined}>
+                                            <span className="text-muted-foreground">Interview: </span>
+                                            {actors.interviewer ?? "—"}
+                                          </p>
+                                          <p className="truncate" title={actors.assessor ?? undefined}>
+                                            <span className="text-muted-foreground">Practical: </span>
+                                            {actors.assessor ?? "—"}
+                                          </p>
+                                          <p className="truncate" title={actors.evaluator ?? undefined}>
+                                            <span className="text-muted-foreground">Final: </span>
+                                            {actors.evaluator ?? "—"}
+                                          </p>
+                                        </div>
+                                      );
+                                    })()}
                                   </TableCell>
                                   <TableCell>
                                     <div className="flex justify-end gap-1.5">
@@ -17917,7 +17974,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <DialogHeader>
                     <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                     <DialogDescription>
-                      {row.name} — {row.position} · evaluated {row.date}. The recorded decision
+                      {row.name} — {row.position} · evaluated {row.date}
+                      {row.evaluatedBy ? ` by ${row.evaluatedBy}` : ""}. The recorded decision
                       is locked; the applicant's offer reply is recorded on the right.
                     </DialogDescription>
                   </DialogHeader>
@@ -18422,6 +18480,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     {viewingPractical.result}
                   </Badge>
                 </div>
+                {viewingPractical.assessor && (
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium">Assessed by:</span>{" "}
+                    {viewingPractical.assessor}
+                  </p>
+                )}
                 <div className="overflow-hidden rounded-md border border-border">
                   <div className="grid grid-cols-[1fr_64px_1fr] gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
                     <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

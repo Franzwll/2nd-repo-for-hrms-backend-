@@ -754,15 +754,53 @@ function buildPdfBlob(
             ...Array.from({ length: Math.max(report.columns.length - 1, 0) }, () => ""),
           ],
         ];
+  /* Column widths: honour the report's percentage widths so long fields such
+     as Audit Log "Details" wrap into readable lines instead of one character
+     per line. Falls back to short-field defaults, then to equal widths. */
+  const parsedWidths: (number | null)[] = report.columns.map((c) => {
+    const match = String(c.width ?? "").match(/^(\d+(?:\.\d+)?)%$/);
+    return match ? Number(match[1]) : null;
+  });
+  const hasExplicitWidths = parsedWidths.every((w) => w !== null);
+  const totalPct = parsedWidths.reduce<number>((sum, w) => sum + (w ?? 0), 0);
+  let columnWidths: number[] = [];
+  if (hasExplicitWidths && totalPct > 0) {
+    const scale = 100 / totalPct;
+    columnWidths = parsedWidths.map((w) => (contentW * (w as number) * scale) / 100);
+  } else {
+    const SHORT_KEYS = /^(id|no|code|date|status|action|module|role|type|level|email|time)$/i;
+    const fixedWidth = 20;
+    const shortIndexes = report.columns
+      .map((c, i) => (SHORT_KEYS.test(c.key) ? i : -1))
+      .filter((i) => i >= 0);
+    const longIndexes = report.columns.map((_, i) => i).filter((i) => !shortIndexes.includes(i));
+    const remaining = contentW - shortIndexes.length * fixedWidth;
+    const perLong = longIndexes.length > 0 ? remaining / longIndexes.length : 0;
+    columnWidths = report.columns.map((_, i) =>
+      shortIndexes.includes(i) ? fixedWidth : Math.max(perLong, 12),
+    );
+  }
+  const minColumnWidth = Math.min(...columnWidths);
+  if (!Number.isFinite(minColumnWidth) || minColumnWidth < 12) {
+    columnWidths = report.columns.map(() => contentW / report.columns.length);
+  }
+  const columnStyles: Record<number, { cellWidth: number }> = {};
+  columnWidths.forEach((w, i) => {
+    columnStyles[i] = { cellWidth: w };
+  });
+  const dense = report.columns.length >= 8;
   autoTable(doc, {
     head,
     body,
     startY: y,
     margin: { left: M, right: M },
+    tableWidth: contentW,
+    columnStyles,
     styles: {
       font: "times",
-      fontSize: 8.5,
-      cellPadding: 2,
+      fontSize: dense ? 7.5 : 8.5,
+      cellPadding: dense ? 1.5 : 2,
+      overflow: "linebreak",
       textColor: INK,
       lineColor: [184, 178, 168],
       lineWidth: 0.25,

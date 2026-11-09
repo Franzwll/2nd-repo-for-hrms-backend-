@@ -51,6 +51,11 @@ class FinalEvaluation extends Model
         return $this->belongsTo(Applicant::class, 'applicant_id', 'applicant_id');
     }
 
+    public function evaluatedBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\SystemUser::class, 'evaluated_by_user_id', 'system_user_id');
+    }
+
     public function recommendedJobPost(): BelongsTo
     {
         return $this->belongsTo(

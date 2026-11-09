@@ -467,6 +467,7 @@ export interface ApiPracticalTest {
   practical_test_id: number;
   applicant_id: number;
   assessor_user_id: number | null;
+  assessor_name?: string | null;
   task_title: string;
   criteria_json: { criterion: string; max_points: number }[];
   scores_json: Record<string, number>;
@@ -497,6 +498,7 @@ export interface ApiFinalEvaluation {
   final_evaluation_id: number;
   applicant_id: number;
   evaluated_by_user_id: number | null;
+  evaluated_by_name?: string | null;
   evaluation_date: string;
   screening_score: number | null;
   screening_status: string | null;
@@ -3007,13 +3009,25 @@ export const essApi = {
         fileSize: string;
         fileType: string;
         downloadUrl: string | null;
+        has_file?: boolean;
       }[];
     }>("/ess/my-documents"),
-  uploadDocument: (data: { title: string; category: string; file_path?: string }) =>
-    request<{ message: string; document: any }>("/ess/my-documents/upload", {
+  uploadDocument: (data: {
+    title: string;
+    category: string;
+    file?: File;
+    expiry_date?: string;
+  }) => {
+    const formData = new FormData();
+    formData.append("title", data.title);
+    formData.append("category", data.category);
+    if (data.expiry_date) formData.append("expiry_date", data.expiry_date);
+    if (data.file) formData.append("file", data.file);
+    return request<{ message: string; document: any }>("/ess/my-documents/upload", {
       method: "POST",
-      body: JSON.stringify(data),
-    }),
+      body: formData,
+    });
+  },
   myPerformance: () =>
     request<{
       employee: {
@@ -3753,6 +3767,11 @@ export const searchApi = {
 /* ========================================================================= */
 
 export const profileApi = {
+  update: (data: { full_name?: string; email?: string; gender?: string | null }) =>
+    request<{ message: string; user: Record<string, any> }>("/profile", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
   uploadPhoto: (file: File) => {
     const formData = new FormData();
     formData.append("photo", file);

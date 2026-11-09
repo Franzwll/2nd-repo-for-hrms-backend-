@@ -263,6 +263,15 @@ export function EssPayrollTab() {
 
   return (
     <div className="space-y-6">
+      {baseSalary <= 0 && !latestPayslip && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            No salary grade or released payroll record is on file yet. Contribution estimates will
+            appear once HR assigns your salary grade — please contact HR.
+          </p>
+        </div>
+      )}
       {/* Top row: Statutory (left) + Take-home pay calculation (right) */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Statutory */}
@@ -324,7 +333,11 @@ export function EssPayrollTab() {
                           </button>
                         </>
                       ) : (
-                        <span>{row.detail}</span>
+                        <span>
+                          {row.detail}
+                          {row.detail ? " · " : ""}
+                          Not on file
+                        </span>
                       )}
                     </div>
                   </div>
@@ -792,9 +805,7 @@ export function EssPayrollTab() {
         period={selectedPayslipPeriod}
         netPay={selectedPayslipNet}
         payslip={selectedPayslip}
-        onInquiryClick={() =>
-          navigate({ to: payrollRequestTo, params: { module: "payroll" } })
-        }
+        onInquiryClick={() => navigate({ to: payrollRequestTo, params: { module: "payroll" } })}
       />
     </div>
   );

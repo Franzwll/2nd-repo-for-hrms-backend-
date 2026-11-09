@@ -31,7 +31,7 @@ class FinalEvaluationController extends Controller
         // treated as a declined applicant before the list is returned.
         OfferService::expireOverdue();
 
-        $query = FinalEvaluation::with(['applicant.jobPost.department', 'recommendedJobPost'])
+        $query = FinalEvaluation::with(['applicant.jobPost.department', 'recommendedJobPost', 'evaluatedBy'])
             ->orderByDesc('evaluation_date')
             ->orderByDesc('final_evaluation_id');
 
@@ -283,7 +283,7 @@ class FinalEvaluationController extends Controller
             onlyRoleNames: ['Admin', 'Super Admin']
         );
 
-        return response()->json(new FinalEvaluationResource($final->load(['applicant.jobPost.department', 'recommendedJobPost'])), 201);
+        return response()->json(new FinalEvaluationResource($final->load(['applicant.jobPost.department', 'recommendedJobPost', 'evaluatedBy'])), 201);
     }
 
     /* POST /api/v1/applicants/{applicant}/offer                              */
@@ -557,7 +557,7 @@ class FinalEvaluationController extends Controller
 
         $model->update($data);
 
-        return response()->json(new FinalEvaluationResource($model->load(['applicant.jobPost.department', 'recommendedJobPost'])));
+        return response()->json(new FinalEvaluationResource($model->load(['applicant.jobPost.department', 'recommendedJobPost', 'evaluatedBy'])));
     }
 
     /**

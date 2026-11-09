@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\SystemRole;
 use App\Models\SystemUser;
 use Modules\Settings\Models\SystemSetting;
 use Tests\Concerns\RefreshesSeededDatabase;
@@ -62,6 +63,35 @@ class AccessControlTest extends TestCase
 
         $this->getJson('/api/v1/ess/admin/requests', $this->authHeaders($token))->assertStatus(403);
         $this->getJson('/api/v1/ess/admin/audit-logs', $this->authHeaders($token))->assertStatus(403);
+    }
+
+    public function test_super_admin_flag_is_honored_when_role_id_is_not_legacy_one(): void
+    {
+        $role = SystemRole::create([
+            'role_name' => 'Alternate Super Admin',
+            'description' => 'Regression fixture for the explicit super admin flag.',
+            'is_super_admin' => true,
+            'is_protected' => true,
+        ]);
+
+        $user = SystemUser::create([
+            'username' => 'alt-super',
+            'email' => 'alt-super@example.test',
+            'password_hash' => bcrypt('Secret@123'),
+            'full_name' => 'Alternate Super Admin',
+            'role_id' => $role->role_id,
+            'status' => 'Active',
+        ]);
+
+        // Load a fresh instance so the role relation is NOT eager-loaded, which
+        // is exactly how PermissionMiddleware receives the authenticated user.
+        $fresh = SystemUser::findOrFail($user->system_user_id);
+        $this->assertTrue($fresh->isSuperAdmin());
+
+        $this->getJson(
+            '/api/v1/audit-logs/stats',
+            $this->authHeaders($fresh->createToken('alt-super-token')->plainTextToken),
+        )->assertOk();
     }
 
     public function test_employee_role_cannot_reset_default_password(): void
