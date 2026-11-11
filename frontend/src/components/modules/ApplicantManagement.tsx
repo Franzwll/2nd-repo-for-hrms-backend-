@@ -30,8 +30,6 @@ import {
   Download,
   Eye,
   ExternalLink,
-  FileCheck,
-  FileCheck2,
   FileText,
   Flag,
   Lock,
@@ -58,11 +56,11 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sliders,
+  Sparkles,
   Star,
   Target,
   Trash2,
   Trophy,
-  Upload,
   User,
   UserPlus,
   Users,
@@ -139,6 +137,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -1535,26 +1534,26 @@ function screeningVerdictCopy(
   if (status === "fit" && score >= 95)
     return {
       title: "Perfect for the job!",
-      subtitle: "All key requirements are matched. This applicant meets the job qualifications.",
+      subtitle: "All key requirements matched.",
     };
   if (status === "fit")
     return {
       title: "Strong match with the requirements",
-      subtitle: "for this position.",
+      subtitle: "",
     };
   if (status === "other-role")
     return {
       title: "Better fit for another role",
-      subtitle: "Some requirements match, but the profile aligns more strongly elsewhere.",
+      subtitle: "Profile aligns more strongly elsewhere.",
     };
   if (status === "credential")
     return {
       title: "Needs credential review",
-      subtitle: "A required certification or credential could not be verified automatically.",
+      subtitle: "A required credential could not be verified automatically.",
     };
   return {
     title: "Below the role requirements",
-    subtitle: "Key requirements are missing for this position.",
+    subtitle: "Key requirements are missing.",
   };
 }
 
@@ -1589,34 +1588,6 @@ function screeningVerdictTone(
     iconWrap: "bg-destructive text-destructive-foreground",
     title: "text-destructive",
   };
-}
-
-/** Green verdict banner beside the donut ("Strong match…", "Perfect for the job!"). */
-export function ScreeningVerdictBanner({
-  status,
-  score,
-}: {
-  status: ApplicantStatus;
-  score: number;
-}) {
-  const copy = screeningVerdictCopy(status, score);
-  const tone = screeningVerdictTone(status, score);
-  return (
-    <div className={cn("flex items-start gap-3 rounded-lg border p-3.5", tone.bar)}>
-      <span
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          tone.iconWrap,
-        )}
-      >
-        <Check className="h-4 w-4" strokeWidth={3} />
-      </span>
-      <div className="min-w-0">
-        <p className={cn("text-sm font-semibold leading-snug", tone.title)}>{copy.title}</p>
-        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{copy.subtitle}</p>
-      </div>
-    </div>
-  );
 }
 
 type ScreeningTone = "success" | "destructive" | "primary" | "gold";
@@ -1780,7 +1751,93 @@ export function ScreeningStatTiles({
   );
 }
 
-/** Single-row summary strip for the review dialog: donut + verdict + 4 tiles. */
+/** Full-profile screening summary: score ring, verdict and the four facts HR
+ *  scans first, in one calm card instead of a stack of tiles. */
+export function ScreeningResultHero({
+  status,
+  score,
+  matchedCount,
+  missingCount,
+  yearsExperience,
+  educationLabel,
+}: {
+  status: ApplicantStatus;
+  score: number;
+  matchedCount: number;
+  missingCount: number;
+  yearsExperience: number | null;
+  educationLabel: string;
+}) {
+  const copy = screeningVerdictCopy(status, score);
+  const tone = screeningVerdictTone(status, score);
+  const facts = [
+    {
+      icon: CheckCircle2,
+      label: "Matched",
+      value: String(matchedCount),
+      className: "text-success",
+    },
+    {
+      icon: XCircle,
+      label: "Missing",
+      value: String(missingCount),
+      className: "text-destructive",
+    },
+    {
+      icon: CalendarDays,
+      label: "Experience",
+      value: yearsExperience !== null ? formatExperienceYears(yearsExperience) : "—",
+      className: "text-primary",
+    },
+    {
+      icon: GraduationCap,
+      label: "Education",
+      value: educationLabel,
+      className: "text-gold-foreground dark:text-gold",
+    },
+  ];
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex flex-col items-center gap-5 p-5 sm:flex-row">
+        <ScreeningScoreDonut score={score} size={112} />
+        <div className="min-w-0 flex-1 text-center sm:text-left">
+          <p className={cn("font-display text-lg font-bold leading-tight", tone.title)}>
+            {copy.title}
+          </p>
+          {copy.subtitle && (
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">
+              {copy.subtitle}
+            </p>
+          )}
+        </div>
+      </div>
+      <dl className="grid grid-cols-2 gap-px border-t border-border/60 bg-border/60 sm:grid-cols-4">
+        {facts.map((fact) => {
+          const FactIcon = fact.icon;
+          return (
+            <div key={fact.label} className="flex items-center gap-2.5 bg-card px-4 py-3">
+              <FactIcon className={cn("h-4 w-4 shrink-0", fact.className)} />
+              <div className="min-w-0">
+                <dt className="text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {fact.label}
+                </dt>
+                <dd
+                  className={cn("truncate text-sm font-semibold leading-tight", fact.className)}
+                  title={fact.value}
+                >
+                  {fact.value}
+                </dd>
+              </div>
+            </div>
+          );
+        })}
+      </dl>
+    </div>
+  );
+}
+
+/** Review / preview summary — same card as the full profile, so the screening
+ *  result looks the same wherever HR opens it. */
 export function ScreeningModalSummary({
   status,
   score,
@@ -1796,44 +1853,15 @@ export function ScreeningModalSummary({
   yearsExperience: number | null;
   educationLabel: string;
 }) {
-  const years = yearsExperience !== null ? formatExperienceYears(yearsExperience) : "—";
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex flex-col items-center gap-4 xl:flex-row">
-        <ScreeningScoreDonut score={score} size={132} />
-        <div className="grid w-full min-w-0 flex-1 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <div className="col-span-2 md:col-span-3 xl:col-span-2">
-            <ScreeningVerdictMini status={status} score={score} />
-          </div>
-          <ScreeningStatTile
-            icon={<CheckCircle2 className="h-4 w-4 shrink-0" />}
-            value={matchedCount}
-            label="Matched Keywords"
-            tone="success"
-          />
-          <ScreeningStatTile
-            icon={<XCircle className="h-4 w-4 shrink-0" />}
-            value={missingCount}
-            label="Missing Keywords"
-            tone="destructive"
-          />
-          <ScreeningStatTile
-            icon={<CalendarDays className="h-4 w-4 shrink-0" />}
-            value={years}
-            label="Experience"
-            tone="primary"
-          />
-          <ScreeningStatTile
-            icon={<GraduationCap className="h-4 w-4 shrink-0" />}
-            value={educationLabel}
-            valueTitle={educationLabel}
-            label="Education"
-            tone="gold"
-            small
-          />
-        </div>
-      </div>
-    </div>
+    <ScreeningResultHero
+      status={status}
+      score={score}
+      matchedCount={matchedCount}
+      missingCount={missingCount}
+      yearsExperience={yearsExperience}
+      educationLabel={educationLabel}
+    />
   );
 }
 
@@ -1859,13 +1887,10 @@ export function ScreeningVerificationImpact({
 }) {
   const status = (verification?.status ?? "NOT_PROVIDED").toUpperCase();
   const decisive = ["VERIFIED", "PARTIAL", "DISCREPANCY"].includes(status);
-  const weight = Math.round((verification?.weight ?? 0.15) * 100);
   const documentsScore =
     verification?.documents_score !== null && verification?.documents_score !== undefined
       ? Math.round(verification.documents_score)
       : null;
-  const movement = Math.round((score - resumeScore) * 10) / 10;
-
   const tone: { wrap: string; chip: string; label: string } =
     status === "VERIFIED"
       ? {
@@ -1892,87 +1917,69 @@ export function ScreeningVerificationImpact({
             };
 
   return (
-    <div className={cn("rounded-xl border p-4", tone.wrap)}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-semibold">
-            <ShieldCheck className="h-4 w-4 text-primary" />
-            Ranking score with document verification
-            <span
-              className={cn(
-                "rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide",
-                tone.chip,
-              )}
+    <div className={cn("rounded-xl border px-4 py-3", tone.wrap)}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <ShieldCheck className="h-4 w-4 text-primary" /> Ranking score
+        </p>
+        <span
+          className={cn(
+            "rounded-full border px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide",
+            tone.chip,
+          )}
+        >
+          {tone.label}
+        </span>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground">
+            Resume{" "}
+            <b className="font-semibold tabular-nums text-foreground">{Math.round(resumeScore)}%</b>
+          </span>
+          <ArrowRight className="h-3 w-3 text-muted-foreground/70" />
+          <span className="text-muted-foreground">
+            Documents{" "}
+            <b className="font-semibold tabular-nums text-foreground">
+              {documentsScore !== null ? `${documentsScore}%` : "—"}
+            </b>
+          </span>
+          <ArrowRight className="h-3 w-3 text-muted-foreground/70" />
+          <span className="text-muted-foreground">
+            Final{" "}
+            <b className="font-display text-sm font-bold tabular-nums text-primary">
+              {Math.round(score)}%
+            </b>
+          </span>
+          {onRecompute && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-[0.68rem]"
+              disabled={recomputing}
+              onClick={onRecompute}
             >
-              {tone.label}
-            </span>
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Resume screening plus the verification of the resume claims, so the candidate&apos;s
-            rank reflects both.
-          </p>
-        </div>
-        {onRecompute && (
-          <Button size="sm" variant="outline" disabled={recomputing} onClick={onRecompute}>
-            {recomputing ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            )}
-            Recompute ranking
-          </Button>
-        )}
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-lg border border-border/70 bg-card px-3 py-2">
-          <p className="eyebrow">Resume score</p>
-          <p className="font-display text-lg font-semibold">{Math.round(resumeScore)}%</p>
-          <p className="text-[0.68rem] text-muted-foreground">Screening only</p>
-        </div>
-        <div className="rounded-lg border border-border/70 bg-card px-3 py-2">
-          <p className="eyebrow">Documents score</p>
-          <p className="font-display text-lg font-semibold">
-            {documentsScore !== null ? `${documentsScore}%` : "—"}
-          </p>
-          <p className="text-[0.68rem] text-muted-foreground">
-            {decisive ? `${weight}% of the ranking score` : "No usable evidence yet"}
-          </p>
-        </div>
-        <div className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
-          <p className="eyebrow">Ranking score</p>
-          <p className="font-display text-lg font-semibold text-primary">{Math.round(score)}%</p>
-          <p className="text-[0.68rem] text-muted-foreground">
-            {movement === 0
-              ? "Unchanged by documents"
-              : movement > 0
-                ? `+${movement} pts from documents`
-                : `${movement} pts from documents`}
-          </p>
+              {recomputing ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1 h-3 w-3" />
+              )}
+              Recompute
+            </Button>
+          )}
         </div>
       </div>
 
-      {decisive ? (
-        <div className="mt-3 space-y-1">
-          <p className="text-xs text-muted-foreground">
-            {`${verification?.verified_count ?? 0} verified · ${verification?.discrepancy_count ?? 0} with discrepancies · ${verification?.unable_count ?? 0} unable to verify`}
-            {verification?.escalate_invalid
-              ? " — a document contradicts the resume, so the candidate is flagged Invalid Credential."
-              : "."}
-          </p>
+      {decisive && (verification?.flags ?? []).length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {(verification?.flags ?? []).slice(0, 4).map((flag) => (
-            <p key={flag} className="flex items-start gap-1.5 text-[0.68rem] text-muted-foreground">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-              {flag}
-            </p>
+            <span
+              key={flag}
+              className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[0.65rem] text-muted-foreground"
+            >
+              <AlertTriangle className="h-3 w-3 shrink-0" /> {flag}
+            </span>
           ))}
         </div>
-      ) : (
-        <p className="mt-3 text-xs text-muted-foreground">
-          No COE, Certificate or Credential has been compared against this resume yet, so the score
-          reflects the resume screening only — upload a supporting document to include its
-          verification.
-        </p>
       )}
     </div>
   );
@@ -2061,9 +2068,6 @@ export function RequirementMatchPanel({
         <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-success" style={{ width: `${pct}%` }} />
         </div>
-        <span className="shrink-0 text-[0.7rem] font-semibold text-muted-foreground">
-          {found} of {rows.length} met
-        </span>
       </div>
       {groupsWithItems.length === 0 ? (
         <p className="mt-3 rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
@@ -2707,9 +2711,12 @@ export function ResumeInfoPanel({
   personalInfo = null,
   skillsRecognized = false,
   unrecognizedCertifications = [],
+  focus = "all",
 }: {
   title?: string;
   variant?: "profile" | "modal";
+  /** Narrow the panel to one pipeline stage: extracted facts or recognized entities. */
+  focus?: "all" | "profile" | "entities";
   skills: string[];
   recognizedRoles: string[];
   unrecognizedRoles: string[];
@@ -2723,6 +2730,8 @@ export function ResumeInfoPanel({
 }) {
   const modal = variant === "modal";
   const hasJobRoles = recognizedRoles.length > 0 || unrecognizedRoles.length > 0;
+  const showEntities = focus !== "profile";
+  const showProfile = focus !== "entities";
   const count = (n: number) =>
     modal && n > 0 ? <span className="text-muted-foreground">({n})</span> : null;
   return (
@@ -2760,34 +2769,36 @@ export function ResumeInfoPanel({
             </dl>
           </section>
         )}
-        <section className={cn(modal && "border-t border-border/60 pt-3")}>
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <Users className="h-3.5 w-3.5 text-primary" /> Skills {count(skills.length)}
-          </p>
-          {skills.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {skills.map((s) => {
-                const recognized = modal && skillsRecognized;
-                return (
-                  <span
-                    key={s}
-                    className={
-                      recognized
-                        ? "rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-[0.7rem] font-medium text-success"
-                        : "rounded-full bg-secondary px-2.5 py-1 text-[0.7rem] font-medium text-secondary-foreground"
-                    }
-                  >
-                    {s}
-                    {recognized ? " (Recognized)" : ""}
-                  </span>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="mt-1.5 text-xs text-muted-foreground">No skills extracted.</p>
-          )}
-        </section>
-        {modal && hasJobRoles && (
+        {showEntities && (
+          <section className={cn(modal && "border-t border-border/60 pt-3")}>
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Users className="h-3.5 w-3.5 text-primary" /> Skills {count(skills.length)}
+            </p>
+            {skills.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {skills.map((s) => {
+                  const recognized = modal && skillsRecognized;
+                  return (
+                    <span
+                      key={s}
+                      className={
+                        recognized
+                          ? "rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-[0.7rem] font-medium text-success"
+                          : "rounded-full bg-secondary px-2.5 py-1 text-[0.7rem] font-medium text-secondary-foreground"
+                      }
+                    >
+                      {s}
+                      {recognized ? " (Recognized)" : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-1.5 text-xs text-muted-foreground">No skills extracted.</p>
+            )}
+          </section>
+        )}
+        {showEntities && modal && hasJobRoles && (
           <section className="border-t border-border/60 pt-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Briefcase className="h-3.5 w-3.5 text-primary" /> Job Titles{" "}
@@ -2813,44 +2824,52 @@ export function ResumeInfoPanel({
             </div>
           </section>
         )}
-        <section className="border-t border-border/60 pt-3">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <Briefcase className="h-3.5 w-3.5 text-primary" /> Work Experience{" "}
-            {count(workExperience.length)}
-          </p>
-          {workExperience.length > 0 ? (
-            <ul className="mt-2 space-y-2">
-              {workExperience.slice(0, 4).map((w, i) => (
-                <li key={i} className="flex items-start justify-between gap-3">
-                  <p className="min-w-0 truncate text-xs font-semibold">{w.job_title || "Role"}</p>
-                  {w.period && (
-                    <span className="shrink-0 text-[0.7rem] text-muted-foreground">{w.period}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1.5 text-xs text-muted-foreground">No employer history detected.</p>
-          )}
-        </section>
-        <section className="border-t border-border/60 pt-3">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <GraduationCap className="h-3.5 w-3.5 text-primary" /> Education{" "}
-            {count(education.length)}
-          </p>
-          {education.length > 0 ? (
-            <ul className="mt-2 space-y-1.5">
-              {education.slice(0, 3).map((e, i) => (
-                <li key={i} className="text-xs font-medium leading-relaxed">
-                  {e}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1.5 text-xs text-muted-foreground">Not specified.</p>
-          )}
-        </section>
-        {modal && experienceYears !== null && experienceYears !== undefined && (
+        {showProfile && (
+          <section className="border-t border-border/60 pt-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Briefcase className="h-3.5 w-3.5 text-primary" /> Work Experience{" "}
+              {count(workExperience.length)}
+            </p>
+            {workExperience.length > 0 ? (
+              <ul className="mt-2 space-y-2">
+                {workExperience.slice(0, 4).map((w, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 truncate text-xs font-semibold">
+                      {w.job_title || "Role"}
+                    </p>
+                    {w.period && (
+                      <span className="shrink-0 text-[0.7rem] text-muted-foreground">
+                        {w.period}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1.5 text-xs text-muted-foreground">No employer history detected.</p>
+            )}
+          </section>
+        )}
+        {showProfile && (
+          <section className="border-t border-border/60 pt-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <GraduationCap className="h-3.5 w-3.5 text-primary" /> Education{" "}
+              {count(education.length)}
+            </p>
+            {education.length > 0 ? (
+              <ul className="mt-2 space-y-1.5">
+                {education.slice(0, 3).map((e, i) => (
+                  <li key={i} className="text-xs font-medium leading-relaxed">
+                    {e}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1.5 text-xs text-muted-foreground">Not specified.</p>
+            )}
+          </section>
+        )}
+        {showProfile && modal && experienceYears !== null && experienceYears !== undefined && (
           <section className="border-t border-border/60 pt-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Briefcase className="h-3.5 w-3.5 text-primary" /> Experience{" "}
@@ -2861,7 +2880,7 @@ export function ResumeInfoPanel({
             </p>
           </section>
         )}
-        {modal && certifications.length > 0 && (
+        {showEntities && modal && certifications.length > 0 && (
           <section className="border-t border-border/60 pt-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Info className="h-3.5 w-3.5 text-primary" /> Other extracted information{" "}
@@ -3196,9 +3215,6 @@ export function ScreeningDetailsAccordion({
         )}
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">Screening Details</span>
-          <span className="block truncate text-[0.7rem] text-muted-foreground">
-            Technical details from the resume analysis (OCR + NER + matching).
-          </span>
         </span>
         {modal ? (
           <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary">
@@ -3386,6 +3402,7 @@ function ScreeningSupportDocsGrid({
   title = "Supporting Documents",
   subtitle = "These documents help verify the applicant's information.",
   showResume = true,
+  showResumeStatus = true,
 }: {
   resumeName: string;
   resumeSub: string;
@@ -3400,8 +3417,11 @@ function ScreeningSupportDocsGrid({
   title?: string;
   subtitle?: string;
   showResume?: boolean;
+  /** The "SCREENED" pill is screening evidence, so the documents-only view hides it. */
+  showResumeStatus?: boolean;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const detailed = !!onReverify;
   const docTitleOf = (d: ApiApplicantDocument) =>
     d.title || d.original_name || `Document #${d.applicant_document_id}`;
@@ -3415,231 +3435,252 @@ function ScreeningSupportDocsGrid({
           : "Supporting Document";
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-            <ShieldCheck className="h-4.5 w-4.5 text-primary" /> {title}
-          </h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
-        </div>
-        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-          {docs.length} document{docs.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      <div className="mt-4 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(270px,1fr))]">
-        {showResume && (
-          <div className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm">
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <ScreeningDocIcon docType="resume" />
-                <div className="min-w-0 flex-1">
-                  <p
-                    className="font-semibold text-sm leading-snug break-words text-foreground"
-                    title={resumeName}
-                  >
-                    Resume / CV
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground truncate" title={resumeSub}>
-                    {resumeSub}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <ScreeningDocStatusPill status="SCREENED" />
-              </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 flex-1 min-w-[75px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
-                onClick={onOpenResume}
-              >
-                <Eye className="h-3.5 w-3.5 shrink-0" />
-                <span>View</span>
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                className="h-8 flex-1 min-w-[90px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
-                onClick={onOpenResume}
-              >
-                <Download className="h-3.5 w-3.5 shrink-0" />
-                <span>Download</span>
-              </Button>
-            </div>
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="rounded-xl border border-border bg-card"
+    >
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full flex-wrap items-center justify-between gap-2 p-5 text-left cursor-pointer"
+        >
+          <div>
+            <h3 className="flex items-center gap-2 font-display text-base font-semibold">
+              <ShieldCheck className="h-4.5 w-4.5 text-primary" /> {title}
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
           </div>
-        )}
-        {loading && (
-          <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border p-6 text-xs text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading documents…
-          </div>
-        )}
-        {!loading &&
-          docs.map((d) => {
-            const id = String(d.applicant_document_id);
-            const expanded = expandedId === id;
-            const checks = Object.entries(d.verification_result?.checks ?? {});
-            const busy = reverifyingId === id;
-            return (
-              <div
-                key={d.applicant_document_id}
-                className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div
-                      className={cn(
-                        "flex items-start gap-3 min-w-0 flex-1",
-                        detailed && "cursor-pointer select-none",
-                      )}
-                      onClick={() => (detailed ? setExpandedId(expanded ? null : id) : undefined)}
+          <span className="flex items-center gap-2">
+            <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
+              {docs.length} document{docs.length === 1 ? "" : "s"}
+            </span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          </span>
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="grid gap-4 px-5 pb-5 [grid-template-columns:repeat(auto-fit,minmax(270px,1fr))]">
+          {showResume && (
+            <div className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <ScreeningDocIcon docType="resume" />
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="font-semibold text-sm leading-snug break-words text-foreground"
+                      title={resumeName}
                     >
-                      <ScreeningDocIcon
-                        docType={d.doc_type}
-                        label={screeningDocCaption(d.doc_type)}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className="font-semibold text-sm leading-snug break-words text-foreground"
-                          title={docTitleOf(d)}
-                        >
-                          {docKindLabel(d)}
-                        </p>
-                        <p
-                          className="mt-0.5 text-xs text-muted-foreground truncate"
-                          title={docTitleOf(d)}
-                        >
-                          {d.title ||
-                            d.original_name ||
-                            `${screeningDocCaption(d.doc_type)} · ${d.doc_type}`}
-                        </p>
-                      </div>
-                    </div>
-                    {detailed && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setExpandedId(expanded ? null : id)}
-                        className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
-                        title={expanded ? "Collapse details" : "Expand details"}
-                        aria-expanded={expanded}
-                      >
-                        {expanded ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <ScreeningDocStatusPill status={d.verification_status} />
-                    {checks.length > 0 && (
-                      <span className="text-[0.68rem] font-medium text-muted-foreground">
-                        {
-                          checks.filter(
-                            ([, c]) =>
-                              (c as any).match === true ||
-                              (c as any).match === "MATCH" ||
-                              (c as any).result === "MATCH",
-                          ).length
-                        }
-                        /{checks.length} verified
-                      </span>
-                    )}
+                      Resume / CV
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground truncate" title={resumeSub}>
+                      {resumeSub}
+                    </p>
                   </div>
                 </div>
+                {showResumeStatus && (
+                  <div className="flex items-center">
+                    <ScreeningDocStatusPill status="SCREENED" />
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 flex-1 min-w-[75px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                  onClick={onOpenResume}
+                >
+                  <Eye className="h-3.5 w-3.5 shrink-0" />
+                  <span>View</span>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  className="h-8 flex-1 min-w-[90px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                  onClick={onOpenResume}
+                >
+                  <Download className="h-3.5 w-3.5 shrink-0" />
+                  <span>Download</span>
+                </Button>
+              </div>
+            </div>
+          )}
+          {loading && (
+            <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border p-6 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading documents…
+            </div>
+          )}
+          {!loading &&
+            docs.map((d) => {
+              const id = String(d.applicant_document_id);
+              const expanded = expandedId === id;
+              const checks = Object.entries(d.verification_result?.checks ?? {});
+              const busy = reverifyingId === id;
+              return (
+                <div
+                  key={d.applicant_document_id}
+                  className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div
+                        className={cn(
+                          "flex items-start gap-3 min-w-0 flex-1",
+                          detailed && "cursor-pointer select-none",
+                        )}
+                        onClick={() => (detailed ? setExpandedId(expanded ? null : id) : undefined)}
+                      >
+                        <ScreeningDocIcon
+                          docType={d.doc_type}
+                          label={screeningDocCaption(d.doc_type)}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="font-semibold text-sm leading-snug break-words text-foreground"
+                            title={docTitleOf(d)}
+                          >
+                            {docKindLabel(d)}
+                          </p>
+                          <p
+                            className="mt-0.5 text-xs text-muted-foreground truncate"
+                            title={docTitleOf(d)}
+                          >
+                            {d.title ||
+                              d.original_name ||
+                              `${screeningDocCaption(d.doc_type)} · ${d.doc_type}`}
+                          </p>
+                        </div>
+                      </div>
+                      {detailed && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedId(expanded ? null : id)}
+                          className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                          title={expanded ? "Collapse details" : "Expand details"}
+                          aria-expanded={expanded}
+                        >
+                          {expanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
 
-                <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 flex-1 min-w-[75px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
-                    onClick={() => onView(d)}
-                  >
-                    <Eye className="h-3.5 w-3.5 shrink-0" />
-                    <span>View</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={detailed ? "outline" : "default"}
-                    className="h-8 flex-1 min-w-[90px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
-                    onClick={() => onDownload(d)}
-                  >
-                    <Download className="h-3.5 w-3.5 shrink-0" />
-                    <span>Download</span>
-                  </Button>
-                  {detailed && onReverify && (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <ScreeningDocStatusPill status={d.verification_status} />
+                      {checks.length > 0 && (
+                        <span className="text-[0.68rem] font-medium text-muted-foreground">
+                          {
+                            checks.filter(
+                              ([, c]) =>
+                                (c as any).match === true ||
+                                (c as any).match === "MATCH" ||
+                                (c as any).result === "MATCH",
+                            ).length
+                          }
+                          /{checks.length} verified
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-8 flex-1 min-w-[85px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
-                      disabled={busy}
-                      onClick={() => onReverify(d)}
+                      className="h-8 flex-1 min-w-[75px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                      onClick={() => onView(d)}
                     >
-                      {busy ? (
-                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-3.5 w-3.5 shrink-0" />
-                      )}
-                      <span>Reverify</span>
+                      <Eye className="h-3.5 w-3.5 shrink-0" />
+                      <span>View</span>
                     </Button>
-                  )}
-                </div>
-                {detailed && expanded && (
-                  <div className="mt-3.5 space-y-2.5 border-t border-border/60 pt-3">
-                    {d.verification_result?.summary && (
-                      <div className="rounded-lg bg-muted/40 p-2.5 text-xs leading-relaxed text-muted-foreground">
-                        {d.verification_result.summary}
-                      </div>
-                    )}
-                    {onOverride && d.verification_status === "DISCREPANCY_FOUND" && (
-                      <div className="pt-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="w-full h-8 text-xs font-medium border-primary/40 text-primary hover:bg-primary/10 cursor-pointer"
-                          disabled={busy}
-                          onClick={() => onOverride(d)}
-                        >
-                          <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Resolve Discrepancy (HR
-                          Override)
-                        </Button>
-                      </div>
-                    )}
-                    {checks.length === 0 ? (
-                      <p className="text-xs italic text-muted-foreground py-1">
-                        No field-by-field comparison available for this document yet.
-                      </p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {checks.map(([key, check]) => (
-                          <DocVerificationCheckRow key={key} labelKey={key} check={check} />
-                        ))}
-                      </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={detailed ? "outline" : "default"}
+                      className="h-8 flex-1 min-w-[90px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                      onClick={() => onDownload(d)}
+                    >
+                      <Download className="h-3.5 w-3.5 shrink-0" />
+                      <span>Download</span>
+                    </Button>
+                    {detailed && onReverify && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 flex-1 min-w-[85px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                        disabled={busy}
+                        onClick={() => onReverify(d)}
+                      >
+                        {busy ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span>Reverify</span>
+                      </Button>
                     )}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        {!loading && docs.length === 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground sm:col-span-1 xl:col-span-3">
-            <Info className="h-4 w-4 shrink-0" /> No verification documents uploaded yet.
-          </div>
-        )}
-      </div>
-    </div>
+                  {detailed && expanded && (
+                    <div className="mt-3.5 space-y-2.5 border-t border-border/60 pt-3">
+                      {d.verification_result?.summary && (
+                        <div className="rounded-lg bg-muted/40 p-2.5 text-xs leading-relaxed text-muted-foreground">
+                          {d.verification_result.summary}
+                        </div>
+                      )}
+                      {onOverride && d.verification_status === "DISCREPANCY_FOUND" && (
+                        <div className="pt-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="w-full h-8 text-xs font-medium border-primary/40 text-primary hover:bg-primary/10 cursor-pointer"
+                            disabled={busy}
+                            onClick={() => onOverride(d)}
+                          >
+                            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Resolve Discrepancy (HR
+                            Override)
+                          </Button>
+                        </div>
+                      )}
+                      {checks.length === 0 ? (
+                        <p className="text-xs italic text-muted-foreground py-1">
+                          No field-by-field comparison available for this document yet.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {checks.map(([key, check]) => (
+                            <DocVerificationCheckRow key={key} labelKey={key} check={check} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          {!loading && docs.length === 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground sm:col-span-1 xl:col-span-3">
+              <Info className="h-4 w-4 shrink-0" /> No verification documents uploaded yet.
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -5431,25 +5472,18 @@ export function ScreeningResumeDocsMatchDetail({
           {overall.label}
         </span>
       </div>
-      <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-        Separate from the job-fit score — this only checks whether the uploaded papers support the
-        resume.
-      </p>
-
       {loading ? (
         <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Checking papers…
         </p>
       ) : docs.length === 0 ? (
         <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
-          <Info className="h-4 w-4 shrink-0" /> No proof papers uploaded yet. Upload a COE,
-          education certificate or licence to start the check.
+          <Info className="h-4 w-4 shrink-0" /> No proof papers uploaded yet.
         </p>
       ) : allPending ? (
         <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
-          <Clock className="h-4 w-4 shrink-0" /> The papers are uploaded but not compared with the
-          resume yet. Use Re-verify on the document below (new applications are compared
-          automatically once the resume is screened).
+          <Clock className="h-4 w-4 shrink-0" /> Papers uploaded, not compared yet. Use Re-verify on
+          the document.
         </p>
       ) : (
         <>
@@ -5560,20 +5594,12 @@ export function ScreeningResumeDocsMatchDetail({
    Mirrors SCREEN 2 of docs/mockups/applicant-management-redesign-mockup.html:
    a per-applicant screen with hero, stage stepper and section nav hosting the
    Interview / Assessment Test / Practical Assessment / Final Evaluation panels
-   that used to be top-level tabs, alongside Current Stage, Application Details
-   and Resume & Documents. Activity history lives in Current Stage.
+   that used to be top-level tabs, alongside the applicant profile (with the
+   previous applications history). Activity history has its own tab.
    ============================================================================ */
 
 type ViewPanel =
-  | "current"
-  | "history"
-  | "details"
-  | "resume"
-  | "interview"
-  | "test"
-  | "practical"
-  | "final"
-  | "activity";
+  "current" | "screening" | "interview" | "test" | "practical" | "final" | "activity";
 
 type ViewScreenDoc = {
   docType: VerificationDocType;
@@ -5647,10 +5673,9 @@ type ApplicantViewScreenProps = {
 
 /** Humanized hiring milestones for the stage stepper (maps internal stages). */
 const VIEW_MILESTONES: { key: ViewPanel; label: string }[] = [
-  /* Screening — the resume screening result and the supporting verification
-     documents live in the Resume & Documents section, so this node opens it
-     instead of the generic Current Stage overview. */
-  { key: "resume", label: "Screening" },
+  /* Screening owns the resume screening result. Resume & Documents only holds
+     the uploaded files. */
+  { key: "screening", label: "Screening" },
   { key: "interview", label: "Interview" },
   { key: "test", label: "Assessment Test" },
   { key: "practical", label: "Practical Assessment" },
@@ -5846,8 +5871,7 @@ function ApplicantViewScreen({
     if (lastFlowKey.current === flowKey) return;
     lastFlowKey.current = flowKey;
     // Leave the user alone when they are reading reference material.
-    if (panel === "details" || panel === "resume" || panel === "history" || panel === "activity")
-      return;
+    if (panel === "current" || panel === "activity") return;
     // Open the stage being worked on now (the first stage that is not finished).
     const nextIdx = stepStates.findIndex((s) => s === "current");
     // A closed pipeline (offer extended / hired) opens the final evaluation.
@@ -5863,29 +5887,9 @@ function ApplicantViewScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowKey, a, panel, requiresPrac, requiresTest]);
 
-  const stageDesc: Record<string, string> = {
-    Screened:
-      "Resume was screened by the NLP service. Review the result to accept, refer or reject.",
-    "Interview Scheduled":
-      "An interview slot has been booked. Start the interview assessment on the interview day.",
-    Assessed: "The interview has been assessed. Passed candidates unlock the assessment test.",
-    "Assessment Test":
-      "The job-specific test is complete for this applicant — next is the practical (when required) or the final evaluation.",
-    "Practical Test":
-      "The hands-on practical exam is complete — the final evaluation is now available.",
-    "Final Evaluation":
-      "All process stages are complete — record the final evaluation to decide the hire.",
-    Accepted: "The applicant has been accepted and can be scheduled for onboarding.",
-    Offer: "An offer has been extended to this applicant.",
-    Hired: "The applicant has been hired and moved to New Hire Onboarding.",
-    Rejected: "This applicant was not selected for the role.",
-  };
-
-  const docCount = docs.length + (a.resumeUrl ? 1 : 0);
-
   /** Server-side verification documents for this applicant (the source of
    *  truth — the `docs` prop only holds uploads staged in this session).
-   *  Loaded so View profile → Resume & Documents shows every uploaded
+   *  Loaded so the screening and profile views show every uploaded
    *  supporting document, not just session-staged ones. */
   const [serverDocs, setServerDocs] = useState<Record<string, ApiApplicantDocument>>({});
   const [serverDocsLoading, setServerDocsLoading] = useState(true);
@@ -5965,7 +5969,7 @@ function ApplicantViewScreen({
 
   /** Which pipeline node the open section belongs to (null for profile/activity). */
   const railActiveIndex =
-    panel === "resume"
+    panel === "screening"
       ? 0
       : panel === "interview"
         ? 1
@@ -5982,15 +5986,27 @@ function ApplicantViewScreen({
   /** Rail click → the section that stage owns. Assessment opens the written
    *  test when required, otherwise the practical (or the final evaluation). */
   const openRailStage = (index: number) => {
-    if (index === 0) setPanel("resume");
+    if (index === 0) setPanel("screening");
     else if (index === 1) setPanel("interview");
     else if (index === 2) setPanel(requiresTest ? "test" : requiresPrac ? "practical" : "final");
     else setPanel("final");
   };
 
-  const profilePanels: ViewPanel[] = ["details", "resume", "history"];
+  const profilePanels: ViewPanel[] = ["current"];
   const activeViewTab: "stage" | "profile" | "activity" =
     panel === "activity" ? "activity" : profilePanels.includes(panel) ? "profile" : "stage";
+
+  /** Administrative actions are applicant-wide, so the strip lives above the
+   *  sections and stays reachable from every tab. */
+  const hasAdminActions =
+    (!!isSuperAdmin && a.stage !== "Rejected" && !!onMoveToStage) ||
+    (!!isSuperAdmin && a.stage === "Rejected" && !!onReopen) ||
+    (!!isSuperAdmin &&
+      (a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") &&
+      !!onCorrectHiring) ||
+    (!a.isArchived && !!onArchive) ||
+    (!!a.isArchived && !!onRestore) ||
+    (!!isSuperAdmin && ((!a.isActiveBlocked && !!onBlock) || (a.isActiveBlocked && !!onUnblock)));
 
   return (
     <div ref={rootRef} className="mt-6">
@@ -6145,6 +6161,90 @@ function ApplicantViewScreen({
           </div>
         </div>
 
+        {/* Administrative actions — applicant-wide, so they sit above the
+            sections and stay reachable from every tab. */}
+        {hasAdminActions && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border/60 bg-muted/20 px-5 py-2.5 sm:px-6">
+            <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+              <Sliders className="h-3.5 w-3.5 text-primary" />
+              <span>Administrative Actions</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {isSuperAdmin && a.stage !== "Rejected" && onMoveToStage && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 cursor-pointer"
+                  onClick={() => onMoveToStage(a)}
+                >
+                  <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
+                </Button>
+              )}
+              {isSuperAdmin && a.stage === "Rejected" && onReopen && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                  onClick={() => onReopen(a)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Reopen application
+                </Button>
+              )}
+              {isSuperAdmin &&
+                (a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") &&
+                onCorrectHiring && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                    onClick={() => onCorrectHiring(a)}
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
+                  </Button>
+                )}
+              {!a.isArchived && onArchive ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 text-muted-foreground cursor-pointer"
+                  onClick={() => onArchive(a)}
+                >
+                  <Archive className="h-3.5 w-3.5" /> Archive
+                </Button>
+              ) : a.isArchived && onRestore ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                  onClick={() => onRestore(a)}
+                >
+                  <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+                </Button>
+              ) : null}
+              {isSuperAdmin &&
+                (!a.isActiveBlocked && onBlock ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer"
+                    onClick={() => onBlock(a)}
+                  >
+                    <Ban className="h-3.5 w-3.5" /> Block
+                  </Button>
+                ) : a.isActiveBlocked && onUnblock ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                    onClick={() => onUnblock(a)}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                  </Button>
+                ) : null)}
+            </div>
+          </div>
+        )}
+
         {/* Shared pipeline rail — every stage opens its record. */}
         <div className="border-b border-border/60 bg-muted/15 px-4 py-4 sm:px-6">
           <ProfileStageRail
@@ -6167,11 +6267,13 @@ function ApplicantViewScreen({
               <button
                 key={t.key}
                 type="button"
-                onClick={() =>
-                  setPanel(
-                    t.key === "stage" ? "current" : t.key === "profile" ? "details" : "activity",
-                  )
-                }
+                onClick={() => {
+                  if (t.key === "stage") {
+                    if (activeViewTab !== "stage")
+                      openRailStage(Math.min(applicantProfileStageIndex(a), 4));
+                  } else if (t.key === "profile") setPanel("current");
+                  else setPanel("activity");
+                }}
                 aria-pressed={active}
                 className={cn(
                   "flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
@@ -6218,34 +6320,6 @@ function ApplicantViewScreen({
               </div>
             )}
 
-          {activeViewTab === "profile" && (
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {[
-                { id: "details" as ViewPanel, label: "Application Details" },
-                { id: "resume" as ViewPanel, label: "Resume & Documents" },
-                { id: "history" as ViewPanel, label: "Previous Applications" },
-              ].map((section) => {
-                const active = panel === section.id;
-                return (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => setPanel(section.id)}
-                    aria-pressed={active}
-                    className={cn(
-                      "cursor-pointer rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold transition-colors",
-                      active
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border bg-card text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {section.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           <div className="min-w-0">
             {(() => {
               switch (panel) {
@@ -6253,821 +6327,604 @@ function ApplicantViewScreen({
                   return (
                     <Card className="border-border/70 min-h-full shadow-xs">
                       <CardContent className="p-6 space-y-5">
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                          <div>
-                            <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                              <Info className="h-4 w-4 text-primary" /> {a.stage}
-                            </h3>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {stageDesc[a.stage] ??
-                                "Current recruitment pipeline stage for this applicant."}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {tier <= 2 && (
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "gap-1 font-semibold",
-                                  topCandidateTierMeta[tier].className,
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <User className="h-4 w-4 text-primary" /> Applicant Profile
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Everything captured from the application and its uploaded documents.
+                          </p>
+                        </div>
+
+                        {/* Same cards as the right-side profile drawer. */}
+                        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+                          <div className="space-y-4">
+                            <div className="rounded-xl border border-border/70 bg-card p-4">
+                              <p className="text-xs font-semibold text-foreground">Contact</p>
+                              <dl className="mt-2 space-y-2 text-[0.72rem]">
+                                {[
+                                  { icon: User, label: "Full Name", value: a.name },
+                                  { icon: Mail, label: "Email", value: a.email },
+                                  { icon: Phone, label: "Phone", value: a.phone },
+                                  {
+                                    icon: MapPin,
+                                    label: "Address",
+                                    value: a.address ?? "Not provided",
+                                  },
+                                  {
+                                    icon: CalendarDays,
+                                    label: "Applied",
+                                    value: formatDisplayDate(a.appliedAt).date,
+                                  },
+                                  { icon: Briefcase, label: "Source", value: a.source },
+                                ].map((row) => {
+                                  const RowIcon = row.icon;
+                                  return (
+                                    <div key={row.label} className="flex items-start gap-2.5">
+                                      <RowIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                      <dt className="w-16 shrink-0 text-muted-foreground">
+                                        {row.label}
+                                      </dt>
+                                      <dd className="min-w-0 flex-1 break-words font-medium text-foreground">
+                                        {row.value}
+                                      </dd>
+                                    </div>
+                                  );
+                                })}
+                              </dl>
+                            </div>
+
+                            <div className="rounded-xl border border-border/70 bg-card p-4">
+                              <p className="text-xs font-semibold text-foreground">Documents</p>
+                              <div className="mt-2 flex items-center justify-between gap-3 text-[0.72rem]">
+                                <span className="text-muted-foreground">Supporting documents</span>
+                                <span className="font-semibold text-foreground">
+                                  {a.docCount == null ? "—" : a.docCount}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-3 text-[0.72rem]">
+                                <span className="text-muted-foreground">Resume</span>
+                                {a.resumeUrl ? (
+                                  <a
+                                    href={a.resumeUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                                  >
+                                    Open <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                ) : (
+                                  <span className="font-medium text-muted-foreground">
+                                    Not uploaded
+                                  </span>
                                 )}
-                              >
-                                <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
-                              </Badge>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            {a.entities.length > 0 && (
+                              <div className="rounded-xl border border-border/70 bg-card p-4">
+                                <p className="text-xs font-semibold text-foreground">Highlights</p>
+                                <dl className="mt-2 space-y-1.5 text-[0.72rem]">
+                                  {a.entities.slice(0, 5).map((e, i) => (
+                                    <div
+                                      key={`${e.label}-${e.value}-${i}`}
+                                      className="flex items-start justify-between gap-3"
+                                    >
+                                      <dt className="shrink-0 text-muted-foreground">{e.label}</dt>
+                                      <dd className="min-w-0 flex-1 truncate text-right font-medium text-foreground">
+                                        {e.value}
+                                      </dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                                {a.entities.length > 5 && (
+                                  <p className="mt-2 text-[0.65rem] text-muted-foreground">
+                                    +{a.entities.length - 5} more in the full record
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {a.summary && (
+                              <div className="rounded-xl border border-border/70 bg-card p-4">
+                                <p className="text-xs font-semibold text-foreground">Summary</p>
+                                <p className="mt-1.5 text-[0.72rem] leading-relaxed text-muted-foreground">
+                                  {a.summary}
+                                </p>
+                              </div>
                             )}
                           </div>
                         </div>
 
-                        {/* Quick Administrative Controls Bar */}
-                        <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
-                          <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                            <Sliders className="h-3.5 w-3.5 text-primary" />
-                            <span>Administrative Actions</span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {isSuperAdmin && a.stage !== "Rejected" && onMoveToStage && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1.5 cursor-pointer"
-                                onClick={() => onMoveToStage(a)}
-                              >
-                                <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
-                              </Button>
-                            )}
-                            {isSuperAdmin && a.stage === "Rejected" && onReopen && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                                onClick={() => onReopen(a)}
-                              >
-                                <RotateCcw className="h-3.5 w-3.5" /> Reopen application
-                              </Button>
-                            )}
-                            {isSuperAdmin &&
-                              (a.stage === "Hired" ||
-                                a.stage === "Offer" ||
-                                (a.status as string) === "hired") &&
-                              onCorrectHiring && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
-                                  onClick={() => onCorrectHiring(a)}
+                        {/* Previous applications stay in the profile — not a tab. */}
+                        <div className="space-y-5 border-t border-border/60 pt-5">
+                          {/* Header */}
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                            <div>
+                              <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                                <History className="h-4 w-4 text-primary" /> Previous Applications
+                              </h3>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Past application attempts by the same email address.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {historyLoading ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="gap-1.5 text-xs animate-pulse"
                                 >
-                                  <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
-                                </Button>
+                                  <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs font-semibold">
+                                  {history?.data?.length ?? 0} attempt
+                                  {(history?.data?.length ?? 0) !== 1 ? "s" : ""}
+                                </Badge>
                               )}
-                            {!a.isArchived && onArchive ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1.5 text-muted-foreground cursor-pointer"
-                                onClick={() => onArchive(a)}
-                              >
-                                <Archive className="h-3.5 w-3.5" /> Archive
-                              </Button>
-                            ) : a.isArchived && onRestore ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                                onClick={() => onRestore(a)}
-                              >
-                                <ArchiveRestore className="h-3.5 w-3.5" /> Restore
-                              </Button>
-                            ) : null}
-                            {isSuperAdmin &&
-                              (!a.isActiveBlocked && onBlock ? (
+                              {onOverrideCooldown &&
+                                (history?.cooldown || history?.block?.is_blocked) && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                                    disabled={overrideBusy}
+                                    onClick={onOverrideCooldown}
+                                  >
+                                    {overrideBusy ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <ShieldAlert className="h-3.5 w-3.5" />
+                                    )}
+                                    Override cooldown
+                                  </Button>
+                                )}
+                            </div>
+                          </div>
+
+                          {/* Block alert */}
+                          {history?.block?.is_blocked && (
+                            <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
+                              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-destructive">
+                                  Applicant is blocked
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  This applicant has been restricted from re-applying. Only a super
+                                  admin can lift this restriction.
+                                </p>
+                              </div>
+                              {isSuperAdmin && onUnblock && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer"
-                                  onClick={() => onBlock(a)}
-                                >
-                                  <Ban className="h-3.5 w-3.5" /> Block
-                                </Button>
-                              ) : a.isActiveBlocked && onUnblock ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                                  className="h-7 shrink-0 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
                                   onClick={() => onUnblock(a)}
                                 >
                                   <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
                                 </Button>
-                              ) : null)}
-                          </div>
-                        </div>
-
-                        {/* Stage overview — interactive shortcut cards */}
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                          {[
-                            {
-                              id: "resume" as ViewPanel,
-                              icon: <FileText className="h-4 w-4" />,
-                              label: "Screening",
-                              meta: passedScreening ? "Passed" : "For Review",
-                              tone: passedScreening
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : "text-amber-600 dark:text-amber-400",
-                              dot: passedScreening ? "bg-emerald-500" : "bg-amber-500",
-                            },
-                            {
-                              id: "interview" as ViewPanel,
-                              icon: <ClipboardCheck className="h-4 w-4" />,
-                              label: "Interview",
-                              meta: assessment
-                                ? `${assessment.result} · ${assessment.total}%`
-                                : interview
-                                  ? `Scheduled · ${interview.date}`
-                                  : "Not yet conducted",
-                              tone:
-                                assessment?.result === "Passed"
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : assessment?.result === "Failed"
-                                    ? "text-destructive"
-                                    : "text-muted-foreground",
-                              dot:
-                                assessment?.result === "Passed"
-                                  ? "bg-emerald-500"
-                                  : assessment?.result === "Failed"
-                                    ? "bg-destructive"
-                                    : "bg-muted-foreground/40",
-                            },
-                            {
-                              id: "test" as ViewPanel,
-                              icon: <BookMarked className="h-4 w-4" />,
-                              label: "Assessment Test",
-                              meta: test ? `${test.result} · ${test.total}%` : "Not yet taken",
-                              tone:
-                                test?.result === "Passed"
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : test?.result === "Failed"
-                                    ? "text-destructive"
-                                    : "text-muted-foreground",
-                              dot:
-                                test?.result === "Passed"
-                                  ? "bg-emerald-500"
-                                  : test?.result === "Failed"
-                                    ? "bg-destructive"
-                                    : "bg-muted-foreground/40",
-                            },
-                            {
-                              id: "practical" as ViewPanel,
-                              icon: <Wrench className="h-4 w-4" />,
-                              label: "Practical",
-                              meta: !requiresPrac
-                                ? "Not required"
-                                : practical
-                                  ? `${practical.result} · ${practical.total}%`
-                                  : "Pending",
-                              tone: !requiresPrac
-                                ? "text-muted-foreground"
-                                : practical?.result === "Passed"
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : practical?.result === "Failed"
-                                    ? "text-destructive"
-                                    : "text-muted-foreground",
-                              dot: !requiresPrac
-                                ? "bg-muted-foreground/30"
-                                : practical?.result === "Passed"
-                                  ? "bg-emerald-500"
-                                  : practical?.result === "Failed"
-                                    ? "bg-destructive"
-                                    : "bg-muted-foreground/40",
-                            },
-                          ].map((r) => (
-                            <button
-                              key={r.id}
-                              type="button"
-                              onClick={() => setPanel(r.id)}
-                              className="group relative flex min-h-0 flex-col items-start gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition-all hover:border-primary/40 hover:shadow-sm hover:bg-muted/30"
-                            >
-                              <div className="flex w-full items-center justify-between">
-                                <span className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-primary">
-                                    {r.icon}
-                                  </span>
-                                  <span className="text-xs font-semibold text-foreground">
-                                    {r.label}
-                                  </span>
-                                </span>
-                                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", r.dot)} />
-                                <span className={cn("text-[0.68rem] font-medium", r.tone)}>
-                                  {r.meta}
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="mt-5 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                              <History className="h-3.5 w-3.5 text-primary" /> Recent Activity &
-                              Milestones
-                            </h4>
-                            <span className="text-[11px] text-muted-foreground">Latest events</span>
-                          </div>
-                          {(() => {
-                            const stageFallback =
-                              audit.length === 0
-                                ? [
-                                    final
-                                      ? {
-                                          id: `stage-final-${final.id}`,
-                                          actionType: "Final Evaluation Completed",
-                                          details: `Final evaluation recorded — ${final.recommendation}.`,
-                                          actorName: "System",
-                                          date: final.date,
-                                          time: "",
-                                        }
-                                      : null,
-                                    test
-                                      ? {
-                                          id: `stage-test-${test.id}`,
-                                          actionType: "Assessment Test Completed",
-                                          details: `${test.title} — ${test.result} · ${test.total}%.`,
-                                          actorName: "System",
-                                          date: test.date,
-                                          time: "",
-                                        }
-                                      : null,
-                                    assessment
-                                      ? {
-                                          id: `stage-interview-${assessment.date}`,
-                                          actionType: "Interview Completed",
-                                          details: `Interview ${assessment.result} · ${assessment.total}% — ${assessment.outcome}.`,
-                                          actorName: "System",
-                                          date: assessment.date,
-                                          time: "",
-                                        }
-                                      : interview
-                                        ? {
-                                            id: `stage-sched-${interview.date}-${interview.time}`,
-                                            actionType: "Interview Scheduled",
-                                            details: `${interview.date} · ${interview.time} — ${interview.status}.`,
-                                            actorName: "System",
-                                            date: interview.date,
-                                            time: "",
-                                          }
-                                        : null,
-                                    {
-                                      id: `stage-screening-${a.id}`,
-                                      actionType: "Resume Screening Completed",
-                                      details: `Screened at ${a.score}% — ${passedScreening ? "Passed" : "For Review"}.`,
-                                      actorName: "System",
-                                      date: a.appliedAt,
-                                      time: "",
-                                    },
-                                  ].filter((x): x is NonNullable<typeof x> => x !== null)
-                                : [];
-                            const items = (audit.length > 0 ? audit : stageFallback).slice(0, 6);
-                            if (items.length === 0) {
-                              return (
-                                <div className="mt-2">
-                                  {emptyNote("No recorded events for this applicant yet.")}
-                                </div>
-                              );
-                            }
-                            return (
-                              <div className="space-y-2">
-                                {items.map((e) => (
-                                  <div
-                                    key={e.id}
-                                    className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/20 p-3 transition-colors hover:bg-muted/40 hover:border-border"
-                                  >
-                                    <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center">
-                                      <span
-                                        className={cn(
-                                          "h-2 w-2 rounded-full ring-4",
-                                          /Rejected|Cancelled|No-Show/.test(e.actionType)
-                                            ? "bg-destructive ring-destructive/20"
-                                            : /Passed|Hired|Completed/.test(e.actionType)
-                                              ? "bg-emerald-500 ring-emerald-500/20"
-                                              : "bg-primary ring-primary/20",
-                                        )}
-                                      />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex flex-wrap items-center justify-between gap-1.5">
-                                        <p className="text-xs font-semibold text-foreground">
-                                          {e.actionType}
-                                        </p>
-                                        <span className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                                          {e.date} {e.time}
-                                        </span>
-                                      </div>
-                                      <p className="mt-0.5 text-xs text-muted-foreground">
-                                        {e.details}
-                                      </p>
-                                      <span className="mt-1 inline-block text-[10px] text-muted-foreground/80">
-                                        Recorded by: {e.actorName}
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                case "history":
-                  return (
-                    <Card className="border-border/70 min-h-full shadow-xs">
-                      <CardContent className="p-6 space-y-5">
-                        {/* Header */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                          <div>
-                            <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                              <History className="h-4 w-4 text-primary" /> Previous Applications
-                            </h3>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Past application attempts by the same email address.
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {historyLoading ? (
-                              <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse">
-                                <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-xs font-semibold">
-                                {history?.data?.length ?? 0} attempt
-                                {(history?.data?.length ?? 0) !== 1 ? "s" : ""}
-                              </Badge>
-                            )}
-                            {onOverrideCooldown &&
-                              (history?.cooldown || history?.block?.is_blocked) && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
-                                  disabled={overrideBusy}
-                                  onClick={onOverrideCooldown}
-                                >
-                                  {overrideBusy ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <ShieldAlert className="h-3.5 w-3.5" />
-                                  )}
-                                  Override cooldown
-                                </Button>
                               )}
-                          </div>
-                        </div>
-
-                        {/* Block alert */}
-                        {history?.block?.is_blocked && (
-                          <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
-                            <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-destructive">
-                                Applicant is blocked
-                              </p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                This applicant has been restricted from re-applying. Only a super
-                                admin can lift this restriction.
-                              </p>
                             </div>
-                            {isSuperAdmin && onUnblock && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 shrink-0 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                                onClick={() => onUnblock(a)}
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
-                              </Button>
-                            )}
-                          </div>
-                        )}
+                          )}
 
-                        {/* Cooldown / eligible status card */}
-                        {!historyLoading &&
-                          history &&
-                          (Boolean(history.cooldown) ? (
-                            <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
-                              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                                  Cooling-down period active
-                                </p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  {history.cooldown
-                                    ? `This applicant may re-apply after ${history.cooldown.eligible_after_label} (${history.cooldown.days_left} day${history.cooldown.days_left === 1 ? "" : "s"} left).`
-                                    : "This applicant must wait before re-applying."}
-                                </p>
+                          {/* Cooldown / eligible status card */}
+                          {!historyLoading &&
+                            history &&
+                            (Boolean(history.cooldown) ? (
+                              <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
+                                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                                    Cooling-down period active
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    {history.cooldown
+                                      ? `This applicant may re-apply after ${history.cooldown.eligible_after_label} (${history.cooldown.days_left} day${history.cooldown.days_left === 1 ? "" : "s"} left).`
+                                      : "This applicant must wait before re-applying."}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                          ) : !history.block?.is_blocked ? (
-                            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4">
-                              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                              <div>
-                                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                                  Eligible to re-apply
-                                </p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  No cooldown or block restriction is active.
-                                </p>
+                            ) : !history.block?.is_blocked ? (
+                              <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4">
+                                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                <div>
+                                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                                    Eligible to re-apply
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    No cooldown or block restriction is active.
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                          ) : null)}
+                            ) : null)}
 
-                        {/* History list */}
-                        {historyLoading ? (
-                          <div className="space-y-3">
-                            {Array.from({ length: 3 }).map((_, i) => (
-                              <div
-                                key={i}
-                                className="h-20 animate-pulse rounded-xl border border-border bg-muted/30"
-                              />
-                            ))}
-                          </div>
-                        ) : history?.data && history.data.length > 0 ? (
-                          <div className="space-y-3">
-                            {history.data.map((row, idx) => {
-                              const isCurrent = row.is_current;
-                              return (
+                          {/* History list */}
+                          {historyLoading ? (
+                            <div className="space-y-3">
+                              {Array.from({ length: 3 }).map((_, i) => (
                                 <div
-                                  key={row.applicant_id}
-                                  className={cn(
-                                    "rounded-xl border p-4 transition-colors",
-                                    isCurrent
-                                      ? "border-primary/40 bg-primary/5"
-                                      : "border-border bg-card hover:border-border/80 hover:bg-muted/20",
-                                  )}
-                                >
-                                  <div className="flex flex-wrap items-start justify-between gap-2">
-                                    <div className="min-w-0 flex-1 space-y-1">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="font-mono text-[11px] font-bold text-muted-foreground">
-                                          {row.applicant_code ?? `#${idx + 1}`}
-                                        </span>
-                                        {isCurrent && (
+                                  key={i}
+                                  className="h-20 animate-pulse rounded-xl border border-border bg-muted/30"
+                                />
+                              ))}
+                            </div>
+                          ) : history?.data && history.data.length > 0 ? (
+                            <div className="space-y-3">
+                              {history.data.map((row, idx) => {
+                                const isCurrent = row.is_current;
+                                return (
+                                  <div
+                                    key={row.applicant_id}
+                                    className={cn(
+                                      "rounded-xl border p-4 transition-colors",
+                                      isCurrent
+                                        ? "border-primary/40 bg-primary/5"
+                                        : "border-border bg-card hover:border-border/80 hover:bg-muted/20",
+                                    )}
+                                  >
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1 space-y-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="font-mono text-[11px] font-bold text-muted-foreground">
+                                            {row.applicant_code ?? `#${idx + 1}`}
+                                          </span>
+                                          {isCurrent && (
+                                            <Badge
+                                              variant="outline"
+                                              className="text-[10px] gap-1 border-primary/40 text-primary"
+                                            >
+                                              Current
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <p className="text-sm font-semibold text-foreground">
+                                          {row.position ?? a.position}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Applied:{" "}
+                                          {row.applied_at ? displayAppliedAt(row.applied_at) : "—"}
+                                        </p>
+                                      </div>
+                                      <div className="flex flex-col items-end gap-1.5">
+                                        {row.stage && (
+                                          <Badge variant="secondary" className="text-[11px]">
+                                            {row.stage}
+                                          </Badge>
+                                        )}
+                                        {row.status && (
                                           <Badge
                                             variant="outline"
-                                            className="text-[10px] gap-1 border-primary/40 text-primary"
+                                            className={cn(
+                                              "text-[10px]",
+                                              row.status === "hired"
+                                                ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/8"
+                                                : row.status === "rejected"
+                                                  ? "border-destructive/40 text-destructive bg-destructive/8"
+                                                  : "border-border text-muted-foreground",
+                                            )}
                                           >
-                                            Current
+                                            {row.status}
                                           </Badge>
                                         )}
                                       </div>
-                                      <p className="text-sm font-semibold text-foreground">
-                                        {row.position ?? a.position}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground">
-                                        Applied:{" "}
-                                        {row.applied_at ? displayAppliedAt(row.applied_at) : "—"}
-                                      </p>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-1.5">
-                                      {row.stage && (
-                                        <Badge variant="secondary" className="text-[11px]">
-                                          {row.stage}
-                                        </Badge>
-                                      )}
-                                      {row.status && (
-                                        <Badge
-                                          variant="outline"
-                                          className={cn(
-                                            "text-[10px]",
-                                            row.status === "hired"
-                                              ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/8"
-                                              : row.status === "rejected"
-                                                ? "border-destructive/40 text-destructive bg-destructive/8"
-                                                : "border-border text-muted-foreground",
-                                          )}
-                                        >
-                                          {row.status}
-                                        </Badge>
-                                      )}
                                     </div>
                                   </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          !historyLoading && (
-                            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-                              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/60">
-                                <History className="h-7 w-7 text-muted-foreground/50" />
-                              </div>
-                              <div>
-                                <p className="text-sm font-semibold text-foreground">
-                                  First-Time Applicant
-                                </p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  No previous applications found for this email address.
-                                </p>
-                              </div>
+                                );
+                              })}
                             </div>
-                          )
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                case "details":
-                  return (
-                    <Card className="border-border/70 min-h-full shadow-xs">
-                      <CardContent className="p-6 space-y-5">
-                        <div className="border-b border-border/60 pb-4">
-                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                            <FileText className="h-4 w-4 text-primary" /> Application Details
-                          </h3>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Submitted via {a.source} · {displayAppliedAt(a.appliedAt)}
-                          </p>
-                        </div>
-
-                        <div className="grid gap-4">
-                          {/* Card 1 — Candidate Profile */}
-                          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
-                            <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                              <User className="h-3.5 w-3.5" /> Candidate Profile
-                            </h4>
-                            {[
-                              { label: "Full Name", value: a.name },
-                              { label: "Email", value: a.email, mono: true },
-                              { label: "Phone", value: a.phone, mono: true },
-                              { label: "Source", value: a.source },
-                            ].map(({ label, value, mono }) => (
-                              <div key={label} className="flex items-start justify-between gap-2">
-                                <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
-                                  {label}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "text-right text-xs font-medium text-foreground break-all",
-                                    mono && "font-mono",
-                                  )}
-                                >
-                                  {value ?? "—"}
-                                </span>
+                          ) : (
+                            !historyLoading && (
+                              <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/60">
+                                  <History className="h-7 w-7 text-muted-foreground/50" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-foreground">
+                                    First-Time Applicant
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    No previous applications found for this email address.
+                                  </p>
+                                </div>
                               </div>
-                            ))}
-                          </div>
-
-                          {/* Card 2 — Application Metadata */}
-                          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
-                            <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                              <Briefcase className="h-3.5 w-3.5" /> Application Metadata
-                            </h4>
-                            {[
-                              { label: "Applicant ID", value: String(a.id), mono: true },
-                              { label: "Position", value: a.position },
-                              { label: "Department", value: departmentOf(a.position) },
-                              { label: "Current Stage", value: a.stage },
-                              { label: "Date Applied", value: displayAppliedAt(a.appliedAt) },
-                            ].map(({ label, value, mono }) => (
-                              <div key={label} className="flex items-start justify-between gap-2">
-                                <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
-                                  {label}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "text-right text-xs font-medium text-foreground break-all",
-                                    mono && "font-mono",
-                                  )}
-                                >
-                                  {value ?? "—"}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
+                            )
+                          )}
                         </div>
                       </CardContent>
                     </Card>
                   );
-                case "resume":
+                case "screening":
                   return (
                     <Card className="border-border/70 min-h-full shadow-xs">
                       <CardContent className="p-6 space-y-4">
                         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
                           <div>
                             <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                              <Upload className="h-4 w-4 text-primary" /> Resume &amp; Documents
+                              <ScanLine className="h-4 w-4 text-primary" /> Screening
                             </h3>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Resume screening result plus supporting verification documents (COE,
-                              Certificate, Credentials, Others).
-                            </p>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge
-                              variant="outline"
-                              className="border-border bg-secondary text-secondary-foreground"
-                            >
-                              {docCount} item{docCount === 1 ? "" : "s"}
-                            </Badge>
-                            <Button size="sm" variant="outline" onClick={onReview}>
-                              <ScanLine className="mr-1.5 h-3.5 w-3.5" /> Review Screening
-                            </Button>
-                          </div>
+                          <Button size="sm" variant="outline" onClick={onReview}>
+                            <ScanLine className="mr-1.5 h-3.5 w-3.5" /> Review Screening
+                          </Button>
                         </div>
 
-                        {/* Resume Screening Result — redesigned to the approved mockup */}
+                        {/* Resume screening result — the four pipeline stages
+                            double as the tab bar, so the process stays visible. */}
                         {(() => {
                           const vm = screeningViewModel(a);
                           const detail = vm.detail;
+                          const verification = vm.verification;
+                          const docsChecked =
+                            (verification?.verified_count ?? 0) +
+                            (verification?.discrepancy_count ?? 0) +
+                            (verification?.unable_count ?? 0);
+                          const stages = [
+                            {
+                              value: "extraction",
+                              label: "Extraction",
+                              result: detail ? "Parsed" : "Not run",
+                              ok: Boolean(detail),
+                            },
+                            {
+                              value: "recognition",
+                              label: "Recognition",
+                              result: `${vm.skills.length} skills · ${vm.recognizedRoles.length} roles`,
+                              ok:
+                                vm.skills.length > 0 &&
+                                vm.unrecognizedRoles.length === 0 &&
+                                vm.unrecognizedCertifications.length === 0,
+                            },
+                            {
+                              value: "match",
+                              label: "Matching",
+                              result: `${vm.matched.length}/${vm.rows.length}`,
+                              ok: vm.rows.length > 0 && vm.missing.length === 0,
+                            },
+                            {
+                              value: "documents",
+                              label: "Documents",
+                              result:
+                                docsChecked > 0
+                                  ? `${verification?.verified_count ?? 0}/${docsChecked}`
+                                  : "None",
+                              ok: docsChecked > 0 && (verification?.discrepancy_count ?? 0) === 0,
+                            },
+                          ];
                           return (
                             <div className="mt-4 space-y-4">
-                              <div className="rounded-xl border border-border bg-card p-5">
-                                <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-                                  <ShieldCheck className="h-4.5 w-4.5 text-primary" /> Resume
-                                  Screening
-                                </h3>
-                                <div className="mt-4 flex flex-col items-center gap-4 lg:flex-row lg:items-start">
-                                  <ScreeningScoreDonut score={vm.score} />
-                                  <div className="w-full min-w-0 flex-1 space-y-3">
-                                    <ScreeningVerdictBanner status={a.status} score={vm.score} />
-                                    <ScreeningStatTiles
-                                      matchedCount={vm.matched.length}
-                                      missingCount={vm.missing.length}
-                                      yearsExperience={vm.yearsExperience}
-                                      educationLabel={vm.educationLabel}
-                                      showIcons={false}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              <ScreeningVerificationImpact
-                                verification={vm.verification}
-                                resumeScore={vm.resumeScore}
+                              <ScreeningResultHero
+                                status={a.status}
                                 score={vm.score}
-                                onRecompute={onRecomputeRanking}
-                                recomputing={recomputingRanking}
+                                matchedCount={vm.matched.length}
+                                missingCount={vm.missing.length}
+                                yearsExperience={vm.yearsExperience}
+                                educationLabel={vm.educationLabel}
                               />
 
-                              <div className="grid items-stretch gap-5 grid-cols-1 xl:grid-cols-2">
-                                <ResumeInfoPanel
-                                  title="Key Information Extracted"
-                                  variant="modal"
-                                  skills={vm.skills}
-                                  recognizedRoles={vm.recognizedRoles}
-                                  unrecognizedRoles={vm.unrecognizedRoles}
-                                  workExperience={vm.workExperience}
-                                  education={vm.education}
-                                  experienceYears={vm.yearsExperience}
-                                  certifications={vm.certifications}
-                                  personalInfo={vm.personalInfo}
-                                  skillsRecognized={vm.skillsRecognized}
-                                  unrecognizedCertifications={vm.unrecognizedCertifications}
-                                />
-                                <RequirementMatchPanel
-                                  rows={vm.rows}
-                                  experienceMinYears={vm.experienceMinYears}
-                                />
-                              </div>
+                              <Tabs defaultValue="extraction" className="w-full space-y-4">
+                                <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-4">
+                                  {stages.map((stage, i) => (
+                                    <TabsTrigger
+                                      key={stage.value}
+                                      value={stage.value}
+                                      className="flex h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal rounded-lg border border-border bg-card px-2.5 py-2 text-left shadow-none data-[state=active]:border-primary/40 data-[state=active]:bg-primary/5 data-[state=active]:shadow-none cursor-pointer"
+                                    >
+                                      <span className="flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                                        <span
+                                          className={cn(
+                                            "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[0.6rem] font-bold tabular-nums",
+                                            stage.ok
+                                              ? "bg-success text-success-foreground"
+                                              : "bg-muted-foreground/20 text-muted-foreground",
+                                          )}
+                                        >
+                                          {i + 1}
+                                        </span>
+                                        {stage.label}
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          "w-full truncate text-xs font-semibold",
+                                          stage.ok ? "text-success" : "text-foreground",
+                                        )}
+                                        title={stage.result}
+                                      >
+                                        {stage.result}
+                                      </span>
+                                    </TabsTrigger>
+                                  ))}
+                                </TabsList>
 
-                              <ScreeningResumeDocsMatchDetail
-                                docs={serverDocList}
-                                loading={serverDocsLoading}
-                                resumeName={vm.personalInfo.name ?? a.name}
-                                resumeEducation={vm.education}
-                                resumeCertifications={vm.certifications}
-                              />
+                                <TabsContent value="extraction" className="mt-0">
+                                  <ResumeInfoPanel
+                                    title="Extracted Information"
+                                    variant="modal"
+                                    focus="profile"
+                                    skills={vm.skills}
+                                    recognizedRoles={vm.recognizedRoles}
+                                    unrecognizedRoles={vm.unrecognizedRoles}
+                                    workExperience={vm.workExperience}
+                                    education={vm.education}
+                                    experienceYears={vm.yearsExperience}
+                                    certifications={vm.certifications}
+                                    personalInfo={vm.personalInfo}
+                                    skillsRecognized={vm.skillsRecognized}
+                                    unrecognizedCertifications={vm.unrecognizedCertifications}
+                                  />
+                                </TabsContent>
 
-                              <ScreeningSupportDocsGrid
-                                resumeName={a.resumeOriginalName || "Resume / CV"}
-                                resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
-                                onOpenResume={
-                                  a.resumeUrl
-                                    ? () => window.open(a.resumeUrl!, "_blank", "noopener")
-                                    : undefined
-                                }
-                                docs={serverDocList}
-                                loading={serverDocsLoading}
-                                onView={(d) =>
-                                  window.open(
-                                    applicantDocumentsApi.fileUrl(d.applicant_document_id),
-                                    "_blank",
-                                    "noopener",
-                                  )
-                                }
-                                onDownload={(d) =>
-                                  window.open(
-                                    applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
-                                    "_blank",
-                                    "noopener",
-                                  )
-                                }
-                              />
+                                <TabsContent value="recognition" className="mt-0">
+                                  <ResumeInfoPanel
+                                    title="Recognized Entities"
+                                    variant="modal"
+                                    focus="entities"
+                                    skills={vm.skills}
+                                    recognizedRoles={vm.recognizedRoles}
+                                    unrecognizedRoles={vm.unrecognizedRoles}
+                                    workExperience={vm.workExperience}
+                                    education={vm.education}
+                                    experienceYears={vm.yearsExperience}
+                                    certifications={vm.certifications}
+                                    personalInfo={vm.personalInfo}
+                                    skillsRecognized={vm.skillsRecognized}
+                                    unrecognizedCertifications={vm.unrecognizedCertifications}
+                                  />
+                                </TabsContent>
 
-                              {docs.length > 0 && (
-                                <div className="rounded-xl border border-border bg-card p-5">
-                                  <h3 className="text-sm font-semibold">Session uploads</h3>
-                                  <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-                                    Documents staged in this session, not yet verified against the
-                                    resume.
-                                  </p>
-                                  <div className="mt-3 space-y-4">
-                                    {VERIFICATION_DOC_TYPES.map((t) => {
-                                      const group = docs.filter((d) => d.docType === t.type);
-                                      if (group.length === 0) return null;
-                                      return (
-                                        <div key={t.type}>
-                                          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
-                                            {t.label}
-                                            <Badge
-                                              variant="outline"
-                                              className="border-border bg-muted text-muted-foreground"
-                                            >
-                                              {group.length}
-                                            </Badge>
-                                          </p>
-                                          <p className="text-[0.7rem] text-muted-foreground">
-                                            {t.verifies}
-                                          </p>
-                                          <div className="mt-2 overflow-x-auto">
-                                            <Table>
-                                              <TableHeader>
-                                                <TableRow>
-                                                  <TableHead>Title / File</TableHead>
-                                                  <TableHead>Original Copy</TableHead>
-                                                  <TableHead>Uploaded</TableHead>
-                                                </TableRow>
-                                              </TableHeader>
-                                              <TableBody>
-                                                {serverDocsLoading && (
-                                                  <TableRowsSkeleton cols={3} rows={5} />
-                                                )}
-                                                {!serverDocsLoading &&
-                                                  group.map((d) => (
-                                                    <TableRow key={`${d.docType}-${d.fileName}`}>
-                                                      <TableCell>
-                                                        <p className="text-sm font-medium">
-                                                          {d.title}
-                                                        </p>
-                                                        <p className="text-xs text-muted-foreground">
-                                                          {d.fileName}
-                                                        </p>
-                                                      </TableCell>
-                                                      <TableCell>
-                                                        {d.originalCopy ? (
-                                                          <Badge
-                                                            variant="outline"
-                                                            className="border-success/30 bg-success/10 text-success"
-                                                          >
-                                                            Original
-                                                          </Badge>
-                                                        ) : (
-                                                          <Badge
-                                                            variant="outline"
-                                                            className="border-caution/30 bg-caution/10 text-caution"
-                                                          >
-                                                            Copy
-                                                          </Badge>
-                                                        )}
-                                                      </TableCell>
-                                                      <TableCell className="text-xs text-muted-foreground">
-                                                        {d.uploadedAt}
-                                                      </TableCell>
+                                <TabsContent value="match" className="mt-0 space-y-4">
+                                  <ScreeningVerificationImpact
+                                    verification={vm.verification}
+                                    resumeScore={vm.resumeScore}
+                                    score={vm.score}
+                                    onRecompute={onRecomputeRanking}
+                                    recomputing={recomputingRanking}
+                                  />
+
+                                  <RequirementMatchPanel
+                                    rows={vm.rows}
+                                    experienceMinYears={vm.experienceMinYears}
+                                  />
+                                </TabsContent>
+
+                                <TabsContent value="documents" className="mt-0 space-y-4">
+                                  <ScreeningSupportDocsGrid
+                                    key={a.dbId ?? a.id}
+                                    title="Supporting Document Verification"
+                                    subtitle="Uploaded documents compared field-by-field against the claims in the applicant's resume."
+                                    showResume={false}
+                                    resumeName={a.resumeOriginalName || "Resume / CV"}
+                                    resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
+                                    docs={serverDocList}
+                                    loading={serverDocsLoading}
+                                    reverifyingId={reverifyingServerDocId}
+                                    onView={(d) =>
+                                      window.open(
+                                        applicantDocumentsApi.fileUrl(d.applicant_document_id),
+                                        "_blank",
+                                        "noopener",
+                                      )
+                                    }
+                                    onDownload={(d) =>
+                                      window.open(
+                                        applicantDocumentsApi.fileUrl(
+                                          d.applicant_document_id,
+                                          true,
+                                        ),
+                                        "_blank",
+                                        "noopener",
+                                      )
+                                    }
+                                    onReverify={reverifyServerDoc}
+                                  />
+
+                                  <ScreeningResumeDocsMatchDetail
+                                    docs={serverDocList}
+                                    loading={serverDocsLoading}
+                                    resumeName={vm.personalInfo.name ?? a.name}
+                                    resumeEducation={vm.education}
+                                    resumeCertifications={vm.certifications}
+                                  />
+
+                                  {docs.length > 0 && (
+                                    <div className="rounded-xl border border-border bg-card p-5">
+                                      <h3 className="text-sm font-semibold">Session uploads</h3>
+                                      <div className="mt-3 space-y-4">
+                                        {VERIFICATION_DOC_TYPES.map((t) => {
+                                          const group = docs.filter((d) => d.docType === t.type);
+                                          if (group.length === 0) return null;
+                                          return (
+                                            <div key={t.type}>
+                                              <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
+                                                {t.label}
+                                                <Badge
+                                                  variant="outline"
+                                                  className="border-border bg-muted text-muted-foreground"
+                                                >
+                                                  {group.length}
+                                                </Badge>
+                                              </p>
+                                              <p className="text-[0.7rem] text-muted-foreground">
+                                                {t.verifies}
+                                              </p>
+                                              <div className="mt-2 overflow-x-auto">
+                                                <Table>
+                                                  <TableHeader>
+                                                    <TableRow>
+                                                      <TableHead>Title / File</TableHead>
+                                                      <TableHead>Original Copy</TableHead>
+                                                      <TableHead>Uploaded</TableHead>
                                                     </TableRow>
-                                                  ))}
-                                              </TableBody>
-                                            </Table>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-
-                              <ScreeningDetailsAccordion
-                                detail={detail}
-                                variant="modal"
-                                position={a.position}
-                                score={vm.score}
-                                vm={vm}
-                              />
-
-                              {detail?.alternative_job && (
-                                <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
-                                  <p className="font-medium text-warning-foreground">
-                                    Recommended alternative: {detail.alternative_job.title} (
-                                    {Math.round(
-                                      detail.alternative_job.alternative_match_score ?? 0,
-                                    )}
-                                    %)
-                                  </p>
-                                  {detail.alternative_job.reason && (
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                      {detail.alternative_job.reason}
-                                    </p>
+                                                  </TableHeader>
+                                                  <TableBody>
+                                                    {serverDocsLoading && (
+                                                      <TableRowsSkeleton cols={3} rows={5} />
+                                                    )}
+                                                    {!serverDocsLoading &&
+                                                      group.map((d) => (
+                                                        <TableRow
+                                                          key={`${d.docType}-${d.fileName}`}
+                                                        >
+                                                          <TableCell>
+                                                            <p className="text-sm font-medium">
+                                                              {d.title}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                              {d.fileName}
+                                                            </p>
+                                                          </TableCell>
+                                                          <TableCell>
+                                                            {d.originalCopy ? (
+                                                              <Badge
+                                                                variant="outline"
+                                                                className="border-success/30 bg-success/10 text-success"
+                                                              >
+                                                                Original
+                                                              </Badge>
+                                                            ) : (
+                                                              <Badge
+                                                                variant="outline"
+                                                                className="border-caution/30 bg-caution/10 text-caution"
+                                                              >
+                                                                Copy
+                                                              </Badge>
+                                                            )}
+                                                          </TableCell>
+                                                          <TableCell className="text-xs text-muted-foreground">
+                                                            {d.uploadedAt}
+                                                          </TableCell>
+                                                        </TableRow>
+                                                      ))}
+                                                  </TableBody>
+                                                </Table>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
                                   )}
-                                </div>
-                              )}
+
+                                  {detail?.alternative_job && (
+                                    <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
+                                      <p className="font-medium text-warning-foreground">
+                                        Recommended alternative: {detail.alternative_job.title} (
+                                        {Math.round(
+                                          detail.alternative_job.alternative_match_score ?? 0,
+                                        )}
+                                        %)
+                                      </p>
+                                      {detail.alternative_job.reason && (
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                          {detail.alternative_job.reason}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </TabsContent>
+                              </Tabs>
                             </div>
                           );
                         })()}
@@ -7909,10 +7766,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  no Accept & schedule / Reject / Refer / Schedule actions are shown.
    *  Ranking list entries keep the full decision footer. */
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
-  const [reviewTab, setReviewTab] = useState<"match" | "verification" | "technical">("match");
+  const [reviewTab, setReviewTab] = useState<
+    "extraction" | "recognition" | "matching" | "documents"
+  >("extraction");
   const openReview = (a: Applicant, readOnly = false) => {
     setReviewReadOnly(readOnly);
-    setReviewTab("match");
+    setReviewTab("extraction");
     setReview(a);
   };
   const closeReview = () => {
@@ -12990,10 +12849,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           <Tabs value={tab} onValueChange={setTab}>
             {/* RANKING + TABLE */}
             <TabsContent value="ranking" className=" space-y-6">
-              <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+              <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
                 {/* Upcoming interviews */}
-                <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                  <CardContent className="flex flex-col p-5">
+                <Card className="flex flex-col border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                  <CardContent className="flex h-full flex-1 flex-col p-5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h2 className="flex items-center gap-2 font-display text-base font-bold">
                         <CalendarDays className="h-4.5 w-4.5 text-primary" />
@@ -13029,7 +12888,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             <div
                               key={iv.id}
                               className={cn(
-                                "flex items-stretch gap-3 rounded-xl p-3",
+                                "flex flex-1 items-stretch gap-3 rounded-xl p-3",
                                 index === 0 ? "bg-primary/[0.045]" : "border border-border/60",
                               )}
                             >
@@ -16793,6 +16652,86 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </div>
                     </div>
 
+                    {/* Administrative actions — same applicant-wide strip as the
+                        full profile, so both profile surfaces stay in sync. */}
+                    <div className="mt-4 flex flex-wrap items-center gap-1.5 border-y border-border/60 bg-muted/20 px-4 py-2.5">
+                      <span className="mr-1 flex items-center gap-1.5 text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Sliders className="h-3.5 w-3.5 text-primary" /> Administrative Actions
+                      </span>
+                      {isSuperAdmin && a.stage !== "Rejected" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1.5 text-xs cursor-pointer"
+                          onClick={() => void openMoveToStage(a)}
+                        >
+                          <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
+                        </Button>
+                      )}
+                      {isSuperAdmin && a.stage === "Rejected" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1.5 text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                          onClick={() => openReopen(a)}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" /> Reopen
+                        </Button>
+                      )}
+                      {isSuperAdmin &&
+                        (a.stage === "Hired" ||
+                          a.stage === "Offer" ||
+                          (a.status as string) === "hired") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                            onClick={() => openCorrectHiring(a)}
+                          >
+                            <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
+                          </Button>
+                        )}
+                      {!a.isArchived ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1.5 text-xs text-muted-foreground cursor-pointer"
+                          onClick={() => openArchive(a)}
+                        >
+                          <Archive className="h-3.5 w-3.5" /> Archive
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1.5 text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                          onClick={() => openRestore(a)}
+                        >
+                          <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+                        </Button>
+                      )}
+                      {isSuperAdmin &&
+                        (!a.isActiveBlocked ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer"
+                            onClick={() => openBlock(a)}
+                          >
+                            <Ban className="h-3.5 w-3.5" /> Block
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                            onClick={() => openUnblock(a)}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                          </Button>
+                        ))}
+                    </div>
+
                     <div className="mt-5 px-4">
                       <ProfileStageRail
                         stageIndex={stageIndex}
@@ -17228,6 +17167,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <p className="text-xs font-semibold text-foreground">Contact</p>
                           <dl className="mt-2 space-y-2 text-[0.72rem]">
                             {[
+                              { icon: User, label: "Full Name", value: a.name },
                               { icon: Mail, label: "Email", value: a.email },
                               { icon: Phone, label: "Phone", value: a.phone },
                               {
@@ -17619,6 +17559,43 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 {(() => {
                   const vm = screeningViewModel(review);
                   const detail = vm.detail;
+                  const verification = vm.verification;
+                  const docsChecked =
+                    (verification?.verified_count ?? 0) +
+                    (verification?.discrepancy_count ?? 0) +
+                    (verification?.unable_count ?? 0);
+                  const stages = [
+                    {
+                      value: "extraction",
+                      label: "Extraction",
+                      result: detail ? "Parsed" : "Not run",
+                      ok: Boolean(detail),
+                    },
+                    {
+                      value: "recognition",
+                      label: "Recognition",
+                      result: `${vm.skills.length} skills · ${vm.recognizedRoles.length} roles`,
+                      ok:
+                        vm.skills.length > 0 &&
+                        vm.unrecognizedRoles.length === 0 &&
+                        vm.unrecognizedCertifications.length === 0,
+                    },
+                    {
+                      value: "matching",
+                      label: "Matching",
+                      result: `${vm.matched.length}/${vm.rows.length}`,
+                      ok: vm.rows.length > 0 && vm.missing.length === 0,
+                    },
+                    {
+                      value: "documents",
+                      label: "Documents",
+                      result:
+                        docsChecked > 0
+                          ? `${verification?.verified_count ?? 0}/${docsChecked}`
+                          : "None",
+                      ok: docsChecked > 0 && (verification?.discrepancy_count ?? 0) === 0,
+                    },
+                  ];
 
                   return (
                     <>
@@ -17631,76 +17608,81 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         educationLabel={vm.educationLabel}
                       />
                       <Tabs
-                        defaultValue="match"
+                        defaultValue="extraction"
                         value={reviewTab}
                         onValueChange={(v) => setReviewTab(v as any)}
                         className="w-full space-y-4"
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-2">
-                          <TabsList className="bg-muted/70 p-1">
+                        <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-4">
+                          {stages.map((stage, i) => (
                             <TabsTrigger
-                              value="match"
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+                              key={stage.value}
+                              value={stage.value}
+                              className="flex h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal rounded-lg border border-border bg-card px-2.5 py-2 text-left shadow-none data-[state=active]:border-primary/40 data-[state=active]:bg-primary/5 data-[state=active]:shadow-none cursor-pointer"
                             >
-                              <Target className="h-3.5 w-3.5" /> Match &amp; Requirements
-                            </TabsTrigger>
-                            <TabsTrigger
-                              value="verification"
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-                            >
-                              <FileCheck className="h-3.5 w-3.5" /> Document Verification
-                              {reviewDocVerifications &&
-                                Object.keys(reviewDocVerifications).length > 0 && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="ml-1 px-1.5 py-0 text-[0.65rem] data-[state=active]:bg-primary-foreground/25 data-[state=active]:text-primary-foreground"
-                                  >
-                                    {Object.keys(reviewDocVerifications).length}
-                                  </Badge>
+                              <span className="flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                                <span
+                                  className={cn(
+                                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[0.6rem] font-bold tabular-nums",
+                                    stage.ok
+                                      ? "bg-success text-success-foreground"
+                                      : "bg-muted-foreground/20 text-muted-foreground",
+                                  )}
+                                >
+                                  {i + 1}
+                                </span>
+                                {stage.label}
+                              </span>
+                              <span
+                                className={cn(
+                                  "w-full truncate text-xs font-semibold",
+                                  stage.ok ? "text-success" : "text-foreground",
                                 )}
+                                title={stage.result}
+                              >
+                                {stage.result}
+                              </span>
                             </TabsTrigger>
-                            <TabsTrigger
-                              value="technical"
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-                            >
-                              <Sliders className="h-3.5 w-3.5" /> Technical Breakdown
-                            </TabsTrigger>
-                          </TabsList>
+                          ))}
+                        </TabsList>
 
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
-                              Score Weight:{" "}
-                              <strong className="text-foreground">{Math.round(vm.score)}%</strong>
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* TAB 1: Match & Requirements */}
-                        <TabsContent value="match" className="mt-0 space-y-4">
-                          <div className="grid items-stretch gap-5 grid-cols-1 xl:grid-cols-2">
-                            <RequirementMatchPanel
-                              rows={vm.rows}
-                              experienceMinYears={vm.experienceMinYears}
-                            />
-                            <ResumeInfoPanel
-                              title="Key Information Extracted"
-                              variant="modal"
-                              skills={vm.skills}
-                              recognizedRoles={vm.recognizedRoles}
-                              unrecognizedRoles={vm.unrecognizedRoles}
-                              workExperience={vm.workExperience}
-                              education={vm.education}
-                              experienceYears={vm.yearsExperience}
-                              certifications={vm.certifications}
-                              personalInfo={vm.personalInfo}
-                              skillsRecognized={vm.skillsRecognized}
-                              unrecognizedCertifications={vm.unrecognizedCertifications}
-                            />
-                          </div>
+                        <TabsContent value="extraction" className="mt-0">
+                          <ResumeInfoPanel
+                            title="Extracted Information"
+                            variant="modal"
+                            focus="profile"
+                            skills={vm.skills}
+                            recognizedRoles={vm.recognizedRoles}
+                            unrecognizedRoles={vm.unrecognizedRoles}
+                            workExperience={vm.workExperience}
+                            education={vm.education}
+                            experienceYears={vm.yearsExperience}
+                            certifications={vm.certifications}
+                            personalInfo={vm.personalInfo}
+                            skillsRecognized={vm.skillsRecognized}
+                            unrecognizedCertifications={vm.unrecognizedCertifications}
+                          />
                         </TabsContent>
 
-                        {/* TAB 2: Document Verification */}
-                        <TabsContent value="verification" className="mt-0 space-y-4">
+                        <TabsContent value="recognition" className="mt-0">
+                          <ResumeInfoPanel
+                            title="Recognized Entities"
+                            variant="modal"
+                            focus="entities"
+                            skills={vm.skills}
+                            recognizedRoles={vm.recognizedRoles}
+                            unrecognizedRoles={vm.unrecognizedRoles}
+                            workExperience={vm.workExperience}
+                            education={vm.education}
+                            experienceYears={vm.yearsExperience}
+                            certifications={vm.certifications}
+                            personalInfo={vm.personalInfo}
+                            skillsRecognized={vm.skillsRecognized}
+                            unrecognizedCertifications={vm.unrecognizedCertifications}
+                          />
+                        </TabsContent>
+
+                        <TabsContent value="matching" className="mt-0 space-y-4">
                           <ScreeningVerificationImpact
                             verification={vm.verification}
                             resumeScore={vm.resumeScore}
@@ -17709,55 +17691,57 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             recomputing={recomputingRanking}
                           />
 
-                          <div className="grid items-start gap-5 grid-cols-1 xl:grid-cols-2">
-                            <ScreeningResumeDocsMatchDetail
-                              docs={Object.values(reviewDocVerifications || {})}
-                              loading={reviewDocsLoading}
-                              resumeName={vm.personalInfo.name ?? review.name}
-                              resumeEducation={vm.education}
-                              resumeCertifications={vm.certifications}
-                            />
-
-                            <ScreeningSupportDocsGrid
-                              key={review.id}
-                              title="Supporting Document Verification"
-                              subtitle="Uploaded documents compared field-by-field against the claims in the applicant's resume."
-                              showResume={false}
-                              resumeName={review.resumeOriginalName || "Resume / CV"}
-                              resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
-                              onOpenResume={
-                                review.resumeUrl
-                                  ? () => window.open(review.resumeUrl!, "_blank", "noopener")
-                                  : undefined
-                              }
-                              docs={Object.values(reviewDocVerifications || {})}
-                              loading={reviewDocsLoading}
-                              reverifyingId={reverifyingDocId}
-                              onView={(d) =>
-                                window.open(
-                                  applicantDocumentsApi.fileUrl(d.applicant_document_id),
-                                  "_blank",
-                                  "noopener",
-                                )
-                              }
-                              onDownload={(d) =>
-                                window.open(
-                                  applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
-                                  "_blank",
-                                  "noopener",
-                                )
-                              }
-                              onReverify={reverifyDocument}
-                              onOverride={(d) => {
-                                setOverrideDocFor(d);
-                                setOverrideDocReason("Manually reviewed and verified by HR.");
-                              }}
-                            />
-                          </div>
+                          <RequirementMatchPanel
+                            rows={vm.rows}
+                            experienceMinYears={vm.experienceMinYears}
+                          />
                         </TabsContent>
 
-                        {/* TAB 3: Technical Breakdown */}
-                        <TabsContent value="technical" className="mt-0 space-y-4">
+                        <TabsContent value="documents" className="mt-0 space-y-4">
+                          <ScreeningSupportDocsGrid
+                            key={review.id}
+                            title="Supporting Document Verification"
+                            subtitle="Uploaded documents compared field-by-field against the claims in the applicant's resume."
+                            showResume={false}
+                            resumeName={review.resumeOriginalName || "Resume / CV"}
+                            resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
+                            onOpenResume={
+                              review.resumeUrl
+                                ? () => window.open(review.resumeUrl!, "_blank", "noopener")
+                                : undefined
+                            }
+                            docs={Object.values(reviewDocVerifications || {})}
+                            loading={reviewDocsLoading}
+                            reverifyingId={reverifyingDocId}
+                            onView={(d) =>
+                              window.open(
+                                applicantDocumentsApi.fileUrl(d.applicant_document_id),
+                                "_blank",
+                                "noopener",
+                              )
+                            }
+                            onDownload={(d) =>
+                              window.open(
+                                applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
+                                "_blank",
+                                "noopener",
+                              )
+                            }
+                            onReverify={reverifyDocument}
+                            onOverride={(d) => {
+                              setOverrideDocFor(d);
+                              setOverrideDocReason("Manually reviewed and verified by HR.");
+                            }}
+                          />
+
+                          <ScreeningResumeDocsMatchDetail
+                            docs={Object.values(reviewDocVerifications || {})}
+                            loading={reviewDocsLoading}
+                            resumeName={vm.personalInfo.name ?? review.name}
+                            resumeEducation={vm.education}
+                            resumeCertifications={vm.certifications}
+                          />
+
                           {detail?.alternative_job && (
                             <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
                               <p className="font-medium text-warning-foreground">
@@ -17772,14 +17756,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               )}
                             </div>
                           )}
-
-                          <ScreeningDetailsAccordion
-                            detail={detail}
-                            variant="modal"
-                            position={review.position}
-                            score={vm.score}
-                            vm={vm}
-                          />
                         </TabsContent>
                       </Tabs>
                     </>
