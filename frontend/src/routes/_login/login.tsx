@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Lock, LogIn, Mail } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
@@ -12,11 +12,9 @@ import suite1b from "@/assets/o-suite(1)b.png";
 import suite2b from "@/assets/o-suite(2)b.png";
 
 import { Logo } from "@/components/brand/Logo";
-import { LoginFooter } from "@/components/brand/LoginFooter";
 import { Button } from "@/components/ui/button";
 import { Preloader } from "@/components/ui/preloader";
 import { FloatingInput } from "@/components/ui/floating-input";
-import { Label } from "@/components/ui/label";
 import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/turnstile";
 import { cn } from "@/lib/utils";
 
@@ -141,12 +139,9 @@ function LoginPage() {
   const [ready, setReady] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaReset, setCaptchaReset] = useState(0);
-  /** OS "reduce motion" preference — softens the entrance animation (not the slideshow). */
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
-    // The montage only renders at lg+ — below that there's nothing to wait for,
-    // so phones/tablets skip the preloader entirely.
     if (!window.matchMedia("(min-width: 1024px)").matches) {
       setReady(true);
       return;
@@ -168,8 +163,6 @@ function LoginPage() {
     };
   }, []);
 
-  // The OS "reduce motion" preference only skips the copy's staggered entrance;
-  // the slideshow interval and Ken Burns zoom always run, like the original.
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const sync = () => setReducedMotion(mq.matches);
@@ -178,8 +171,6 @@ function LoginPage() {
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  // Montage slideshow — classic auto-advance, same as the original page:
-  // one interval that swaps the slide every 6 seconds, no conditions.
   useEffect(() => {
     const slideTimer = window.setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % montageImages.length);
@@ -187,7 +178,6 @@ function LoginPage() {
     return () => window.clearInterval(slideTimer);
   }, []);
 
-  /** Staggered entrance for the hero copy — starts only once the preloader clears. */
   const enter = (delay: string) =>
     ready && !reducedMotion
       ? cn("animate-in fade-in slide-in-from-bottom-8 duration-700", delay)
@@ -206,7 +196,6 @@ function LoginPage() {
     try {
       const res = await authApi.login(email.trim(), password, captchaToken || undefined);
 
-      // OTP disabled for this role — the server signed us straight in.
       if (res.otp_required === false && res.token && res.user) {
         setToken(res.token);
         setUser(res.user);
@@ -250,20 +239,16 @@ function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col lg:grid lg:grid-cols-[1.1fr_1fr] lg:grid-rows-none">
-      {/* Workspace preloader when user signs in without OTP */}
       {signingInTarget && <Preloader onComplete={() => navigate({ to: signingInTarget })} />}
-      {/* Preloader screen until first image frame decodes */}
       {!ready && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white">
           <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8 px-6">
-            {/* Logo Mark on Left */}
             <img
               src={oxfordMarkWhite}
               alt="Oxford Suites Makati"
               className="h-24 sm:h-28 md:h-32 w-auto object-contain shrink-0"
             />
 
-            {/* Text and Progress on Right */}
             <div className="flex flex-col items-center sm:items-start text-center sm:text-left space-y-2">
               <div className="flex flex-col leading-tight font-display font-semibold uppercase tracking-[0.15em] text-2xl sm:text-3xl text-white">
                 <span>Oxford Suites</span>
@@ -276,7 +261,6 @@ function LoginPage() {
                 Preparing your workspace
               </p>
 
-              {/* Clean Gold Progress Bar */}
               <div className="mt-1 h-1.5 w-52 sm:w-60 overflow-hidden rounded-full bg-white/20">
                 <span className="hero-progress block h-full w-1/3 bg-gold" />
               </div>
@@ -285,11 +269,8 @@ function LoginPage() {
         </div>
       )}
 
-      {/* Property panel with omni-directional slow-motion montage edit.
-          Below lg this is a minimal light strip with the maroon logo + label;
-          at lg+ it keeps the original maroon montage hero. */}
+      {/* Left Property Panel */}
       <div className="login-hero relative mt-auto flex flex-col justify-between gap-4 overflow-hidden bg-background px-5 py-3 text-primary lg:mt-0 lg:gap-0 lg:bg-primary lg:px-12 lg:py-10 lg:text-primary-foreground">
-        {/* Montage Slideshow Container — desktop (lg+) only; smaller screens get the logo strip */}
         <div className="absolute inset-0 z-0 hidden overflow-hidden lg:block">
           {montageImages.map((img, index) => (
             <img
@@ -306,10 +287,8 @@ function LoginPage() {
           ))}
         </div>
 
-        {/* Lightened Maroon Foreshadow Background Overlay (image frames only) */}
         <div className="absolute inset-0 z-10 hidden bg-primary/45 mix-blend-multiply transition-colors duration-700 lg:block" />
         <div className="absolute inset-0 z-10 hidden bg-gradient-to-t from-foreground/80 via-foreground/25 to-foreground/45 lg:block" />
-        {/* Localized vignette keeps the headline legible over bright frames */}
         <div className="absolute inset-0 z-10 hidden bg-[radial-gradient(78%_62%_at_18%_58%,rgb(0_0_0/0.55),transparent_72%)] lg:block" />
 
         <div
@@ -319,11 +298,9 @@ function LoginPage() {
           )}
         >
           <Link to="/" className="flex min-w-0 items-center gap-3">
-            {/* Small screens: maroon logo + label on the light strip */}
             <div className="origin-left scale-100 lg:hidden">
               <Logo tone="primary" />
             </div>
-            {/* Desktop (lg+): original white logo on the maroon montage hero */}
             <div className="origin-left scale-100 lg:scale-170 hidden lg:block">
               <Logo mark="white" tone="invert" />
             </div>
@@ -333,34 +310,30 @@ function LoginPage() {
           </span>
         </div>
 
-        {/* Hero copy — lg+ only (smaller screens show just the maroon logo strip).
-            Flex-fills the hero so "Welcome back" sits vertically centered. */}
-        <div className="relative z-20 hidden max-w-2xl flex-1 lg:flex lg:flex-col lg:justify-center">
+        {/* Updated Hero Copy */}
+        <div className="relative z-20 hidden max-w-xl flex-1 lg:flex lg:flex-col lg:justify-center">
           <h1
             className={cn(
-              "font-display text-[3.75rem] font-semibold leading-[1.05] drop-shadow-lg lg:text-[4.25rem]",
+              "font-display text-5xl font-semibold leading-[1.08] tracking-tight drop-shadow-lg xl:text-6xl",
               enter("delay-200"),
             )}
           >
-            Welcome back
+            Hospitality, managed with care.
           </h1>
           <p
             className={cn(
-              "mt-5 max-w-xl font-display text-2xl italic leading-snug text-primary-foreground/90 drop-shadow",
+              "mt-4 max-w-md text-base leading-relaxed text-primary-foreground/85 drop-shadow",
               enter("delay-300"),
             )}
           >
-            The pleasure is ours.
+            Human Resource &amp; Recruitment Portal · Makati City
           </p>
         </div>
       </div>
 
-      {/* Credential panel — mobile: starts right under the logo strip, the
-          whole group vertically centered; lg+: side-by-side, vertically centered */}
+      {/* Right Credential Panel (Unchanged) */}
       <div className="mb-auto flex items-start justify-center bg-background px-5 pt-3 pb-9 sm:px-10 lg:mb-0 lg:items-center lg:px-12 lg:py-12">
         <div className="w-full max-w-md sm:max-w-lg lg:max-w-md">
-          {/* Header Icon & Eyebrow matching Forgot Password and OTP Verification */}
-
           <h2 className="mt-1.5 text-center font-display text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
             Sign in
           </h2>
@@ -439,8 +412,6 @@ function LoginPage() {
               Browse job openings
             </Link>
           </p>
-
-          <LoginFooter />
         </div>
       </div>
     </div>

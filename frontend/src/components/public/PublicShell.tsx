@@ -53,62 +53,67 @@ export function PublicShell({ children, bare = false }: { children: ReactNode; b
 
   return (
     <div className="flex min-h-screen w-full min-w-0 flex-col overflow-x-clip bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-4 px-4 py-3 md:px-8">
-          <Link to="/" className="shrink-0" onClick={() => setMenuOpen(false)}>
+<header className="sticky top-0 z-40 border-b border-border/40 bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-8">
+          <Link
+            to="/"
+            className="shrink-0 transition-opacity hover:opacity-85"
+            onClick={() => setMenuOpen(false)}
+          >
             <Logo mark="maroon" />
           </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden items-center gap-1 lg:flex">
+          {/* Clean Typographic Nav */}
+          <nav aria-label="Main navigation" className="hidden items-center gap-8 lg:flex">
             {links.map((l) => (
               <Link
                 key={l.to}
                 to={l.to}
                 activeOptions={{ exact: l.to === "/" }}
-                className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-primary"
-                activeProps={{ className: "text-primary font-medium" }}
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                activeProps={{ className: "font-medium text-foreground" }}
               >
                 {l.label}
               </Link>
             ))}
           </nav>
 
-          {/* Desktop CTA */}
-          <div className="hidden items-center gap-2 lg:flex">
-            <Button asChild size="sm">
+          {/* Single Action */}
+          <div className="hidden lg:block">
+            <Button asChild size="sm" className="rounded-full px-5">
               <Link to="/login">Login</Link>
             </Button>
           </div>
 
-          {/* Mobile: Login + Burger */}
+          {/* Mobile Controls */}
           <div className="flex items-center gap-2 lg:hidden">
-            <Button asChild size="sm" variant="outline" className="text-xs">
+            <Button asChild size="sm" variant="ghost" className="rounded-full text-xs">
               <Link to="/login">Login</Link>
             </Button>
             <button
               type="button"
               aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
-              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="grid h-9 w-9 place-items-center rounded-full text-foreground transition-colors hover:bg-muted/60"
             >
-              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </button>
           </div>
         </div>
 
-        {/* Mobile burger dropdown */}
+        {/* Minimal Mobile Menu */}
         {menuOpen && (
-          <div className="border-t border-border bg-background px-4 pb-4 pt-2 lg:hidden">
-            <nav className="flex flex-col gap-1">
+          <div className="border-t border-border/40 bg-background/95 px-4 py-4 backdrop-blur-md lg:hidden">
+            <nav aria-label="Mobile navigation" className="flex flex-col space-y-1">
               {links.map((l) => (
                 <Link
                   key={l.to}
                   to={l.to}
                   activeOptions={{ exact: l.to === "/" }}
                   onClick={() => setMenuOpen(false)}
-                  className="rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  activeProps={{ className: "bg-primary/10 text-primary font-semibold" }}
+                  className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  activeProps={{ className: "font-medium text-foreground" }}
                 >
                   {l.label}
                 </Link>
@@ -119,20 +124,40 @@ export function PublicShell({ children, bare = false }: { children: ReactNode; b
       </header>
 
       <main className="flex-1">{children}</main>
-
-      <footer className="mt-16 border-t border-border bg-secondary/60">
-        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:grid-cols-2 md:grid-cols-5 md:px-8">
-          <div className="md:col-span-2">
+      <footer className="border-t border-border/70 bg-secondary/35">
+        <div className="mx-auto grid max-w-7xl gap-12 px-4 py-16 md:grid-cols-12 md:px-8">
+          {/* Brand Column */}
+          <div className="space-y-4 md:col-span-5">
             <Logo mark="maroon" />
-            <p className="mt-4 max-w-md text-sm text-muted-foreground">{company.overview}</p>
+            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+              {company.overview}
+            </p>
+            {company.socials.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 text-xs font-medium text-muted-foreground">
+                {company.socials.map((s) => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div>
-            <p className="eyebrow mb-3">Explore</p>
-            <ul className="space-y-2 text-sm">
+          {/* Navigation Columns */}
+          <div className="md:col-span-2">
+            <p className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-gold">
+              Careers
+            </p>
+            <ul className="mt-4 space-y-2.5 text-sm">
               {links.map((l) => (
                 <li key={l.to}>
-                  <Link to={l.to} className="text-muted-foreground hover:text-primary">
+                  <Link
+                    to={l.to}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {l.label}
                   </Link>
                 </li>
@@ -140,12 +165,17 @@ export function PublicShell({ children, bare = false }: { children: ReactNode; b
             </ul>
           </div>
 
-          <div>
-            <p className="eyebrow mb-3">Legal</p>
-            <ul className="space-y-2 text-sm">
+          <div className="md:col-span-2">
+            <p className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-gold">
+              Policies
+            </p>
+            <ul className="mt-4 space-y-2.5 text-sm">
               {legalLinks.map((l) => (
                 <li key={l.to}>
-                  <Link to={l.to} className="text-muted-foreground hover:text-primary">
+                  <Link
+                    to={l.to}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {l.label}
                   </Link>
                 </li>
@@ -153,47 +183,48 @@ export function PublicShell({ children, bare = false }: { children: ReactNode; b
             </ul>
           </div>
 
-          <div>
-            <p className="eyebrow mb-3">Contact</p>
-            <ul className="space-y-3 text-sm text-muted-foreground">
-              <li className="flex gap-2">
+          {/* Property Contact Column */}
+          <div className="md:col-span-3">
+            <p className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-gold">
+              Property &amp; HR Desk
+            </p>
+            <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2.5">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
-                {company.address}
+                <span className="leading-relaxed">{company.address}</span>
               </li>
-              <li className="flex gap-2">
+              <li className="flex items-center gap-2.5">
                 <Phone className="h-4 w-4 shrink-0 text-gold" />
                 <a
                   href={`tel:${company.phone.replace(/[^\d+]/g, "")}`}
-                  className="hover:text-primary"
+                  className="transition-colors hover:text-foreground"
                 >
                   {company.phone}
                 </a>
               </li>
-              <li className="flex gap-2">
+              <li className="flex items-center gap-2.5">
                 <Mail className="h-4 w-4 shrink-0 text-gold" />
-                <a href={`mailto:${company.email}`} className="break-all hover:text-primary">
+                <a
+                  href={`mailto:${company.email}`}
+                  className="break-all transition-colors hover:text-foreground"
+                >
                   {company.email}
                 </a>
               </li>
             </ul>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {company.socials.map((s) => (
-                <span
-                  key={s}
-                  className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground"
-                >
-                  {s}
-                </span>
-              ))}
-            </div>
           </div>
         </div>
 
-        <div className="border-t border-border">
-          <p className="mx-auto max-w-7xl px-4 py-5 text-xs text-muted-foreground md:px-8">
-            © {new Date().getFullYear()} {company.name}. Recruitment Management prototype with
-            spaCy-based NLP and Named Entity Recognition applicant screening.
-          </p>
+        {/* Clean Split Bottom Bar */}
+        <div className="border-t border-border/60">
+          <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center md:px-8">
+            <p>
+              © {new Date().getFullYear()} {company.name}. All rights reserved.
+            </p>
+            <p className="text-[0.7rem] text-muted-foreground/75">
+              HRMS Recruitment Portal · spaCy NLP &amp; NER Screening Prototype
+            </p>
+          </div>
         </div>
       </footer>
 

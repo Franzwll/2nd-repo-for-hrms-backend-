@@ -2,11 +2,6 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { useParallax } from "@/hooks/use-parallax";
 
-/**
- * Landing-only immersive 3D hero. Three depth layers:
- * far bg image (0.3x) / mid overlay+orbs (0.15x) / near content (-0.08x).
- * Login + portals intentionally excluded.
- */
 export function ParallaxHero({
   image,
   imageAlt,
@@ -24,54 +19,73 @@ export function ParallaxHero({
   actions?: React.ReactNode;
   className?: string;
 }) {
-  const far = useParallax(0.3);
-  const mid = useParallax(0.15);
-  const near = useParallax(-0.08);
+  const far = useParallax(0.28);
+  const near = useParallax(-0.04);
+
+  const dynamicScale = 1.06 + Math.min(Math.max(far.offset, 0) * 0.00025, 0.06);
 
   return (
     <section
-      className={cn("relative overflow-hidden md:perspective-1000", className)}
+      ref={far.ref}
+      className={cn(
+        "relative isolate flex min-h-[78vh] items-end overflow-hidden bg-neutral-800 text-white md:min-h-[84vh]",
+        className,
+      )}
       aria-label={typeof eyebrow === "string" ? eyebrow : "Featured"}
     >
-      <div ref={far.ref} className="absolute inset-0 parallax-will-change" aria-hidden="true">
+      {/* Brightened Full-Color Hotel Photography */}
+      <div className="absolute inset-0 -z-20 parallax-will-change" aria-hidden="true">
         <img
           src={image}
           alt=""
           role="presentation"
-          className="h-[115%] w-full object-cover"
-          style={{ transform: `translate3d(0, ${far.offset * 0.4}px, 0) scale(1.08)` }}
+          fetchPriority="high"
+          decoding="async"
+          className="h-[118%] w-full object-cover object-center brightness-[0.9] contrast-[1.02] saturate-[1.05] will-change-transform"
+          style={{
+            transform: `translate3d(0, ${far.offset * 0.35}px, 0) scale(${dynamicScale})`,
+          }}
         />
       </div>
-      {/* Accessible image description for screen readers */}
       <span className="sr-only">{imageAlt}</span>
-      <div
-        ref={mid.ref}
-        className="absolute inset-0 bg-foreground/70 parallax-will-change"
-        aria-hidden="true"
-        style={{ transform: `translate3d(0, ${mid.offset * 0.4}px, 0)` }}
-      />
-      {/* Floating glass orbs for depth */}
+
+      {/* Lighter Left-to-Right Editorial Scrim (keeps right side bright & airy) */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -left-20 top-24 h-72 w-72 rounded-full bg-gold/20 blur-3xl parallax-will-change"
-        style={{ transform: `translate3d(0, ${mid.offset * 0.6}px, 60px)` }}
+        className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-neutral-950/65 via-neutral-950/35 to-transparent"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -right-16 bottom-10 h-80 w-80 rounded-full bg-primary/20 blur-3xl parallax-will-change"
-        style={{ transform: `translate3d(0, ${mid.offset * 0.5}px, 40px)` }}
+        className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-32 bg-gradient-to-t from-neutral-950/45 to-transparent"
       />
+
+      {/* Foreground Content */}
       <div
         ref={near.ref}
-        className="relative mx-auto w-full min-w-0 max-w-7xl px-4 py-16 sm:py-20 md:px-8 md:py-32 preserve-3d parallax-will-change"
-        style={{ transform: `translate3d(0, ${near.offset * 0.4}px, 80px)` }}
+        className="relative mx-auto w-full min-w-0 max-w-7xl px-4 pt-28 pb-24 sm:pt-32 sm:pb-28 md:px-8 md:pt-40 md:pb-32 parallax-will-change"
+        style={{
+          transform: `translate3d(0, ${near.offset * 0.25}px, 0)`,
+        }}
       >
-        {eyebrow}
-        <h1 className="mt-3 max-w-3xl font-display text-4xl font-semibold text-balance text-primary-foreground sm:text-5xl md:text-7xl">
-          {title}
-        </h1>
-        {body}
-        {actions}
+        <div className="max-w-2xl">
+          {eyebrow && (
+            <div className="inline-flex items-center text-xs font-medium tracking-wider text-white/95">
+              {eyebrow}
+            </div>
+          )}
+
+          <h1 className="mt-4 font-display text-4xl font-semibold leading-[1.08] tracking-tight text-balance text-white drop-shadow-xs sm:text-5xl md:text-7xl">
+            {title}
+          </h1>
+
+          {body && (
+            <div className="mt-5 max-w-xl text-base leading-relaxed text-white/95 drop-shadow-xs md:text-lg [&_p]:text-white/95 [&_span]:text-white/95">
+              {body}
+            </div>
+          )}
+
+          {actions && <div className="mt-8 flex flex-wrap items-center gap-3">{actions}</div>}
+        </div>
       </div>
     </section>
   );
