@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, Eye, ScrollText, Search, ShieldAlert, Users } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/portal/PageHeader";
 import { ReportMenu } from "@/components/ui/report-menu";
 import { SortHead, type SortState } from "@/components/portal/sortable";
-import { StatCard } from "@/components/portal/StatCard";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -101,6 +100,7 @@ export function AuditLogs() {
   const [entries, setEntries] = useState<ApiAuditLog[]>([]);
   const [meta, setMeta] = useState<AuditMeta>(EMPTY_META);
   const [stats, setStats] = useState<AuditStats | null>(null);
+  const [statsLoaded, setStatsLoaded] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [sort, setSort] = useState<SortState<AuditSortKey>>(null);
@@ -124,7 +124,8 @@ export function AuditLogs() {
     auditLogApi
       .stats()
       .then((res) => setStats(res.data))
-      .catch(() => toast.error("Unable to load audit statistics."));
+      .catch(() => toast.error("Unable to load audit statistics."))
+      .finally(() => setStatsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -250,73 +251,127 @@ export function AuditLogs() {
 
   return (
     <div>
-      <PageHeader
-        title="Audit Logs"
-        description="Full system activity trail across all HRMS modules and users."
-        actions={
-          <ReportMenu
-            size="sm"
-            report={buildAuditReport}
-            recordCount={meta.total}
-            label="Generate Report"
-          />
-        }
-      />
+      <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11 fill-current">
+                <path fillRule="evenodd" clipRule="evenodd" d="M6.25 2.25A3.75 3.75 0 0 0 2.5 6v1.25c0 .69.56 1.25 1.25 1.25H6v10A3.5 3.5 0 0 0 9.5 22h9A3.5 3.5 0 0 0 22 18.5v-1.25a.75.75 0 0 0-.75-.75H19V6a3.75 3.75 0 0 0-3.75-3.75h-9ZM6 4A2.25 2.25 0 0 0 4 6.24V7h2V4Zm3.25 2.75a.75.75 0 0 1 .75-.75h5.25a.75.75 0 0 1 0 1.5H10a.75.75 0 0 1-.75-.75Zm.75 2.75a.75.75 0 0 0 0 1.5h5.25a.75.75 0 0 0 0-1.5H10Zm-.75 4.25a.75.75 0 0 1 .75-.75h3.25a.75.75 0 0 1 0 1.5H10a.75.75 0 0 1-.75-.75ZM10.25 17a1 1 0 0 0-1 1v1.25c0 .55-.45 1-1 1h-.5v.95A2.75 2.75 0 0 0 10.5 18.5V18h10.25v-1H10.25Z" />
+              </svg>
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                Audit Logs
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Full system activity trail across all HRMS modules and users.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start">
+            <ReportMenu
+              size="sm"
+              report={buildAuditReport}
+              recordCount={meta.total}
+              label="Generate Report"
+            />
+          </div>
+        </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total Events"
-          value={totalEvents}
-          tone="primary"
-          icon={Activity}
-          onClick={() => {
-            setSeverity("all");
-            setPage(1);
-          }}
-        />
-        <StatCard
-          label="Critical"
-          value={criticalCount}
-          tone="caution"
-          icon={ShieldAlert}
-          onClick={() => {
-            setSeverity("Critical");
-            setPage(1);
-          }}
-        />
-        <StatCard
-          label="Warnings"
-          value={warningCount}
-          tone="gold"
-          icon={AlertTriangle}
-          onClick={() => {
-            setSeverity("Warning");
-            setPage(1);
-          }}
-        />
-        <StatCard
-          label="Unique Actors"
-          value={uniqueActors}
-          tone="success"
-          icon={Users}
-          onClick={() => {
-            setSeverity("Info");
-            setPage(1);
-          }}
-        />
+        {!statsLoaded ? (
+          <div
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            aria-busy="true"
+            aria-label="Loading metrics"
+          >
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={`skeleton-metric-${i}`}
+                className="flex items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5"
+              >
+                <Skeleton className="h-12 w-12 rounded-xl" />
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              {
+                label: "Total Events",
+                value: totalEvents,
+                icon: Activity,
+                onClick: () => {
+                  setSeverity("all");
+                  setPage(1);
+                },
+              },
+              {
+                label: "Critical",
+                value: criticalCount,
+                icon: ShieldAlert,
+                onClick: () => {
+                  setSeverity("Critical");
+                  setPage(1);
+                },
+              },
+              {
+                label: "Warnings",
+                value: warningCount,
+                icon: AlertTriangle,
+                onClick: () => {
+                  setSeverity("Warning");
+                  setPage(1);
+                },
+              },
+              {
+                label: "Unique Actors",
+                value: uniqueActors,
+                icon: Users,
+                onClick: () => {
+                  setSeverity("Info");
+                  setPage(1);
+                },
+              },
+            ].map((m) => (
+              <button
+                key={m.label}
+                type="button"
+                onClick={m.onClick}
+                className="group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <m.icon className="h-6 w-6" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-medium text-muted-foreground">
+                    {m.label}
+                  </span>
+                  <span className="mt-1 block font-display text-[1.45rem] font-bold leading-none tabular-nums text-foreground">
+                    {m.value.toLocaleString()}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <Card className="mt-4 border-border/70">
-        <CardContent className="p-6">
+      <Card className="rounded-xl border-border/60 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+        <CardContent className="p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-              <ScrollText className="h-5 w-5 text-primary" /> System Activity
+            <h2 className="flex items-center gap-2 font-display text-base font-bold">
+              <ScrollText className="h-4.5 w-4.5 text-primary" />
+              System Activity
             </h2>
-            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+              <div className="relative min-w-[12rem] flex-1 sm:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  className="pl-8"
+                  className="w-full pl-8"
                   placeholder="Search user, action, module, IP…"
                   value={search}
                   onChange={(e) => {
@@ -332,7 +387,7 @@ export function AuditLogs() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-48">
+                <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-44">
                   <SelectValue placeholder="Module" />
                 </SelectTrigger>
                 <SelectContent>
@@ -351,7 +406,7 @@ export function AuditLogs() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-36">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -363,10 +418,26 @@ export function AuditLogs() {
                   ))}
                 </SelectContent>
               </Select>
+              {(search || moduleFilter !== "all" || severity !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 px-2 text-xs text-muted-foreground"
+                  onClick={() => {
+                    setSearch("");
+                    setModuleFilter("all");
+                    setSeverity("all");
+                    setPage(1);
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
             </div>
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <Table>
+
+          <div className="mt-3 overflow-x-auto">
+            <Table className="text-xs">
               <TableHeader>
                 <TableRow>
                   <SortHead sortKey="occurred_at" sort={sort} onSort={toggleSort}>
@@ -399,7 +470,7 @@ export function AuditLogs() {
                       : actionType === "Delete"
                         ? "border-destructive/40 bg-destructive/10 text-destructive"
                         : actionType === "Security"
-                          ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-400"
+                          ? "border-warning/40 bg-warning/20 text-warning-foreground"
                           : "border-primary/40 bg-primary/10 text-primary";
 
                   return (

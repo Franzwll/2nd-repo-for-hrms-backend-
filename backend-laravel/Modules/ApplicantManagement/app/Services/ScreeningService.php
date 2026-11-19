@@ -233,47 +233,82 @@ class ScreeningService
      * nothing was configured yet — the NLP service then uses its documented
      * defaults (40/30/20/10, passing 75%, coverage 60%).
      */
-    public static function screeningSettings(): ?array
+    public static function screeningSettings(?int $positionId = null): ?array
     {
         try {
-            $raw = \Modules\Settings\Models\SystemSetting::where('setting_key', 'screening.configuration')->value('setting_value');
+            $raw = null;
+
+            // A per-position override wins; roles without one inherit the
+            // general configuration so HR only configures what differs.
+            if ($positionId !== null) {
+                $overrides = \Modules\Settings\Models\SystemSetting::where(
+                    'setting_key',
+                    'screening.position_configurations'
+                )->value('setting_value');
+                if (is_array($overrides) && isset($overrides[(string) $positionId])) {
+                    $raw = $overrides[(string) $positionId];
+                }
+            }
+
+            if (! is_array($raw) || empty($raw)) {
+                $raw = \Modules\Settings\Models\SystemSetting::where('setting_key', 'screening.configuration')->value('setting_value');
+            }
             if (! is_array($raw) || empty($raw)) {
                 return null;
             }
 
-            $criteria = $raw['criteria'] ?? [];
-            $weights = [];
-            $map = [
-                'Skills' => 'skills',
-                'Work Experience' => 'experience',
-                'Educational Background' => 'education',
-                'Certifications' => 'certifications',
-            ];
-            foreach ($map as $label => $key) {
-                $entry = $criteria[$label] ?? null;
-                if (! is_array($entry)) {
-                    continue; // incomplete config falls back to defaults
-                }
-                $weights[$key] = ($entry['enabled'] ?? true) ? (float) ($entry['weight'] ?? 0) : 0.0;
-            }
-            if (count($weights) !== 4) {
-                return null;
-            }
-
-            $settings = ['weights' => $weights];
-            if (isset($raw['passing_score'])) {
-                $settings['passing_score'] = (float) $raw['passing_score'];
-            }
-            if (isset($raw['required_skills_coverage_min'])) {
-                $settings['required_skills_coverage_min'] = (float) $raw['required_skills_coverage_min'];
-            }
-
-            return $settings;
+            return self::settingsFromConfiguration($raw);
         } catch (\Throwable $e) {
             Log::warning('Screening configuration unavailable, defaults will be used: ' . $e->getMessage());
 
             return null;
         }
+    }
+
+    /**
+     * Core HR position behind a job post — the key for a per-position
+     * screening override. Null when the post has no linked position.
+     */
+    private static function positionId(JobPost $jobPost): ?int
+    {
+        return $jobPost->position_id !== null ? (int) $jobPost->position_id : null;
+    }
+
+    /**
+     * Maps the stored HR configuration (criteria labels + thresholds) onto the
+     * NLP service payload. Returns null when the row set is incomplete so the
+     * service falls back to its documented defaults.
+     */
+    private static function settingsFromConfiguration(array $raw): ?array
+    {
+        $criteria = $raw['criteria'] ?? [];
+        $weights = [];
+        $map = [
+            'Skills' => 'skills',
+            'Work Experience' => 'experience',
+            'Educational Background' => 'education',
+            'Certifications' => 'certifications',
+        ];
+        foreach ($map as $label => $key) {
+            $entry = $criteria[$label] ?? null;
+            if (! is_array($entry)) {
+                continue; // incomplete config falls back to defaults
+            }
+            $weights[$key] = ($entry['enabled'] ?? true) ? (float) ($entry['weight'] ?? 0) : 0.0;
+        }
+        if (count($weights) !== 4) {
+            return null;
+        }
+
+        $settings = ['weights' => $weights];
+        if (isset($raw['passing_score'])) {
+            $settings['passing_score'] = (float) $raw['passing_score'];
+        }
+        if (isset($raw['required_skills_coverage_min'])) {
+            $settings['required_skills_coverage_min'] = (float) $raw['required_skills_coverage_min'];
+        }
+
+        return $settings;
     }
 
     /* ------------------------------------------------------------------ */
@@ -320,7 +355,7 @@ class ScreeningService
                 $openJobs,
                 timeoutSeconds: self::scoreTimeout($deadline),
                 referenceData: $this->referenceData(),
-                screeningSettings: self::screeningSettings(),
+                screeningSettings: self::screeningSettings(self::positionId($jobPost)),
                 documentVerifications: $this->documentVerifications($applicant)
             );
 
@@ -372,7 +407,7 @@ class ScreeningService
             $this->buildOpenJobs($jobPost),
             timeoutSeconds: self::scoreTimeout($deadline),
             referenceData: $this->referenceData(),
-            screeningSettings: self::screeningSettings()
+            screeningSettings: self::screeningSettings(self::positionId($jobPost))
         );
 
         if (! $response['ok']) {
@@ -416,7 +451,7 @@ class ScreeningService
             $this->buildOpenJobs($jobPost),
             timeoutSeconds: self::scoreTimeout($deadline),
             referenceData: $this->referenceData(),
-            screeningSettings: self::screeningSettings()
+            screeningSettings: self::screeningSettings(self::positionId($jobPost))
         );
 
         if (! $response['ok']) {
@@ -530,7 +565,7 @@ class ScreeningService
                     'requirements' => $this->buildRequirements($jobPost),
                     'open_jobs' => $this->buildOpenJobs($jobPost),
                     'document_verifications' => $docVerifications,
-                    'screening_settings' => self::screeningSettings(),
+                    'screening_settings' => self::screeningSettings(self::positionId($jobPost)),
                     'reference_data' => $referenceData,
                 ], self::reclassifyTimeout($deadline));
             $blended = ($re['ok'] ?? false) ? ($re['data'] ?? null) : null;
@@ -792,7 +827,7 @@ class ScreeningService
             'requirements' => $this->buildRequirements($jobPost),
             'open_jobs' => $this->buildOpenJobs($jobPost),
             'document_verifications' => $this->documentVerifications($applicant),
-            'screening_settings' => self::screeningSettings(),
+            'screening_settings' => self::screeningSettings(self::positionId($jobPost)),
             'reference_data' => $this->referenceData(),
         ], self::reclassifyTimeout($deadline));
 

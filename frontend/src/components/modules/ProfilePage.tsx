@@ -30,7 +30,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/portal/PageHeader";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -257,11 +256,7 @@ export function ProfilePage({ role }: { role: Role }) {
     fullName: user?.full_name || "",
     email: user?.email || "",
     position:
-      role === "superadmin"
-        ? "Super Administrator"
-        : role === "admin"
-          ? "Administrator"
-          : "",
+      role === "superadmin" ? "Super Administrator" : role === "admin" ? "Administrator" : "",
     department: user?.department_name || "",
     lastLogin: user?.last_login_at
       ? new Date(user.last_login_at).toLocaleString("en-US", {
@@ -288,7 +283,11 @@ export function ProfilePage({ role }: { role: Role }) {
 
   const value = editing ? draft : profile;
   const settingsPath =
-    role === "employee" ? "/employee/settings" : role === "superadmin" ? "/superadmin/settings" : "/admin/settings";
+    role === "employee"
+      ? "/employee/settings"
+      : role === "superadmin"
+        ? "/superadmin/settings"
+        : "/admin/settings";
 
   // Get preset image based on gender
   const getPresetImage = (gender?: string) => {
@@ -338,70 +337,77 @@ export function ProfilePage({ role }: { role: Role }) {
     }
     essApi
       .overview()
-        .then((ov) => {
-          if (!ov?.employee) return;
-          const employee = ov.employee;
-          const emergency = employee.emergency_contacts ?? [];
-          const primary = emergency[0];
-          const secondary = emergency[1];
-          const lastLogin = user?.last_login_at
-            ? new Date(user.last_login_at).toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : "";
+      .then((ov) => {
+        if (!ov?.employee) return;
+        const employee = ov.employee;
+        const emergency = employee.emergency_contacts ?? [];
+        const primary = emergency[0];
+        const secondary = emergency[1];
+        const lastLogin = user?.last_login_at
+          ? new Date(user.last_login_at).toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "";
 
-          const applyLiveProfile = (prev: ProfileState): ProfileState => ({
-            ...prev,
-            fullName: employee.name || user?.full_name || "",
-            email: employee.email || user?.email || "",
-            phone: employee.phone || "",
-            personalEmail: employee.personal_email || "",
-            position: employee.position || "",
-            department: employee.department || user?.department_name || "",
-            employeeId: employee.code || "",
-            dateCreated: formatProfileDate(employee.date_hired),
-            dateHired: formatProfileDate(employee.date_hired),
-            lastLogin,
-            status: employee.status || user?.status || "",
-            gender: (employee.gender as ProfileState["gender"]) || undefined,
-            currentAddress: employee.address || "",
-            permanentAddress: "",
-            civilStatus: employee.civil_status || "",
-            // Family details are not part of the employee master record yet.
-            spouseName: "",
-            spouseOccupation: "",
-            spouseEmployer: "",
-            fatherName: "",
-            motherMaidenName: "",
-            dependents: [],
-            emergencyName: primary?.name || "",
-            emergencyRelationship: primary?.relationship || "",
-            emergencyPhone: primary?.phone || "",
-            emergencyAddress: primary?.address || "",
-            emergencySecondaryName: secondary?.name || "",
-            emergencySecondaryRelationship: secondary?.relationship || "",
-            emergencySecondaryPhone: secondary?.phone || "",
-            employmentType: employee.employment_type || "",
-            supervisor: employee.supervisor || "",
-            workLocation: "",
-            workShift: "",
-            salaryGrade: employee.salary_grade || "",
-            salaryStep: employee.salary_step || "",
-            sssNumber: employee.sss_number || "",
-            philHealthNumber: employee.philhealth_number || "",
-            pagIbigNumber: employee.pagibig_number || "",
-            tinNumber: employee.tin_number || "",
-          });
+        const applyLiveProfile = (prev: ProfileState): ProfileState => ({
+          ...prev,
+          fullName: employee.name || user?.full_name || "",
+          email: employee.email || user?.email || "",
+          phone: employee.phone || "",
+          personalEmail: employee.personal_email || "",
+          position: employee.position || "",
+          department: employee.department || user?.department_name || "",
+          employeeId: employee.code || "",
+          dateCreated: formatProfileDate(employee.date_hired),
+          dateHired: formatProfileDate(employee.date_hired),
+          lastLogin,
+          status: employee.status || user?.status || "",
+          gender: (employee.gender as ProfileState["gender"]) || undefined,
+          currentAddress: employee.address || "",
+          permanentAddress: "",
+          civilStatus: employee.civil_status || "",
+          // Family details are not part of the employee master record yet.
+          spouseName: "",
+          spouseOccupation: "",
+          spouseEmployer: "",
+          fatherName: "",
+          motherMaidenName: "",
+          dependents: [],
+          emergencyName: primary?.name || "",
+          emergencyRelationship: primary?.relationship || "",
+          emergencyPhone: primary?.phone || "",
+          emergencyAddress: primary?.address || "",
+          emergencySecondaryName: secondary?.name || "",
+          emergencySecondaryRelationship: secondary?.relationship || "",
+          emergencySecondaryPhone: secondary?.phone || "",
+          employmentType: employee.employment_type || "",
+          supervisor: employee.supervisor || "",
+          workLocation: "",
+          workShift: "",
+          salaryGrade: employee.salary_grade || "",
+          salaryStep: employee.salary_step || "",
+          sssNumber: employee.sss_number || "",
+          philHealthNumber: employee.philhealth_number || "",
+          pagIbigNumber: employee.pagibig_number || "",
+          tinNumber: employee.tin_number || "",
+        });
 
-          setProfile(applyLiveProfile);
-          setDraft(applyLiveProfile);
-        })
-        .catch(() => {});
-  }, [role, user?.full_name, user?.email, user?.department_name, user?.last_login_at, user?.status]);
+        setProfile(applyLiveProfile);
+        setDraft(applyLiveProfile);
+      })
+      .catch(() => {});
+  }, [
+    role,
+    user?.full_name,
+    user?.email,
+    user?.department_name,
+    user?.last_login_at,
+    user?.status,
+  ]);
 
   function set<K extends keyof ProfileState>(key: K, v: ProfileState[K]) {
     setDraft((d) => ({ ...d, [key]: v }));
@@ -454,10 +460,31 @@ export function ProfilePage({ role }: { role: Role }) {
 
   return (
     <div>
-      <PageHeader
-        title="My Profile"
-        description="Manage your 201 records, contact details, family background, emergency contacts, and account security."
-      />
+      <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              {/* Solid profile circle with portrait silhouette punched out. */}
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11 fill-current">
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2Zm0 4.2a3.3 3.3 0 1 1 0 6.6 3.3 3.3 0 0 1 0-6.6Zm0 8.3c2.45 0 4.65 1.18 5.72 2.95A8.17 8.17 0 0 1 12 19.8a8.17 8.17 0 0 1-5.72-2.35c1.07-1.77 3.27-2.95 5.72-2.95Z"
+                />
+              </svg>
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                My Profile
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Manage your 201 records, contact details, family background, emergency contacts, and
+                account security.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         {/* Identity card — Crimson & Ivory theme */}
@@ -492,7 +519,9 @@ export function ProfilePage({ role }: { role: Role }) {
               </button>
             </div>
 
-            <h2 className="mt-4 font-display text-xl font-semibold tracking-tight">{value.fullName}</h2>
+            <h2 className="mt-4 font-display text-xl font-semibold tracking-tight">
+              {value.fullName}
+            </h2>
             <p className="text-sm font-medium text-primary dark:text-primary">{value.position}</p>
             <Badge className="mt-2 border-success/20 bg-success/10 text-success hover:bg-success/15 px-2.5 py-0.5">
               <span className="h-1.5 w-1.5 rounded-full bg-success mr-1.5 inline-block" />
@@ -508,7 +537,11 @@ export function ProfilePage({ role }: { role: Role }) {
               disabled={uploading}
             />
             <div className="mt-4 space-y-2">
-              <Button className="w-full shadow-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+              <Button
+                className="w-full shadow-sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+              >
                 <Camera className="mr-2 h-4 w-4" />
                 {uploading ? "Uploading…" : photo ? "Change Photo" : "Upload Photo"}
               </Button>
@@ -517,7 +550,12 @@ export function ProfilePage({ role }: { role: Role }) {
                 Choose preset
               </Button>
               {photo && (
-                <Button variant="outline" className="w-full" onClick={removePhoto} disabled={uploading}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={removePhoto}
+                  disabled={uploading}
+                >
                   <Camera className="mr-2 h-4 w-4" />
                   Remove Photo
                 </Button>
@@ -545,7 +583,9 @@ export function ProfilePage({ role }: { role: Role }) {
                     <row.icon className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-xs font-medium tracking-wide text-muted-foreground">{row.label}</p>
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground">
+                      {row.label}
+                    </p>
                     <p className="truncate text-sm font-semibold tracking-tight">{row.value}</p>
                   </div>
                 </div>
@@ -553,7 +593,11 @@ export function ProfilePage({ role }: { role: Role }) {
             </div>
 
             {role !== "superadmin" ? (
-              <Button variant="outline" className="mt-5 w-full border-primary/15 bg-gold-soft/30 hover:bg-gold-soft/50 text-foreground" asChild>
+              <Button
+                variant="outline"
+                className="mt-5 w-full border-primary/15 bg-gold-soft/30 hover:bg-gold-soft/50 text-foreground"
+                asChild
+              >
                 <Link to={settingsPath as never} hash="security">
                   <KeyRound className="mr-2 h-4 w-4 text-primary dark:text-primary" />
                   Change Password
@@ -601,8 +645,12 @@ export function ProfilePage({ role }: { role: Role }) {
                       <User className="h-4 w-4" />
                     </span>
                     <div>
-                      <h3 className="font-display text-lg font-semibold leading-none">Profile Information</h3>
-                      <p className="text-xs text-muted-foreground mt-1">Overview of your basic employee details</p>
+                      <h3 className="font-display text-lg font-semibold leading-none">
+                        Profile Information
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Overview of your basic employee details
+                      </p>
                     </div>
                     <span className="ml-auto hidden sm:block h-px w-12 bg-gold/30" />
                   </div>
@@ -630,7 +678,10 @@ export function ProfilePage({ role }: { role: Role }) {
                           disabled={!editing}
                           onValueChange={(v) => set("position", v)}
                         >
-                          <SelectTrigger id="p-position" className="disabled:bg-muted/40 disabled:opacity-100">
+                          <SelectTrigger
+                            id="p-position"
+                            className="disabled:bg-muted/40 disabled:opacity-100"
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -669,7 +720,10 @@ export function ProfilePage({ role }: { role: Role }) {
                             disabled={!editing}
                             onValueChange={(v) => set("department", v)}
                           >
-                            <SelectTrigger id="p-dept" className="disabled:bg-muted/40 disabled:opacity-100">
+                            <SelectTrigger
+                              id="p-dept"
+                              className="disabled:bg-muted/40 disabled:opacity-100"
+                            >
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -706,11 +760,15 @@ export function ProfilePage({ role }: { role: Role }) {
                           disabled={!editing}
                           onValueChange={(v) => set("civilStatus", v)}
                         >
-                          <SelectTrigger id="p-civil" className="disabled:bg-muted/40 disabled:opacity-100">
+                          <SelectTrigger
+                            id="p-civil"
+                            className="disabled:bg-muted/40 disabled:opacity-100"
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {!civilStatusOptions.includes(value.civilStatus) && value.civilStatus ? (
+                            {!civilStatusOptions.includes(value.civilStatus) &&
+                            value.civilStatus ? (
                               <SelectItem key={value.civilStatus} value={value.civilStatus}>
                                 {value.civilStatus}
                               </SelectItem>
@@ -732,7 +790,8 @@ export function ProfilePage({ role }: { role: Role }) {
                         className="cursor-pointer text-xs"
                         onClick={() => setActiveTab("full-info")}
                       >
-                        <IdCard className="mr-1.5 h-3.5 w-3.5 text-primary dark:text-primary" /> View Complete 201 Record
+                        <IdCard className="mr-1.5 h-3.5 w-3.5 text-primary dark:text-primary" />{" "}
+                        View Complete 201 Record
                       </Button>
 
                       <div className="flex gap-2">
@@ -788,9 +847,12 @@ export function ProfilePage({ role }: { role: Role }) {
                       <IdCard className="h-4 w-4" />
                     </span>
                     <div>
-                      <h3 className="font-display text-lg font-semibold leading-none">Full Employee Information</h3>
+                      <h3 className="font-display text-lg font-semibold leading-none">
+                        Full Employee Information
+                      </h3>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Comprehensive 201 records, family background, emergency contacts &amp; employment info
+                        Comprehensive 201 records, family background, emergency contacts &amp;
+                        employment info
                       </p>
                     </div>
                     <span className="ml-auto hidden sm:block h-px w-12 bg-gold/30" />
@@ -807,13 +869,20 @@ export function ProfilePage({ role }: { role: Role }) {
                           </span>
                           <div>
                             <h4 className="font-semibold text-sm">1. Contact Information</h4>
-                            <p className="text-[11px] text-muted-foreground">Digital channels and residential addresses</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Digital channels and residential addresses
+                            </p>
                           </div>
                         </div>
 
                         <div className="p-6 grid gap-5 sm:grid-cols-2">
                           <div className="space-y-1.5">
-                            <Label htmlFor="c-work-email" className="text-xs text-muted-foreground font-medium">Company / Work Email</Label>
+                            <Label
+                              htmlFor="c-work-email"
+                              className="text-xs text-muted-foreground font-medium"
+                            >
+                              Company / Work Email
+                            </Label>
                             <div className="relative">
                               <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                               <Input
@@ -827,7 +896,12 @@ export function ProfilePage({ role }: { role: Role }) {
                           </div>
 
                           <div className="space-y-1.5">
-                            <Label htmlFor="c-personal-email" className="text-xs text-muted-foreground font-medium">Personal Email Address</Label>
+                            <Label
+                              htmlFor="c-personal-email"
+                              className="text-xs text-muted-foreground font-medium"
+                            >
+                              Personal Email Address
+                            </Label>
                             <div className="relative">
                               <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                               <Input
@@ -841,7 +915,12 @@ export function ProfilePage({ role }: { role: Role }) {
                           </div>
 
                           <div className="space-y-1.5">
-                            <Label htmlFor="c-mobile" className="text-xs text-muted-foreground font-medium">Mobile Phone Number</Label>
+                            <Label
+                              htmlFor="c-mobile"
+                              className="text-xs text-muted-foreground font-medium"
+                            >
+                              Mobile Phone Number
+                            </Label>
                             <div className="relative">
                               <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                               <Input
@@ -855,7 +934,12 @@ export function ProfilePage({ role }: { role: Role }) {
                           </div>
 
                           <div className="space-y-1.5">
-                            <Label htmlFor="c-tel" className="text-xs text-muted-foreground font-medium">Telephone / Landline</Label>
+                            <Label
+                              htmlFor="c-tel"
+                              className="text-xs text-muted-foreground font-medium"
+                            >
+                              Telephone / Landline
+                            </Label>
                             <div className="relative">
                               <PhoneCall className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                               <Input
@@ -869,7 +953,12 @@ export function ProfilePage({ role }: { role: Role }) {
                           </div>
 
                           <div className="sm:col-span-2 space-y-1.5">
-                            <Label htmlFor="c-current-addr" className="text-xs text-muted-foreground font-medium">Current Residential Address</Label>
+                            <Label
+                              htmlFor="c-current-addr"
+                              className="text-xs text-muted-foreground font-medium"
+                            >
+                              Current Residential Address
+                            </Label>
                             <div className="relative">
                               <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                               <Input
@@ -883,7 +972,12 @@ export function ProfilePage({ role }: { role: Role }) {
                           </div>
 
                           <div className="sm:col-span-2 space-y-1.5">
-                            <Label htmlFor="c-perm-addr" className="text-xs text-muted-foreground font-medium">Permanent / Provincial Address</Label>
+                            <Label
+                              htmlFor="c-perm-addr"
+                              className="text-xs text-muted-foreground font-medium"
+                            >
+                              Permanent / Provincial Address
+                            </Label>
                             <div className="relative">
                               <Home className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                               <Input
@@ -906,24 +1000,35 @@ export function ProfilePage({ role }: { role: Role }) {
                           </span>
                           <div>
                             <h4 className="font-semibold text-sm">2. Family Information</h4>
-                            <p className="text-[11px] text-muted-foreground">Marital status, spouse background, and registered dependents</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Marital status, spouse background, and registered dependents
+                            </p>
                           </div>
                         </div>
 
                         <div className="p-6 space-y-5">
                           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                             <div className="space-y-1.5">
-                              <Label htmlFor="f-civil" className="text-xs text-muted-foreground font-medium">Civil Status</Label>
+                              <Label
+                                htmlFor="f-civil"
+                                className="text-xs text-muted-foreground font-medium"
+                              >
+                                Civil Status
+                              </Label>
                               <Select
                                 value={value.civilStatus}
                                 disabled={!editing}
                                 onValueChange={(v) => set("civilStatus", v)}
                               >
-                                <SelectTrigger id="f-civil" className="disabled:bg-muted/40 disabled:opacity-100">
+                                <SelectTrigger
+                                  id="f-civil"
+                                  className="disabled:bg-muted/40 disabled:opacity-100"
+                                >
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {!civilStatusOptions.includes(value.civilStatus) && value.civilStatus ? (
+                                  {!civilStatusOptions.includes(value.civilStatus) &&
+                                  value.civilStatus ? (
                                     <SelectItem key={value.civilStatus} value={value.civilStatus}>
                                       {value.civilStatus}
                                     </SelectItem>
@@ -938,7 +1043,12 @@ export function ProfilePage({ role }: { role: Role }) {
                             </div>
 
                             <div className="space-y-1.5">
-                              <Label htmlFor="f-spouse" className="text-xs text-muted-foreground font-medium">Spouse Full Name</Label>
+                              <Label
+                                htmlFor="f-spouse"
+                                className="text-xs text-muted-foreground font-medium"
+                              >
+                                Spouse Full Name
+                              </Label>
                               <Input
                                 id="f-spouse"
                                 value={value.spouseName}
@@ -950,10 +1060,19 @@ export function ProfilePage({ role }: { role: Role }) {
                             </div>
 
                             <div className="space-y-1.5">
-                              <Label htmlFor="f-spouse-occ" className="text-xs text-muted-foreground font-medium">Spouse Occupation / Employer</Label>
+                              <Label
+                                htmlFor="f-spouse-occ"
+                                className="text-xs text-muted-foreground font-medium"
+                              >
+                                Spouse Occupation / Employer
+                              </Label>
                               <Input
                                 id="f-spouse-occ"
-                                value={value.spouseOccupation ? `${value.spouseOccupation} (${value.spouseEmployer || "N/A"})` : value.spouseOccupation}
+                                value={
+                                  value.spouseOccupation
+                                    ? `${value.spouseOccupation} (${value.spouseEmployer || "N/A"})`
+                                    : value.spouseOccupation
+                                }
                                 disabled={!editing}
                                 placeholder="e.g. Accountant at XYZ Corp"
                                 onChange={(e) => set("spouseOccupation", e.target.value)}
@@ -962,7 +1081,12 @@ export function ProfilePage({ role }: { role: Role }) {
                             </div>
 
                             <div className="space-y-1.5">
-                              <Label htmlFor="f-father" className="text-xs text-muted-foreground font-medium">Father's Full Name</Label>
+                              <Label
+                                htmlFor="f-father"
+                                className="text-xs text-muted-foreground font-medium"
+                              >
+                                Father's Full Name
+                              </Label>
                               <Input
                                 id="f-father"
                                 value={value.fatherName}
@@ -973,7 +1097,12 @@ export function ProfilePage({ role }: { role: Role }) {
                             </div>
 
                             <div className="space-y-1.5">
-                              <Label htmlFor="f-mother" className="text-xs text-muted-foreground font-medium">Mother's Maiden Name</Label>
+                              <Label
+                                htmlFor="f-mother"
+                                className="text-xs text-muted-foreground font-medium"
+                              >
+                                Mother's Maiden Name
+                              </Label>
                               <Input
                                 id="f-mother"
                                 value={value.motherMaidenName}
@@ -1034,7 +1163,9 @@ export function ProfilePage({ role }: { role: Role }) {
                           </span>
                           <div>
                             <h4 className="font-semibold text-sm">3. Emergency Contact</h4>
-                            <p className="text-[11px] text-muted-foreground">Authorized points of contact in case of workplace emergencies</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Authorized points of contact in case of workplace emergencies
+                            </p>
                           </div>
                         </div>
 
@@ -1044,7 +1175,9 @@ export function ProfilePage({ role }: { role: Role }) {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
                                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                                <span className="text-xs font-bold text-primary dark:text-primary">Primary Emergency Contact</span>
+                                <span className="text-xs font-bold text-primary dark:text-primary">
+                                  Primary Emergency Contact
+                                </span>
                               </div>
                               <Badge className="bg-primary text-primary-foreground text-[10px] px-2 py-0.5">
                                 First Dial
@@ -1052,7 +1185,12 @@ export function ProfilePage({ role }: { role: Role }) {
                             </div>
 
                             <div className="space-y-1.5">
-                              <Label htmlFor="em-name" className="text-xs text-muted-foreground font-medium">Contact Person Name</Label>
+                              <Label
+                                htmlFor="em-name"
+                                className="text-xs text-muted-foreground font-medium"
+                              >
+                                Contact Person Name
+                              </Label>
                               <Input
                                 id="em-name"
                                 value={value.emergencyName}
@@ -1064,29 +1202,44 @@ export function ProfilePage({ role }: { role: Role }) {
 
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <div className="space-y-1.5">
-                                <Label htmlFor="em-rel" className="text-xs text-muted-foreground font-medium">Relationship</Label>
+                                <Label
+                                  htmlFor="em-rel"
+                                  className="text-xs text-muted-foreground font-medium"
+                                >
+                                  Relationship
+                                </Label>
                                 <Input
-                                id="em-rel"
-                                value={value.emergencyRelationship}
-                                disabled={!editing}
-                                onChange={(e) => set("emergencyRelationship", e.target.value)}
-                                className="disabled:bg-background/80 disabled:opacity-100"
-                              />
+                                  id="em-rel"
+                                  value={value.emergencyRelationship}
+                                  disabled={!editing}
+                                  onChange={(e) => set("emergencyRelationship", e.target.value)}
+                                  className="disabled:bg-background/80 disabled:opacity-100"
+                                />
                               </div>
                               <div className="space-y-1.5">
-                                <Label htmlFor="em-phone" className="text-xs text-muted-foreground font-medium">Contact Phone</Label>
+                                <Label
+                                  htmlFor="em-phone"
+                                  className="text-xs text-muted-foreground font-medium"
+                                >
+                                  Contact Phone
+                                </Label>
                                 <Input
-                                id="em-phone"
-                                value={value.emergencyPhone}
-                                disabled={!editing}
-                                onChange={(e) => set("emergencyPhone", e.target.value)}
-                                className="disabled:bg-background/80 disabled:opacity-100"
-                              />
+                                  id="em-phone"
+                                  value={value.emergencyPhone}
+                                  disabled={!editing}
+                                  onChange={(e) => set("emergencyPhone", e.target.value)}
+                                  className="disabled:bg-background/80 disabled:opacity-100"
+                                />
                               </div>
                             </div>
 
                             <div className="space-y-1.5">
-                              <Label htmlFor="em-addr" className="text-xs text-muted-foreground font-medium">Contact Address</Label>
+                              <Label
+                                htmlFor="em-addr"
+                                className="text-xs text-muted-foreground font-medium"
+                              >
+                                Contact Address
+                              </Label>
                               <Input
                                 id="em-addr"
                                 value={value.emergencyAddress}
@@ -1102,15 +1255,25 @@ export function ProfilePage({ role }: { role: Role }) {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
                                 <UserCheck className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-xs font-semibold text-foreground/80">Secondary Emergency Contact</span>
+                                <span className="text-xs font-semibold text-foreground/80">
+                                  Secondary Emergency Contact
+                                </span>
                               </div>
-                              <Badge variant="outline" className="text-[10px] border-border text-muted-foreground">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-border text-muted-foreground"
+                              >
                                 Alternate
                               </Badge>
                             </div>
 
                             <div className="space-y-1.5">
-                              <Label htmlFor="em2-name" className="text-xs text-muted-foreground font-medium">Contact Person Name</Label>
+                              <Label
+                                htmlFor="em2-name"
+                                className="text-xs text-muted-foreground font-medium"
+                              >
+                                Contact Person Name
+                              </Label>
                               <Input
                                 id="em2-name"
                                 value={value.emergencySecondaryName}
@@ -1122,30 +1285,45 @@ export function ProfilePage({ role }: { role: Role }) {
 
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <div className="space-y-1.5">
-                                <Label htmlFor="em2-rel" className="text-xs text-muted-foreground font-medium">Relationship</Label>
+                                <Label
+                                  htmlFor="em2-rel"
+                                  className="text-xs text-muted-foreground font-medium"
+                                >
+                                  Relationship
+                                </Label>
                                 <Input
-                                id="em2-rel"
-                                value={value.emergencySecondaryRelationship}
-                                disabled={!editing}
-                                onChange={(e) => set("emergencySecondaryRelationship", e.target.value)}
-                                className="disabled:bg-background/80 disabled:opacity-100"
-                              />
+                                  id="em2-rel"
+                                  value={value.emergencySecondaryRelationship}
+                                  disabled={!editing}
+                                  onChange={(e) =>
+                                    set("emergencySecondaryRelationship", e.target.value)
+                                  }
+                                  className="disabled:bg-background/80 disabled:opacity-100"
+                                />
                               </div>
                               <div className="space-y-1.5">
-                                <Label htmlFor="em2-phone" className="text-xs text-muted-foreground font-medium">Contact Phone</Label>
+                                <Label
+                                  htmlFor="em2-phone"
+                                  className="text-xs text-muted-foreground font-medium"
+                                >
+                                  Contact Phone
+                                </Label>
                                 <Input
-                                id="em2-phone"
-                                value={value.emergencySecondaryPhone}
-                                disabled={!editing}
-                                onChange={(e) => set("emergencySecondaryPhone", e.target.value)}
-                                className="disabled:bg-background/80 disabled:opacity-100"
-                              />
+                                  id="em2-phone"
+                                  value={value.emergencySecondaryPhone}
+                                  disabled={!editing}
+                                  onChange={(e) => set("emergencySecondaryPhone", e.target.value)}
+                                  className="disabled:bg-background/80 disabled:opacity-100"
+                                />
                               </div>
                             </div>
 
                             <div className="mt-4 rounded-lg bg-gold-soft/40 border border-gold/15 p-2.5 text-[11px] text-muted-foreground flex items-center gap-2">
                               <Sparkles className="h-4 w-4 text-primary shrink-0" />
-                              <span>Ensuring emergency contacts are updated speeds up assistance during on-duty medical events.</span>
+                              <span>
+                                Ensuring emergency contacts are updated speeds up assistance during
+                                on-duty medical events.
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1159,7 +1337,10 @@ export function ProfilePage({ role }: { role: Role }) {
                           </span>
                           <div>
                             <h4 className="font-semibold text-sm">4. Employment Information</h4>
-                            <p className="text-[11px] text-muted-foreground">Official job appointment, schedule, supervisor, and statutory government IDs</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Official job appointment, schedule, supervisor, and statutory
+                              government IDs
+                            </p>
                           </div>
                         </div>
 
@@ -1167,24 +1348,39 @@ export function ProfilePage({ role }: { role: Role }) {
                           {/* Core Job Appointment Data */}
                           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">Employee ID Number</span>
-                              <p className="text-sm font-semibold tracking-tight">{value.employeeId}</p>
+                              <span className="text-xs text-muted-foreground">
+                                Employee ID Number
+                              </span>
+                              <p className="text-sm font-semibold tracking-tight">
+                                {value.employeeId}
+                              </p>
                             </div>
 
                             <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">Position / Title</span>
-                              <p className="text-sm font-semibold tracking-tight">{value.position}</p>
+                              <span className="text-xs text-muted-foreground">
+                                Position / Title
+                              </span>
+                              <p className="text-sm font-semibold tracking-tight">
+                                {value.position}
+                              </p>
                             </div>
 
                             <div className="space-y-1">
                               <span className="text-xs text-muted-foreground">Department</span>
-                              <p className="text-sm font-semibold tracking-tight">{value.department}</p>
+                              <p className="text-sm font-semibold tracking-tight">
+                                {value.department}
+                              </p>
                             </div>
 
                             <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">Employment Status / Type</span>
+                              <span className="text-xs text-muted-foreground">
+                                Employment Status / Type
+                              </span>
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary text-xs font-semibold dark:text-primary dark:bg-primary/15">
+                                <Badge
+                                  variant="outline"
+                                  className="border-primary/20 bg-primary/5 text-primary text-xs font-semibold dark:text-primary dark:bg-primary/15"
+                                >
                                   {value.employmentType}
                                 </Badge>
                                 <Badge className="border-success/20 bg-success/10 text-success text-xs">
@@ -1195,27 +1391,41 @@ export function ProfilePage({ role }: { role: Role }) {
 
                             <div className="space-y-1">
                               <span className="text-xs text-muted-foreground">Date of Hire</span>
-                              <p className="text-sm font-semibold tracking-tight">{value.dateHired || value.dateCreated}</p>
+                              <p className="text-sm font-semibold tracking-tight">
+                                {value.dateHired || value.dateCreated}
+                              </p>
                             </div>
 
                             <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">Immediate Supervisor</span>
-                              <p className="text-sm font-semibold tracking-tight">{value.supervisor}</p>
+                              <span className="text-xs text-muted-foreground">
+                                Immediate Supervisor
+                              </span>
+                              <p className="text-sm font-semibold tracking-tight">
+                                {value.supervisor}
+                              </p>
                             </div>
 
                             <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">Work Location / Branch</span>
-                              <p className="text-sm font-semibold tracking-tight">{value.workLocation}</p>
+                              <span className="text-xs text-muted-foreground">
+                                Work Location / Branch
+                              </span>
+                              <p className="text-sm font-semibold tracking-tight">
+                                {value.workLocation}
+                              </p>
                             </div>
 
                             <div className="space-y-1">
                               <span className="text-xs text-muted-foreground">Assigned Shift</span>
-                              <p className="text-sm font-semibold tracking-tight">{value.workShift}</p>
+                              <p className="text-sm font-semibold tracking-tight">
+                                {value.workShift}
+                              </p>
                             </div>
 
                             <div className="space-y-1">
                               <span className="text-xs text-muted-foreground">Salary Band</span>
-                              <p className="text-sm font-semibold tracking-tight">{value.salaryGrade} ({value.salaryStep})</p>
+                              <p className="text-sm font-semibold tracking-tight">
+                                {value.salaryGrade} ({value.salaryStep})
+                              </p>
                             </div>
                           </div>
 
@@ -1228,7 +1438,10 @@ export function ProfilePage({ role }: { role: Role }) {
                                   Statutory Government Numbers (Philippines)
                                 </span>
                               </div>
-                              <Badge variant="outline" className="text-[10px] border-border text-muted-foreground">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-border text-muted-foreground"
+                              >
                                 Official HR Records
                               </Badge>
                             </div>
@@ -1244,7 +1457,9 @@ export function ProfilePage({ role }: { role: Role }) {
                                   key={gov.label}
                                   className="rounded-lg border border-border/60 bg-muted/20 p-3"
                                 >
-                                  <p className="text-[11px] font-medium text-muted-foreground">{gov.label}</p>
+                                  <p className="text-[11px] font-medium text-muted-foreground">
+                                    {gov.label}
+                                  </p>
                                   <p className="font-mono text-sm font-semibold tracking-wider text-foreground mt-1">
                                     {gov.value || "—"}
                                   </p>
@@ -1273,7 +1488,8 @@ export function ProfilePage({ role }: { role: Role }) {
                       </Button>
                     ) : (
                       <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                        <Sparkles className="h-3.5 w-3.5 text-primary" /> Complete 201 Master Employee Record
+                        <Sparkles className="h-3.5 w-3.5 text-primary" /> Complete 201 Master
+                        Employee Record
                       </div>
                     )}
 
@@ -1328,8 +1544,12 @@ export function ProfilePage({ role }: { role: Role }) {
                       <Lock className="h-4 w-4" />
                     </span>
                     <div>
-                      <h3 className="font-display text-lg font-semibold leading-none">Account Details</h3>
-                      <p className="text-xs text-muted-foreground mt-1">System account information</p>
+                      <h3 className="font-display text-lg font-semibold leading-none">
+                        Account Details
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        System account information
+                      </p>
                     </div>
                     <span className="ml-auto hidden sm:block h-px w-12 bg-gold/30" />
                   </div>
@@ -1338,15 +1558,30 @@ export function ProfilePage({ role }: { role: Role }) {
                     <div className="grid gap-5 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="p-id">Employee ID</Label>
-                        <Input id="p-id" value={value.employeeId} disabled className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground" />
+                        <Input
+                          id="p-id"
+                          value={value.employeeId}
+                          disabled
+                          className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground"
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="p-login">Last Login</Label>
-                        <Input id="p-login" value={value.lastLogin} disabled className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground" />
+                        <Input
+                          id="p-login"
+                          value={value.lastLogin}
+                          disabled
+                          className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground"
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="p-created">Date Created</Label>
-                        <Input id="p-created" value={value.dateCreated} disabled className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground" />
+                        <Input
+                          id="p-created"
+                          value={value.dateCreated}
+                          disabled
+                          className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground"
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Account Status</Label>
@@ -1365,12 +1600,18 @@ export function ProfilePage({ role }: { role: Role }) {
                     {role !== "superadmin" ? (
                       <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gold/15 bg-gold-soft/40 p-4">
                         <div>
-                          <p className="text-sm font-semibold tracking-tight">Password &amp; Security</p>
+                          <p className="text-sm font-semibold tracking-tight">
+                            Password &amp; Security
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             Update your password regularly to keep your account secure.
                           </p>
                         </div>
-                        <Button variant="outline" className="cursor-pointer border-primary/15 bg-card hover:bg-muted shadow-sm" asChild>
+                        <Button
+                          variant="outline"
+                          className="cursor-pointer border-primary/15 bg-card hover:bg-muted shadow-sm"
+                          asChild
+                        >
                           <Link to={settingsPath as never} hash="security">
                             <KeyRound className="mr-2 h-4 w-4 text-primary" />
                             Change Password

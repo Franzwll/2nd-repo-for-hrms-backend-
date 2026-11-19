@@ -15,11 +15,7 @@ import { useSyncExternalStore } from "react";
  */
 
 export type ReportedEntityType =
-  | "skill"
-  | "job_role"
-  | "certification"
-  | "education"
-  | "experience";
+  "skill" | "job_role" | "certification" | "education" | "experience";
 
 export interface ReportedEntity {
   id: string;
@@ -33,6 +29,8 @@ export interface ReportedEntity {
   applicant?: string;
   reportedAt: string;
   status: "pending" | "processed" | "dismissed";
+  /** Reference entry created when promoting — lets Undo delete it again. */
+  vocabularyId?: number;
 }
 
 const STORAGE_KEY = "hrms.reported-entities.v1";
@@ -71,8 +69,7 @@ const subscribe = (listener: () => void) => {
 const getSnapshot = () => items;
 
 /** React hook — re-renders the caller whenever the queue changes. */
-export const useReportedEntities = () =>
-  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+export const useReportedEntities = () => useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
 export const reportedEntitiesStore = {
   list: () => items,
@@ -104,12 +101,23 @@ export const reportedEntitiesStore = {
     emit();
     return entry;
   },
-  markProcessed: (id: string) => {
-    items = items.map((r) => (r.id === id ? { ...r, status: "processed" } : r));
+  markProcessed: (id: string, vocabularyId?: number) => {
+    items = items.map((r) =>
+      r.id === id ? { ...r, status: "processed", ...(vocabularyId ? { vocabularyId } : {}) } : r,
+    );
     emit();
   },
   dismiss: (id: string) => {
     items = items.map((r) => (r.id === id ? { ...r, status: "dismissed" } : r));
+    emit();
+  },
+  /** Undo: hands a processed / dismissed report back to the pending queue. */
+  restore: (id: string) => {
+    items = items.map((r) => {
+      if (r.id !== id) return r;
+      const { vocabularyId: _vocabularyId, ...rest } = r;
+      return { ...rest, status: "pending" };
+    });
     emit();
   },
   remove: (id: string) => {

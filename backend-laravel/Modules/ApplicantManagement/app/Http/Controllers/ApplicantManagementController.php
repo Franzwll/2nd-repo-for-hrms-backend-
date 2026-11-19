@@ -388,9 +388,21 @@ class ApplicantManagementController extends Controller
                     'applied_at' => $row->applied_at?->toISOString(),
                     'stage' => $row->stage,
                     'status' => $row->status,
+                    'fit_score' => $row->fit_score,
                     'offer_status' => $row->offer_status,
                     'rejected_at' => $row->rejected_at?->toISOString(),
                     'cooldown_lifted_at' => $row->cooldown_lifted_at?->toISOString(),
+                    'archived_at' => $row->archived_at?->toISOString(),
+                    'archived_by' => $row->archived_by,
+                    'archived_reason' => $row->archived_reason,
+                    'is_archived' => $row->isArchived(),
+                    'is_blocked' => $row->isBlocked(),
+                    'blocked_at' => $row->blocked_at?->toISOString(),
+                    'blocked_by' => $row->blocked_by,
+                    'blocked_reason' => $row->blocked_reason,
+                    'block_scope' => $row->block_scope,
+                    'block_expires_at' => $row->block_expires_at?->toISOString(),
+                    'is_active_blocked' => $row->isBlocked(),
                     'is_current' => $row->applicant_id === $model->applicant_id,
                     'matched_rules' => $matchInfo['matched_rules'] ?? ['Current record'],
                     'confidence' => $matchInfo['confidence'] ?? 'High',
@@ -1053,7 +1065,8 @@ class ApplicantManagementController extends Controller
 
     /**
      * Active stages this applicant may be returned to — strictly earlier than
-     * their current step, or than the step where a Rejected applicant failed.
+     * their current step. A Rejected applicant may also return to the stage
+     * where they failed, so that stage's result is cleared and can be retaken.
      * A rejection at screening has nothing before it, so Screened is offered
      * as the restart point.
      *
@@ -1073,7 +1086,7 @@ class ApplicantManagementController extends Controller
 
             $allowed = array_values(array_filter(
                 $active,
-                fn (string $stage): bool => $order[$stage] < $failedAt,
+                fn (string $stage): bool => $order[$stage] <= $failedAt,
             ));
 
             return $allowed !== [] ? $allowed : ['Screened'];
@@ -1227,19 +1240,20 @@ class ApplicantManagementController extends Controller
     {
         $targetIndex = self::RETURN_STAGE_ORDER[$targetStage] ?? 0;
 
-        // Stages > 6 (e.g. returning to Offer from Hired): Final Evaluation kept.
-        // Stages <= 5 (returning to Practical or earlier): clean up Final Evaluation.
-        if ($targetIndex <= 5) {
+        // Deleting the record of the target stage itself clears the result that
+        // sent the applicant back, so that stage can be retaken.
+        // Stages <= 6 (returning to Final Evaluation or earlier): clean up Final Evaluation.
+        if ($targetIndex <= 6) {
             FinalEvaluation::where('applicant_id', $model->applicant_id)->delete();
         }
 
-        // Stages <= 4 (returning to Assessment Test or earlier): clean up Practical Test.
-        if ($targetIndex <= 4) {
+        // Stages <= 5 (returning to Practical Test or earlier): clean up Practical Test.
+        if ($targetIndex <= 5) {
             $model->practicalTests()->delete();
         }
 
-        // Stages <= 3 (returning to Assessed or earlier): clean up Assessment Test & Invites.
-        if ($targetIndex <= 3) {
+        // Stages <= 4 (returning to Assessment Test or earlier): clean up Assessment Test & Invites.
+        if ($targetIndex <= 4) {
             $model->assessmentTests()->delete();
             AssessmentInvite::where('applicant_id', $model->applicant_id)->delete();
         }

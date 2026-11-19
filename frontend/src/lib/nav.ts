@@ -3,13 +3,14 @@ import {
   Users,
   Megaphone,
   UserCheck,
+  UserCog,
   Building2,
   FolderOpen,
   Headset,
-  ShieldCheck,
   ScrollText,
   Settings,
   ClipboardCheck,
+  createLucideIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -113,8 +114,34 @@ export function navForRole(role: Role): NavItem[] {
   const essManagementItem: NavItem = {
     label: "ESS Management",
     to: `${base}/ess`,
-    icon: Headset,
+    icon: UserCog,
   };
+
+  const userManagementIcon = createLucideIcon("user-management-shield", [
+    [
+      "path",
+      {
+        d: "M12 2.5 4.5 5.5v6c0 5 3.2 9.6 7.5 11 4.3-1.4 7.5-6 7.5-11v-6L12 2.5Z",
+        key: "shield",
+      },
+    ],
+    [
+      "circle",
+      {
+        cx: "12",
+        cy: "9.25",
+        r: "2.5",
+        key: "head",
+      },
+    ],
+    [
+      "path",
+      {
+        d: "M7.75 16c.65-1.95 2.3-3.25 4.25-3.25s3.6 1.3 4.25 3.25",
+        key: "shoulders",
+      },
+    ],
+  ]);
 
   if (role === "admin") {
     return [
@@ -135,7 +162,7 @@ export function navForRole(role: Role): NavItem[] {
       coreHcmItem,
       employeeRecordsItem,
       essManagementItem,
-      { label: "User Management", to: `${base}/users`, icon: ShieldCheck },
+      { label: "User Management", to: `${base}/users`, icon: userManagementIcon },
       { label: "Audit Logs", to: `${base}/audit`, icon: ScrollText },
       { label: "Settings", to: `${base}/settings`, icon: Settings },
     ];

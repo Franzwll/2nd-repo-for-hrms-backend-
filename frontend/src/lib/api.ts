@@ -790,6 +790,7 @@ export interface ApiApplicantHistoryRow {
   applied_at: string | null;
   stage: string;
   status: string;
+  fit_score?: number | string | null;
   offer_status?: string | null;
   rejected_at?: string | null;
   cooldown_lifted_at?: string | null;
@@ -967,13 +968,28 @@ export const screeningApi = {
             weights: Record<string, number> | null;
             thresholds: Record<string, number> | null;
           } | null;
+          /** Per-position overrides keyed by Core HR position_id string. */
+          position_overrides: Record<string, ScreeningConfiguration>;
         };
       }>("/screening/status"),
-    /** Persists the configuration used by every new screening run. */
-    save: (configuration: ScreeningConfiguration) =>
+    /** Persists the configuration. When positionId is given, saves an override
+     *  for that specific role; otherwise saves the general (all-position) config. */
+    save: (configuration: ScreeningConfiguration, positionId?: number) =>
       request<{ success: boolean; data: ScreeningConfiguration; message: string }>(
         "/screening/configuration",
-        { method: "PUT", body: JSON.stringify({ configuration }) },
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            configuration,
+            ...(positionId !== undefined ? { position_id: positionId } : {}),
+          }),
+        },
+      ),
+    /** Drops a per-position override so the role inherits the general config. */
+    reset: (positionId: number) =>
+      request<{ success: boolean; message: string }>(
+        `/screening/configuration/${positionId}`,
+        { method: "DELETE" },
       ),
   },
 

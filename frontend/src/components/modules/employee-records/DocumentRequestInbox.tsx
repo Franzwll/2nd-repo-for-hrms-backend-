@@ -38,16 +38,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { ermApi, type ApiDocumentRequest } from "@/lib/api";
 
 const statusClass: Record<string, string> = {
-  Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30 dark:bg-amber-400/10 dark:text-amber-400 dark:border-amber-400/20",
-  "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30 dark:bg-blue-400/10 dark:text-blue-400 dark:border-blue-400/20",
-  "For Dispatch": "bg-sky-500/10 text-sky-600 border-sky-500/30 dark:bg-sky-400/10 dark:text-sky-400 dark:border-sky-400/20",
-  "With Module": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:bg-indigo-400/10 dark:text-indigo-400 dark:border-indigo-400/20",
-  "For Release": "bg-teal-500/10 text-teal-600 border-teal-500/30 dark:bg-teal-400/10 dark:text-teal-400 dark:border-teal-400/20",
-  Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20",
-  "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:bg-indigo-400/10 dark:text-indigo-400 dark:border-indigo-400/20",
-  Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30 dark:bg-rose-400/10 dark:text-rose-400 dark:border-rose-400/20",
-  Completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20",
-  Cancelled: "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:bg-white/10 dark:text-muted-foreground dark:border-border",
+  Pending: "border-warning/40 bg-warning/20 text-warning-foreground",
+  "Under Review": "border-primary/40 bg-primary/10 text-primary",
+  "For Dispatch": "border-primary/40 bg-primary/10 text-primary",
+  "With Module": "border-primary/40 bg-primary/10 text-primary",
+  "For Release": "border-gold/40 bg-gold-soft text-foreground",
+  Approved: "border-success/40 bg-success/10 text-success",
+  "For Fulfillment": "border-primary/40 bg-primary/10 text-primary",
+  Rejected: "border-destructive/40 bg-destructive/10 text-destructive",
+  Completed: "border-success/40 bg-success/10 text-success",
+  Cancelled: "border-border bg-muted text-muted-foreground",
 };
 
 function formatSize(bytes: number | null | undefined) {
@@ -182,146 +182,158 @@ export function DocumentRequestInbox({
   };
 
   return (
-    <Card className="border-border/70">
-      <CardContent className="p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-            <Send className="h-5 w-5 text-primary" /> Document Requests
-          </h2>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="w-56 pl-9"
-                placeholder="Search employee or request…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+    <>
+      <Card className="rounded-xl border-border/60 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 font-display text-base font-bold">
+              <Send className="h-4.5 w-4.5 text-primary" />
+              Document Requests
+            </h2>
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+              <div className="relative min-w-[12rem] flex-1 sm:w-64">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="w-full pl-8"
+                  placeholder="Search employee or request…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
+                <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="pending">Awaiting ERM action</SelectItem>
+                  <SelectItem value="For Dispatch">For Dispatch</SelectItem>
+                  <SelectItem value="With Module">With Module</SelectItem>
+                  <SelectItem value="For Release">For Release</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="pending">Awaiting ERM action</SelectItem>
-                <SelectItem value="For Dispatch">For Dispatch</SelectItem>
-                <SelectItem value="With Module">With Module</SelectItem>
-                <SelectItem value="For Release">For Release</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
-        </div>
 
-        <p className="mt-1 text-xs text-muted-foreground">
-          Requests approved by ESS Management and routed to Employee Records. Attach the document
-          the employee asked for; ESS Management releases it to the employee.
-        </p>
-
-        <div className="mt-4 overflow-x-auto">
-          <ListBody>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <SortHead sortKey="request" sort={requestSort.sort} onSort={requestSort.toggle}>
-                    Request
-                  </SortHead>
-                  <SortHead sortKey="employee" sort={requestSort.sort} onSort={requestSort.toggle}>
-                    Employee
-                  </SortHead>
-                  <SortHead sortKey="document" sort={requestSort.sort} onSort={requestSort.toggle}>
-                    Document
-                  </SortHead>
-                  <SortHead sortKey="filed" sort={requestSort.sort} onSort={requestSort.toggle}>
-                    Filed
-                  </SortHead>
-                  <SortHead sortKey="status" sort={requestSort.sort} onSort={requestSort.toggle}>
-                    Status
-                  </SortHead>
-                  <SortHead
-                    sortKey="attachment"
-                    sort={requestSort.sort}
-                    onSort={requestSort.toggle}
-                  >
-                    Attachment
-                  </SortHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading && <TableRowsSkeleton cols={7} rows={5} />}
-                {!loading &&
-                  requestSort.sorted.map((r) => {
-                    const hr = r.attachments?.find((a) => a.direction === "hr");
-                    const empFiles = r.attachments?.filter((a) => a.direction === "employee") ?? [];
-                    return (
-                      <TableRow key={r.id}>
-                        <TableCell className="font-mono text-xs">{r.id}</TableCell>
-                        <TableCell>
-                          <div className="text-sm font-medium">{r.employee}</div>
-                          <div className="text-xs text-muted-foreground">{r.employeeId}</div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">{r.type}</div>
-                          {r.details && (
-                            <div className="max-w-xs truncate text-xs text-muted-foreground">
-                              {r.details}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{r.filed}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={statusClass[r.status] ?? ""}>
-                            {r.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {hr ? (
-                            <a
-                              href={ermApi.attachmentFileUrl(r.id, hr.id)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                              {hr.original_name ?? "Fulfilment file"}
-                              <span className="text-muted-foreground">
-                                ({formatSize(hr.file_size_bytes)})
-                              </span>
-                            </a>
-                          ) : empFiles.length > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                              <Paperclip className="h-3.5 w-3.5" /> {empFiles.length} from employee
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">None</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {["For Dispatch", "With Module"].includes(r.status) ? (
-                            <Button size="sm" variant="outline" onClick={() => void openFulfil(r)}>
-                              {hr ? "Replace" : "Send back"}
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                {!loading && filtered.length === 0 && (
+          <div className="mt-3 overflow-x-auto">
+            <ListBody>
+              <Table className="text-xs">
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8">
-                      <ListEmptyState placeholder="No document requests found." />
-                    </TableCell>
+                    <SortHead sortKey="request" sort={requestSort.sort} onSort={requestSort.toggle}>
+                      Request
+                    </SortHead>
+                    <SortHead
+                      sortKey="employee"
+                      sort={requestSort.sort}
+                      onSort={requestSort.toggle}
+                    >
+                      Employee
+                    </SortHead>
+                    <SortHead
+                      sortKey="document"
+                      sort={requestSort.sort}
+                      onSort={requestSort.toggle}
+                    >
+                      Document
+                    </SortHead>
+                    <SortHead sortKey="filed" sort={requestSort.sort} onSort={requestSort.toggle}>
+                      Filed
+                    </SortHead>
+                    <SortHead sortKey="status" sort={requestSort.sort} onSort={requestSort.toggle}>
+                      Status
+                    </SortHead>
+                    <SortHead
+                      sortKey="attachment"
+                      sort={requestSort.sort}
+                      onSort={requestSort.toggle}
+                    >
+                      Attachment
+                    </SortHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </ListBody>
-        </div>
-      </CardContent>
+                </TableHeader>
+                <TableBody>
+                  {loading && <TableRowsSkeleton cols={7} rows={5} />}
+                  {!loading &&
+                    requestSort.sorted.map((r) => {
+                      const hr = r.attachments?.find((a) => a.direction === "hr");
+                      const empFiles =
+                        r.attachments?.filter((a) => a.direction === "employee") ?? [];
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell className="font-mono text-xs">{r.id}</TableCell>
+                          <TableCell>
+                            <div className="text-sm font-medium">{r.employee}</div>
+                            <div className="text-xs text-muted-foreground">{r.employeeId}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">{r.type}</div>
+                            {r.details && (
+                              <div className="max-w-xs truncate text-xs text-muted-foreground">
+                                {r.details}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{r.filed}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={statusClass[r.status] ?? ""}>
+                              {r.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {hr ? (
+                              <a
+                                href={ermApi.attachmentFileUrl(r.id, hr.id)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                                {hr.original_name ?? "Fulfilment file"}
+                                <span className="text-muted-foreground">
+                                  ({formatSize(hr.file_size_bytes)})
+                                </span>
+                              </a>
+                            ) : empFiles.length > 0 ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                <Paperclip className="h-3.5 w-3.5" /> {empFiles.length} from
+                                employee
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">None</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {["For Dispatch", "With Module"].includes(r.status) ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void openFulfil(r)}
+                              >
+                                {hr ? "Replace" : "Send back"}
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  {!loading && filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-8">
+                        <ListEmptyState placeholder="No document requests found." />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </ListBody>
+          </div>
+        </CardContent>
+      </Card>
 
       <Dialog open={!!fulfilRow} onOpenChange={(open) => !open && setFulfilRow(null)}>
         <DialogContent>
@@ -411,6 +423,6 @@ export function DocumentRequestInbox({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </>
   );
 }

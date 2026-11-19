@@ -1,4 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Award,
@@ -28,8 +38,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/portal/PageHeader";
-import { StatCard } from "@/components/portal/StatCard";
 import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { Logo } from "@/components/brand/Logo";
 import {
@@ -90,7 +98,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ReportMenu } from "@/components/ui/report-menu";
 import { onHcmChanged, notifyHcmChanged } from "@/lib/hcm-sync";
 import { loadRecordDetail } from "@/lib/employeerecords";
-import { requisitionStore, useRequisitions, useRequisitionsLoading, type Requisition } from "@/data/requisitions";
+import {
+  requisitionStore,
+  useRequisitions,
+  useRequisitionsLoading,
+  type Requisition,
+} from "@/data/requisitions";
 import { type Role } from "@/lib/nav";
 import { buildProfile, Field, Section } from "./EmployeeRecords";
 
@@ -152,7 +165,13 @@ const APPLICABLE_STATUSES = [
  * "Status" tab inside the employee profile: current employment status,
  * available leave balances, recent leave requests and every applicable status.
  */
-function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string; employeeId: number | null }) {
+function EmployeeStatusTab({
+  employeeCode,
+  employeeId,
+}: {
+  employeeCode: string;
+  employeeId: number | null;
+}) {
   const [detail, setDetail] = useState<ApiEmployee | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -185,7 +204,10 @@ function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string;
       <Section title="Current employment status">
         <Field k="Status" v={detail?.status ?? "—"} />
         <Field k="Employment type" v={detail?.employment_type ?? "—"} />
-        <Field k="Onboarding" v={detail ? (detail.onboarding_complete ? "Complete" : "Incomplete") : "—"} />
+        <Field
+          k="Onboarding"
+          v={detail ? (detail.onboarding_complete ? "Complete" : "Incomplete") : "—"}
+        />
         <Field
           k="Exit record"
           v={
@@ -196,7 +218,9 @@ function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string;
         />
       </Section>
 
-      <Section title={`Available leaves${balances.length ? ` · ${totalAvailable} day(s) left` : ""}`}>
+      <Section
+        title={`Available leaves${balances.length ? ` · ${totalAvailable} day(s) left` : ""}`}
+      >
         {loading ? (
           <div
             className="space-y-2 sm:col-span-2 lg:col-span-3"
@@ -212,7 +236,10 @@ function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string;
           </p>
         ) : (
           balances.map((b) => (
-            <div key={`${b.leave_type}-${b.period_year}`} className="rounded-md border border-border p-2.5">
+            <div
+              key={`${b.leave_type}-${b.period_year}`}
+              className="rounded-md border border-border p-2.5"
+            >
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[0.8rem] font-medium">{b.leave_type}</p>
                 <Badge variant="outline" className="border-success/30 bg-success/15 text-success">
@@ -249,7 +276,9 @@ function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string;
                 <Badge variant="outline">{r.status}</Badge>
               </div>
               <p className="mt-1 text-[0.7rem] text-muted-foreground">
-                {[r.date_from, r.date_to].filter(Boolean).join(" → ") || r.filed_at || r.request_code}
+                {[r.date_from, r.date_to].filter(Boolean).join(" → ") ||
+                  r.filed_at ||
+                  r.request_code}
               </p>
             </div>
           ))
@@ -387,7 +416,7 @@ async function fetchHcmData(options: { includeEmployees?: boolean } = {}) {
           hcmData = { ...hcmData, employees: rows };
           emitHcm();
         })
-        .catch((err) => console.warn('Could not backfill Core HCM employees.', err));
+        .catch((err) => console.warn("Could not backfill Core HCM employees.", err));
     }
   } catch (err) {
     console.warn("Could not load Core HCM data.", err);
@@ -423,7 +452,11 @@ function useHcmData() {
 /** True while an HCM fetch is in flight. Show skeletons only when
  *  `loading && <slice> is empty` so background refetches never flash. */
 function useHcmLoading() {
-  return useSyncExternalStore(subscribeHcm, () => hcmFetching, () => hcmFetching);
+  return useSyncExternalStore(
+    subscribeHcm,
+    () => hcmFetching,
+    () => hcmFetching,
+  );
 }
 
 async function refreshHcm() {
@@ -568,9 +601,17 @@ function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode
   };
   for (const node of orgNodes) {
     const staff = employees.filter((e) => e.department_id === node.department_id);
-    const head = node.head || staff.find((e) => e.position_title.toLowerCase().includes("manager") || e.position_title.toLowerCase().includes("director"));
+    const head =
+      node.head ||
+      staff.find(
+        (e) =>
+          e.position_title.toLowerCase().includes("manager") ||
+          e.position_title.toLowerCase().includes("director"),
+      );
     const headName = head?.full_name || (node.code === "DEP-HR" ? "Juan Dela Cruz" : node.name);
-    const headTitle = head?.position_title || (node.code === "DEP-HR" ? "HR & Administration Manager" : `${node.name} Head`);
+    const headTitle =
+      head?.position_title ||
+      (node.code === "DEP-HR" ? "HR & Administration Manager" : `${node.name} Head`);
     const headId = head?.employee_id;
 
     // Positions are part of the org chart even when every slot is vacant -
@@ -643,61 +684,90 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Organizational Structure & Employee Roster"
-        description="Hierarchy chart, employee roster, lifecycle actions and status transition logs."
-        actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
-      />
+      <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11 fill-current">
+                <circle cx="12" cy="4.25" r="2.25" />
+                <path d="M8.5 9.65A3.5 3.5 0 0 1 12 7.25a3.5 3.5 0 0 1 3.5 2.4v.6h-7v-.6Z" />
+                <path d="M11.25 11.25h1.5v1.75h5.25a1 1 0 0 1 1 1v1.5h-1.5v-1h-4.75v1h-1.5v-1H6.5v1H5v-1.5a1 1 0 0 1 1-1h5.25v-1.75Z" />
+                <circle cx="5.75" cy="17.75" r="1.65" />
+                <path d="M3.1 21.5a2.65 2.65 0 0 1 5.3 0H3.1Z" />
+                <circle cx="12" cy="17.75" r="1.65" />
+                <path d="M9.35 21.5a2.65 2.65 0 0 1 5.3 0h-5.3Z" />
+                <circle cx="18.25" cy="17.75" r="1.65" />
+                <path d="M15.6 21.5a2.65 2.65 0 0 1 5.3 0h-5.3Z" />
+              </svg>
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                Organizational Structure &amp; Employee Roster
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Hierarchy chart, employee roster, lifecycle actions and status transition logs.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start">
+            <div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />
+          </div>
+        </div>
+      </div>
 
       <HeaderActionsContext.Provider value={headerActionsEl}>
-      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
-        <TabsList>
-          <TabsTrigger
-            value="org"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
-            <GitBranch className="mr-1.5 h-4 w-4" /> Org Chart
-          </TabsTrigger>
-          <TabsTrigger
-            value="employees"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
-            <Users className="mr-1.5 h-4 w-4" /> Employee List
-          </TabsTrigger>
-          <TabsTrigger
-            value="promotions"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
-            <TrendingUp className="mr-1.5 h-4 w-4" /> Promotion Requests
-          </TabsTrigger>
-          {role === "superadmin" && (
+        <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
+          <TabsList>
             <TabsTrigger
-              value="logs"
+              value="org"
               className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
             >
-              <History className="mr-1.5 h-4 w-4" /> Lifecycle Logs
+              <GitBranch className="mr-1.5 h-4 w-4" /> Org Chart
             </TabsTrigger>
-          )}
-        </TabsList>
+            <TabsTrigger
+              value="employees"
+              className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            >
+              <Users className="mr-1.5 h-4 w-4" /> Employee List
+            </TabsTrigger>
+            <TabsTrigger
+              value="promotions"
+              className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            >
+              <TrendingUp className="mr-1.5 h-4 w-4" /> Promotion Requests
+            </TabsTrigger>
+            {role === "superadmin" && (
+              <TabsTrigger
+                value="logs"
+                className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+              >
+                <History className="mr-1.5 h-4 w-4" /> Lifecycle Logs
+              </TabsTrigger>
+            )}
+          </TabsList>
 
-        <TabsContent value="org" className="space-y-6">
-          <OrgChartVisualizer onViewEmployee={viewEmployeeInList} />
-        </TabsContent>
-
-        <TabsContent value="employees" className="space-y-6">
-          <EmployeeListManager role={role} empSearch={empSearch} onEmpSearchChange={setEmpSearch} />
-        </TabsContent>
-
-        <TabsContent value="promotions" className="space-y-6">
-          <PromotionRequestsManager />
-        </TabsContent>
-
-        {role === "superadmin" && (
-          <TabsContent value="logs" className="space-y-6">
-            <LifecycleLogsViewer />
+          <TabsContent value="org" className="space-y-6">
+            <OrgChartVisualizer onViewEmployee={viewEmployeeInList} />
           </TabsContent>
-        )}
-      </Tabs>
+
+          <TabsContent value="employees" className="space-y-6">
+            <EmployeeListManager
+              role={role}
+              empSearch={empSearch}
+              onEmpSearchChange={setEmpSearch}
+            />
+          </TabsContent>
+
+          <TabsContent value="promotions" className="space-y-6">
+            <PromotionRequestsManager />
+          </TabsContent>
+
+          {role === "superadmin" && (
+            <TabsContent value="logs" className="space-y-6">
+              <LifecycleLogsViewer />
+            </TabsContent>
+          )}
+        </Tabs>
       </HeaderActionsContext.Provider>
     </div>
   );
@@ -730,7 +800,9 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
     !selectedNode ||
     selectedNode?.title === "General Manager" ||
     selectedNode?.title === "Hotel Leadership" ||
-    selectedNode?.name === (employees.find((e) => e.position?.includes("General Manager"))?.name || "Ricardo A. Villanueva");
+    selectedNode?.name ===
+      (employees.find((e) => e.position?.includes("General Manager"))?.name ||
+        "Ricardo A. Villanueva");
 
   const selectedEmployee = employees.find((employee) => employee.name === selectedNode?.name);
   const selectedDepartmentApi = selectedNode?.departmentId
@@ -742,20 +814,21 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
       departments.find(
         (d) =>
           d.head === selectedNode?.name ||
-          (d.name === selectedEmployee?.department && selectedEmployee?.position !== "General Manager") ||
+          (d.name === selectedEmployee?.department &&
+            selectedEmployee?.position !== "General Manager") ||
           (selectedNode?.title?.includes("HR") && d.name.includes("HR")),
       ) ||
       departments.find((d) => d.name === selectedEmployee?.department);
 
   const selectedDepartmentPositions = selectedNode?.departmentId
     ? hcm.positions
-      .filter((p) => p.department_id === selectedNode.departmentId)
-      .map((p) => ({
-        id: p.position_id,
-        title: p.title,
-        filled: p.filled_count,
-        headcount: p.headcount,
-      }))
+        .filter((p) => p.department_id === selectedNode.departmentId)
+        .map((p) => ({
+          id: p.position_id,
+          title: p.title,
+          filled: p.filled_count,
+          headcount: p.headcount,
+        }))
     : [];
 
   const headEmployee = selectedDepartment
@@ -764,32 +837,34 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
 
   const displayOverview = isGeneralManagerNode
     ? {
-      name: "Executive Management",
-      head: employees.find((e) => e.position?.includes("General Manager"))?.name || "Ricardo A. Villanueva",
-      headPosition: "General Manager",
-      members: departments
-        .map((d) => {
-          const h = employees.find((e) => e.name === d.head);
-          return h ? { id: h.id, name: h.name, position: h.position } : null;
-        })
-        .filter(Boolean) as { id: string; name: string; position: string }[],
-      positions: [] as { id: number; title: string; filled: number; headcount: number }[],
-    }
+        name: "Executive Management",
+        head:
+          employees.find((e) => e.position?.includes("General Manager"))?.name ||
+          "Ricardo A. Villanueva",
+        headPosition: "General Manager",
+        members: departments
+          .map((d) => {
+            const h = employees.find((e) => e.name === d.head);
+            return h ? { id: h.id, name: h.name, position: h.position } : null;
+          })
+          .filter(Boolean) as { id: string; name: string; position: string }[],
+        positions: [] as { id: number; title: string; filled: number; headcount: number }[],
+      }
     : selectedDepartment
       ? {
-        name: selectedDepartment.name,
-        head: selectedDepartment.head || "Unassigned",
-        headPosition: headEmployee?.position ?? "No head assigned",
-        members: employees
-          .filter(
-            (employee) =>
-              employee.department === selectedDepartment.name &&
-              employee.name !== selectedDepartment.head &&
-              !employee.position.includes("General Manager"),
-          )
-          .map((e) => ({ id: e.id, name: e.name, position: e.position })),
-        positions: selectedDepartmentPositions,
-      }
+          name: selectedDepartment.name,
+          head: selectedDepartment.head || "Unassigned",
+          headPosition: headEmployee?.position ?? "No head assigned",
+          members: employees
+            .filter(
+              (employee) =>
+                employee.department === selectedDepartment.name &&
+                employee.name !== selectedDepartment.head &&
+                !employee.position.includes("General Manager"),
+            )
+            .map((e) => ({ id: e.id, name: e.name, position: e.position })),
+          positions: selectedDepartmentPositions,
+        }
       : null;
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -818,7 +893,7 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
     if (dragStart.current?.moved) {
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);
-      } catch { }
+      } catch {}
       dragStart.current = null;
       setDragging(false);
     } else {
@@ -828,239 +903,253 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
 
   return (
     <>
-    <HeaderActions>
-      <ReportMenu
-        size="sm"
-        label="Export org chart"
-        recordCount={employees.length}
-        report={() => ({
-          title: "Organization Chart Report",
-          subtitle: `${employees.length} employee(s) across ${departments.length} department(s)`,
-          columns: [
-            { header: "Employee", key: "name" },
-            { header: "Position", key: "position" },
-            { header: "Department", key: "department" },
-            { header: "Status", key: "status" },
-          ],
-          rows: employees.map((e) => ({
-            name: e.name,
-            position: e.position,
-            department: e.department,
-            status: (e as any).status ?? "Active",
-          })),
-          summary: [
-            { label: "Employees", value: employees.length },
-            { label: "Departments", value: departments.length },
-          ],
-        })}
-      />
-    </HeaderActions>
-    <Card className="border-border/70 shadow-sm">
-      <CardContent className="p-6">
-        <div className="mb-6 border-b border-border/60 pb-4">
-          <h2 className="flex items-center gap-3 font-display text-xl font-semibold">
-            <SystemLogo />
-            Hierarchy Chart
-          </h2>
-        </div>
-
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
-          {hcmLoading && employees.length === 0 ? (
-            <>
-              <div className="min-h-[35rem] rounded-xl border border-border p-6" aria-busy="true" aria-label="Loading organization chart">
-                <div className="mx-auto max-w-md space-y-3 pt-16">
-                  <Skeleton className="mx-auto h-16 w-48 rounded-xl" />
-                  <div className="flex justify-center gap-3 pt-4">
-                    <Skeleton className="h-16 w-40 rounded-xl" />
-                    <Skeleton className="h-16 w-40 rounded-xl" />
-                    <Skeleton className="h-16 w-40 rounded-xl" />
-                  </div>
-                  <div className="flex justify-center gap-3 pt-2">
-                    <Skeleton className="h-14 w-32 rounded-xl" />
-                    <Skeleton className="h-14 w-32 rounded-xl" />
-                    <Skeleton className="h-14 w-32 rounded-xl" />
-                    <Skeleton className="h-14 w-32 rounded-xl" />
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-border p-4" aria-busy="true" aria-label="Loading details">
-                <ListSkeleton items={4} />
-              </div>
-            </>
-          ) : (
-          <>
-          <div
-            className="relative min-h-[35rem] touch-none overflow-hidden rounded-xl border border-border bg-[radial-gradient(var(--color-border)_1px,transparent_1px)] bg-[size:16px_16px] cursor-grab active:cursor-grabbing"
-            onPointerDown={beginDrag}
-            onPointerMove={drag}
-            onPointerUp={endDrag}
-          >
-            {!dragging && (
-              <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm">
-                Drag to explore · click any card for details
-              </div>
-            )}
-
-            <div className="absolute top-4 right-4 z-10 flex items-center gap-1 rounded-xl border border-border/80 bg-card/95 backdrop-blur-md p-1 shadow-lg">
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 cursor-pointer"
-                aria-label="Zoom out"
-                onClick={() => setScale((value) => Math.max(0.35, value - 0.08))}
-              >
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-              <span className="min-w-10 text-center text-xs font-semibold">
-                {Math.round(scale * 100)}%
-              </span>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 cursor-pointer"
-                aria-label="Zoom in"
-                onClick={() => setScale((value) => Math.min(1.25, value + 0.08))}
-              >
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs font-semibold cursor-pointer"
-                onClick={() => {
-                  setScale(0.58);
-                  setOffset({ x: 0, y: 0 });
-                }}
-              >
-                Reset
-              </Button>
-            </div>
-
-            <div
-              className="absolute left-1/2 top-8 origin-top"
-              style={{
-                transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px) scale(${scale})`,
-                transition: dragStart.current ? "none" : "transform 150ms ease-out",
-              }}
-            >
-              <div className="min-w-[980px] py-6">
-                <div className="mb-14 flex justify-center">
-                  <Logo variant="full" mark="maroon" />
-                </div>
-                <OrgTree
-                  node={orgTree}
-                  root
-                  selectedName={selectedNode?.name ?? null}
-                  onSelect={setSelectedNode}
-                />
-              </div>
-            </div>
+      <HeaderActions>
+        <ReportMenu
+          size="sm"
+          label="Export org chart"
+          recordCount={employees.length}
+          report={() => ({
+            title: "Organization Chart Report",
+            subtitle: `${employees.length} employee(s) across ${departments.length} department(s)`,
+            columns: [
+              { header: "Employee", key: "name" },
+              { header: "Position", key: "position" },
+              { header: "Department", key: "department" },
+              { header: "Status", key: "status" },
+            ],
+            rows: employees.map((e) => ({
+              name: e.name,
+              position: e.position,
+              department: e.department,
+              status: (e as any).status ?? "Active",
+            })),
+            summary: [
+              { label: "Employees", value: employees.length },
+              { label: "Departments", value: departments.length },
+            ],
+          })}
+        />
+      </HeaderActions>
+      <Card className="border-border/70 shadow-sm">
+        <CardContent className="p-4 sm:p-5">
+          <div className="mb-4">
+            <h2 className="flex items-center gap-3 font-display text-base font-bold">
+              <SystemLogo />
+              Hierarchy Chart
+            </h2>
           </div>
 
-          <aside className="space-y-4 rounded-xl border border-border bg-muted/25 p-4">
-            {displayOverview ? (
-              <div>
-                <p className="eyebrow">{isGeneralManagerNode ? "Leadership overview" : "Department overview"}</p>
-                <h3 className="mt-1 font-display text-2xl font-semibold">
-                  {displayOverview.name}
-                </h3>
-
-                <div className="mt-4 w-full rounded-xl border border-primary/30 bg-card p-3 shadow-xs">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        {isGeneralManagerNode ? "General Manager" : "Head supervisor"}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">
-                        {displayOverview.head}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {displayOverview.headPosition}
-                      </p>
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+            {hcmLoading && employees.length === 0 ? (
+              <>
+                <div
+                  className="min-h-[35rem] rounded-xl border border-border p-6"
+                  aria-busy="true"
+                  aria-label="Loading organization chart"
+                >
+                  <div className="mx-auto max-w-md space-y-3 pt-16">
+                    <Skeleton className="mx-auto h-16 w-48 rounded-xl" />
+                    <div className="flex justify-center gap-3 pt-4">
+                      <Skeleton className="h-16 w-40 rounded-xl" />
+                      <Skeleton className="h-16 w-40 rounded-xl" />
+                      <Skeleton className="h-16 w-40 rounded-xl" />
                     </div>
+                    <div className="flex justify-center gap-3 pt-2">
+                      <Skeleton className="h-14 w-32 rounded-xl" />
+                      <Skeleton className="h-14 w-32 rounded-xl" />
+                      <Skeleton className="h-14 w-32 rounded-xl" />
+                      <Skeleton className="h-14 w-32 rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl border border-border p-4"
+                  aria-busy="true"
+                  aria-label="Loading details"
+                >
+                  <ListSkeleton items={4} />
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className="relative min-h-[35rem] touch-none overflow-hidden rounded-xl border border-border bg-[radial-gradient(var(--color-border)_1px,transparent_1px)] bg-[size:16px_16px] cursor-grab active:cursor-grabbing"
+                  onPointerDown={beginDrag}
+                  onPointerMove={drag}
+                  onPointerUp={endDrag}
+                >
+                  {!dragging && (
+                    <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm">
+                      Drag to explore · click any card for details
+                    </div>
+                  )}
+
+                  <div className="absolute top-4 right-4 z-10 flex items-center gap-1 rounded-xl border border-border/80 bg-card/95 backdrop-blur-md p-1 shadow-lg">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 cursor-pointer"
+                      aria-label="Zoom out"
+                      onClick={() => setScale((value) => Math.max(0.35, value - 0.08))}
+                    >
+                      <ZoomOut className="h-4 w-4" />
+                    </Button>
+                    <span className="min-w-10 text-center text-xs font-semibold">
+                      {Math.round(scale * 100)}%
+                    </span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 cursor-pointer"
+                      aria-label="Zoom in"
+                      onClick={() => setScale((value) => Math.min(1.25, value + 0.08))}
+                    >
+                      <ZoomIn className="h-4 w-4" />
+                    </Button>
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="h-7 shrink-0 px-2 text-xs text-primary hover:bg-primary/10"
-                      disabled={displayOverview.head === "Unassigned"}
-                      onClick={() => onViewEmployee(displayOverview.head)}
+                      variant="ghost"
+                      className="h-7 px-2 text-xs font-semibold cursor-pointer"
+                      onClick={() => {
+                        setScale(0.58);
+                        setOffset({ x: 0, y: 0 });
+                      }}
                     >
-                      <Eye className="mr-1 h-3.5 w-3.5" /> View
+                      Reset
                     </Button>
+                  </div>
+
+                  <div
+                    className="absolute left-1/2 top-8 origin-top"
+                    style={{
+                      transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px) scale(${scale})`,
+                      transition: dragStart.current ? "none" : "transform 150ms ease-out",
+                    }}
+                  >
+                    <div className="min-w-[980px] py-6">
+                      <div className="mb-14 flex justify-center">
+                        <Logo variant="full" mark="maroon" />
+                      </div>
+                      <OrgTree
+                        node={orgTree}
+                        root
+                        selectedName={selectedNode?.name ?? null}
+                        onSelect={setSelectedNode}
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {isGeneralManagerNode ? "Department Heads & Direct Reports" : "Team members"}
-                  </p>
-                  <Badge variant="secondary">{displayOverview.members.length}</Badge>
-                </div>
-                <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
-                  {displayOverview.members.length > 0 ? (
-                    displayOverview.members.map((employee) => (
-                      <div
-                        key={employee.id}
-                        className="flex w-full items-center justify-between rounded-md bg-card px-2.5 py-2 text-left text-xs"
-                      >
-                        <span>
-                          <span className="block font-medium">{employee.name}</span>
-                          <span className="text-muted-foreground">{employee.position}</span>
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
-                          onClick={() => onViewEmployee(employee.name)}
-                        >
-                          <Eye className="mr-1 h-3.5 w-3.5" /> View
-                        </Button>
+                <aside className="space-y-4 rounded-xl border border-border bg-muted/25 p-4">
+                  {displayOverview ? (
+                    <div>
+                      <p className="eyebrow">
+                        {isGeneralManagerNode ? "Leadership overview" : "Department overview"}
+                      </p>
+                      <h3 className="mt-1 font-display text-2xl font-semibold">
+                        {displayOverview.name}
+                      </h3>
+
+                      <div className="mt-4 w-full rounded-xl border border-primary/30 bg-card p-3 shadow-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              {isGeneralManagerNode ? "General Manager" : "Head supervisor"}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">
+                              {displayOverview.head}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {displayOverview.headPosition}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 shrink-0 px-2 text-xs text-primary hover:bg-primary/10"
+                            disabled={displayOverview.head === "Unassigned"}
+                            onClick={() => onViewEmployee(displayOverview.head)}
+                          >
+                            <Eye className="mr-1 h-3.5 w-3.5" /> View
+                          </Button>
+                        </div>
                       </div>
-                    ))
+
+                      <div className="mt-4 flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          {isGeneralManagerNode
+                            ? "Department Heads & Direct Reports"
+                            : "Team members"}
+                        </p>
+                        <Badge variant="secondary">{displayOverview.members.length}</Badge>
+                      </div>
+                      <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
+                        {displayOverview.members.length > 0 ? (
+                          displayOverview.members.map((employee) => (
+                            <div
+                              key={employee.id}
+                              className="flex w-full items-center justify-between rounded-md bg-card px-2.5 py-2 text-left text-xs"
+                            >
+                              <span>
+                                <span className="block font-medium">{employee.name}</span>
+                                <span className="text-muted-foreground">{employee.position}</span>
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
+                                onClick={() => onViewEmployee(employee.name)}
+                              >
+                                <Eye className="mr-1 h-3.5 w-3.5" /> View
+                              </Button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+                            No current employees assigned to this department yet.
+                          </div>
+                        )}
+                      </div>
+
+                      {displayOverview.positions.length > 0 && (
+                        <>
+                          <div className="mt-4 flex items-center justify-between">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Positions
+                            </p>
+                            <Badge variant="secondary">{displayOverview.positions.length}</Badge>
+                          </div>
+                          <div className="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1">
+                            {displayOverview.positions.map((position) => (
+                              <div
+                                key={position.id}
+                                className="flex items-center justify-between rounded-md bg-card px-2.5 py-2 text-xs"
+                              >
+                                <span className="font-medium">{position.title}</span>
+                                <Badge
+                                  variant={
+                                    position.filled >= position.headcount ? "secondary" : "outline"
+                                  }
+                                >
+                                  {position.filled}/{position.headcount}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   ) : (
-                    <div className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
-                      No current employees assigned to this department yet.
+                    <div className="flex h-full items-center rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                      Select an employee card on the chart to view their department here.
                     </div>
                   )}
-                </div>
-
-                {displayOverview.positions.length > 0 && (
-                  <>
-                    <div className="mt-4 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Positions
-                      </p>
-                      <Badge variant="secondary">{displayOverview.positions.length}</Badge>
-                    </div>
-                    <div className="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1">
-                      {displayOverview.positions.map((position) => (
-                        <div
-                          key={position.id}
-                          className="flex items-center justify-between rounded-md bg-card px-2.5 py-2 text-xs"
-                        >
-                          <span className="font-medium">{position.title}</span>
-                          <Badge
-                            variant={position.filled >= position.headcount ? "secondary" : "outline"}
-                          >
-                            {position.filled}/{position.headcount}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="flex h-full items-center rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
-                Select an employee card on the chart to view their department here.
-              </div>
+                </aside>
+              </>
             )}
-          </aside>
-          </>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        </CardContent>
+      </Card>
     </>
   );
 }
@@ -1127,7 +1216,10 @@ function OrgTree({
             )}
             <div className="flex gap-10">
               {children.map((child, index) => (
-                <div key={`${child.kind ?? "node"}-${child.name}-${index}`} className="relative flex flex-col items-center">
+                <div
+                  key={`${child.kind ?? "node"}-${child.name}-${index}`}
+                  className="relative flex flex-col items-center"
+                >
                   <div className="absolute left-1/2 top-0 h-6 w-[2px] -translate-x-1/2 bg-muted-foreground/70" />
                   <div className="pt-6">
                     <OrgTree node={child} selectedName={selectedName} onSelect={onSelect} />
@@ -1198,7 +1290,8 @@ function EmployeeListManager({
     (r) =>
       (recStatusFilter === "all" ||
         (recStatusFilter === "Acknowledged" &&
-          (r.status === "Acknowledged" || (acknowledgedIds.has(r.employeeId) && r.status === "Pending HR Action"))) ||
+          (r.status === "Acknowledged" ||
+            (acknowledgedIds.has(r.employeeId) && r.status === "Pending HR Action"))) ||
         recStatusFilter === r.status) &&
       (recTypeFilter === "all" || r.recommendationType === recTypeFilter) &&
       (() => {
@@ -1296,10 +1389,7 @@ function EmployeeListManager({
   const regularizeOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Regularization") : [];
   const promotionOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Promotion") : [];
 
-  const createMockRecommendation = async (
-    emp: Employee,
-    type: "Regularization" | "Promotion",
-  ) => {
+  const createMockRecommendation = async (emp: Employee, type: "Regularization" | "Promotion") => {
     const dbId = employeeIdByCode.get(emp.id);
     if (!dbId) {
       toast.error(`Could not resolve ${emp.id} in Core HCM.`);
@@ -1368,10 +1458,9 @@ function EmployeeListManager({
   // Departments come from the master list, not from employee rows - a newly
   // created department with no hires must still be selectable as a filter/edit.
   const deptOptions = Array.from(
-    new Set([
-      ...hcm.departments.map((d) => d.name),
-      ...empList.map((e) => e.department),
-    ].filter(Boolean)),
+    new Set(
+      [...hcm.departments.map((d) => d.name), ...empList.map((e) => e.department)].filter(Boolean),
+    ),
   ).sort();
   const positionOptions = hcm.positions.map((p) => p.title).sort();
   const supervisorOptions = empList.map((e) => e.name).sort();
@@ -1545,14 +1634,14 @@ function EmployeeListManager({
         tin_number: editEmpForm.tinNumber || null,
         emergency_contacts: editEmpForm.emergencyName
           ? [
-            {
-              name: editEmpForm.emergencyName,
-              relationship: editEmpForm.emergencyRelation || null,
-              phone: editEmpForm.emergencyPhone || null,
-              address: null,
-              is_primary: 1,
-            },
-          ]
+              {
+                name: editEmpForm.emergencyName,
+                relationship: editEmpForm.emergencyRelation || null,
+                phone: editEmpForm.emergencyPhone || null,
+                address: null,
+                is_primary: 1,
+              },
+            ]
           : [],
       });
       toast.success(`${editEmpForm.firstName} ${editEmpForm.lastName}'s profile updated.`);
@@ -1797,63 +1886,84 @@ function EmployeeListManager({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortHead sortKey="id" sort={recSort.sort} onSort={recSort.toggle}>Evaluation ID</SortHead>
-                  <SortHead sortKey="employeeName" sort={recSort.sort} onSort={recSort.toggle}>Employee</SortHead>
-                  <SortHead sortKey="department" sort={recSort.sort} onSort={recSort.toggle}>Department</SortHead>
-                  <SortHead sortKey="recommendationType" sort={recSort.sort} onSort={recSort.toggle}>Type</SortHead>
-                  <SortHead sortKey="evaluationScore" sort={recSort.sort} onSort={recSort.toggle} align="center">Score</SortHead>
+                  <SortHead sortKey="id" sort={recSort.sort} onSort={recSort.toggle}>
+                    Evaluation ID
+                  </SortHead>
+                  <SortHead sortKey="employeeName" sort={recSort.sort} onSort={recSort.toggle}>
+                    Employee
+                  </SortHead>
+                  <SortHead sortKey="department" sort={recSort.sort} onSort={recSort.toggle}>
+                    Department
+                  </SortHead>
+                  <SortHead
+                    sortKey="recommendationType"
+                    sort={recSort.sort}
+                    onSort={recSort.toggle}
+                  >
+                    Type
+                  </SortHead>
+                  <SortHead
+                    sortKey="evaluationScore"
+                    sort={recSort.sort}
+                    onSort={recSort.toggle}
+                    align="center"
+                  >
+                    Score
+                  </SortHead>
                   <TableHead>Comments</TableHead>
-                  <SortHead sortKey="status" sort={recSort.sort} onSort={recSort.toggle}>Status</SortHead>
+                  <SortHead sortKey="status" sort={recSort.sort} onSort={recSort.toggle}>
+                    Status
+                  </SortHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading && <TableRowsSkeleton cols={7} rows={6} />}
                 {!loading &&
                   recPage.pageItems.map((rec) => (
-                  <TableRow key={rec.id}>
-                    <TableCell className="font-mono text-xs font-semibold text-muted-foreground">
-                      {rec.id}
-                    </TableCell>
-                    <TableCell className="font-semibold text-sm">{rec.employeeName}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {rec.department}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          rec.recommendationType === "Regularization"
-                            ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
-                            : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px] dark:text-gold"
-                        }
-                      >
-                        {rec.recommendationType}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center font-mono text-xs font-semibold">
-                      {rec.evaluationScore}%
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground italic max-w-xs truncate">
-                      {rec.comments}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          rec.status === "Approved & Processed"
-                            ? "border-success/40 bg-success/10 text-success text-[10px]"
-                            : acknowledgedIds.has(rec.employeeId)
+                    <TableRow key={rec.id}>
+                      <TableCell className="font-mono text-xs font-semibold text-muted-foreground">
+                        {rec.id}
+                      </TableCell>
+                      <TableCell className="font-semibold text-sm">{rec.employeeName}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {rec.department}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            rec.recommendationType === "Regularization"
                               ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
-                              : "border-gold/40 text-gold text-[10px]"
-                        }
-                      >
-                        {acknowledgedIds.has(rec.employeeId) && rec.status === "Pending HR Action"
-                          ? "Acknowledged"
-                          : rec.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                              : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px] dark:text-gold"
+                          }
+                        >
+                          {rec.recommendationType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center font-mono text-xs font-semibold">
+                        {rec.evaluationScore}%
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground italic max-w-xs truncate">
+                        {rec.comments}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            rec.status === "Approved & Processed"
+                              ? "border-success/40 bg-success/10 text-success text-[10px]"
+                              : acknowledgedIds.has(rec.employeeId)
+                                ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
+                                : "border-gold/40 text-gold text-[10px]"
+                          }
+                        >
+                          {acknowledgedIds.has(rec.employeeId) && rec.status === "Pending HR Action"
+                            ? "Acknowledged"
+                            : rec.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           </div>
@@ -1897,10 +2007,10 @@ function EmployeeListManager({
         />
       </HeaderActions>
       <Card className="border-border/70 shadow-sm">
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
+              <h2 className="flex items-center gap-2 font-display text-base font-bold">
                 <Users className="h-5 w-5 text-primary" /> Employee Roster
               </h2>
             </div>
@@ -1963,17 +2073,31 @@ function EmployeeListManager({
             </div>
           </div>
 
-          <div className="mt-4 overflow-x-auto">
+          <div className="mt-3 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortHead sortKey="id" sort={empSort.sort} onSort={empSort.toggle}>Employee ID</SortHead>
-                  <SortHead sortKey="name" sort={empSort.sort} onSort={empSort.toggle}>Name</SortHead>
-                  <SortHead sortKey="department" sort={empSort.sort} onSort={empSort.toggle}>Department</SortHead>
-                  <SortHead sortKey="position" sort={empSort.sort} onSort={empSort.toggle}>Position & Grade</SortHead>
-                  <SortHead sortKey="type" sort={empSort.sort} onSort={empSort.toggle}>Type</SortHead>
-                  <SortHead sortKey="dateHired" sort={empSort.sort} onSort={empSort.toggle}>Date Hired</SortHead>
-                  <SortHead sortKey="status" sort={empSort.sort} onSort={empSort.toggle}>Status</SortHead>
+                  <SortHead sortKey="id" sort={empSort.sort} onSort={empSort.toggle}>
+                    Employee ID
+                  </SortHead>
+                  <SortHead sortKey="name" sort={empSort.sort} onSort={empSort.toggle}>
+                    Name
+                  </SortHead>
+                  <SortHead sortKey="department" sort={empSort.sort} onSort={empSort.toggle}>
+                    Department
+                  </SortHead>
+                  <SortHead sortKey="position" sort={empSort.sort} onSort={empSort.toggle}>
+                    Position & Grade
+                  </SortHead>
+                  <SortHead sortKey="type" sort={empSort.sort} onSort={empSort.toggle}>
+                    Type
+                  </SortHead>
+                  <SortHead sortKey="dateHired" sort={empSort.sort} onSort={empSort.toggle}>
+                    Date Hired
+                  </SortHead>
+                  <SortHead sortKey="status" sort={empSort.sort} onSort={empSort.toggle}>
+                    Status
+                  </SortHead>
                   <TableHead className="text-center">Details</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -1982,74 +2106,76 @@ function EmployeeListManager({
                 {hcmLoading && empList.length === 0 && <TableRowsSkeleton cols={9} rows={6} />}
                 {(!hcmLoading || empList.length > 0) &&
                   empPage.pageItems.map((e) => (
-                  <TableRow key={e.id}>
-                    <TableCell className="font-mono text-xs font-medium">{e.id}</TableCell>
-                    <TableCell className="font-medium">{e.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{e.department}</TableCell>
-                    <TableCell className="text-xs">
-                      <div>{e.position}</div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {e.salaryGrade || "SG-08"}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          e.employmentType === "Regular"
-                            ? "border-success/40 text-success text-[11px]"
-                            : e.employmentType === "Probationary"
-                              ? "border-gold/40 text-gold text-[11px]"
-                              : "border-border text-[11px]"
-                        }
-                      >
-                        {e.employmentType}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{e.dateHired}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          e.status === "Active"
-                            ? "border-success/40 bg-success/10 text-success text-[11px]"
-                            : e.status === "Resigned" ||
-                              e.status === "Retired" ||
-                              e.status === "Terminated"
-                              ? "border-destructive/40 bg-destructive/10 text-destructive text-[11px]"
-                              : "border-border text-muted-foreground text-[11px]"
-                        }
-                      >
-                        {e.status}
-                      </Badge>
-                    </TableCell>
+                    <TableRow key={e.id}>
+                      <TableCell className="font-mono text-xs font-medium">{e.id}</TableCell>
+                      <TableCell className="font-medium">{e.name}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {e.department}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div>{e.position}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {e.salaryGrade || "SG-08"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            e.employmentType === "Regular"
+                              ? "border-success/40 text-success text-[11px]"
+                              : e.employmentType === "Probationary"
+                                ? "border-gold/40 text-gold text-[11px]"
+                                : "border-border text-[11px]"
+                          }
+                        >
+                          {e.employmentType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{e.dateHired}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            e.status === "Active"
+                              ? "border-success/40 bg-success/10 text-success text-[11px]"
+                              : e.status === "Resigned" ||
+                                  e.status === "Retired" ||
+                                  e.status === "Terminated"
+                                ? "border-destructive/40 bg-destructive/10 text-destructive text-[11px]"
+                                : "border-border text-muted-foreground text-[11px]"
+                          }
+                        >
+                          {e.status}
+                        </Badge>
+                      </TableCell>
 
-                    <TableCell className="text-center">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-2.5 text-xs bg-muted/30 hover:bg-primary/10 hover:text-primary hover:border-primary/40"
-                        onClick={() => {
-                          loadRecordDetail(e.id);
-                          setViewingEmpInfo(e);
-                        }}
-                      >
-                        <Info className="mr-1.5 h-3.5 w-3.5 text-primary" /> View Info
-                      </Button>
-                    </TableCell>
-
-                    <TableCell className="text-right">
-                      <div className="flex justify-end items-center gap-1.5">
+                      <TableCell className="text-center">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 px-2 text-xs"
-                          onClick={() => openEditEmployee(e)}
+                          className="h-8 px-2.5 text-xs bg-muted/30 hover:bg-primary/10 hover:text-primary hover:border-primary/40"
+                          onClick={() => {
+                            loadRecordDetail(e.id);
+                            setViewingEmpInfo(e);
+                          }}
                         >
-                          <Pencil className="mr-1 h-3 w-3" /> Edit
+                          <Info className="mr-1.5 h-3.5 w-3.5 text-primary" /> View Info
                         </Button>
+                      </TableCell>
 
-                        {e.employmentType === "Probationary" && e.status === "Active" && (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2 text-xs"
+                            onClick={() => openEditEmployee(e)}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" /> Edit
+                          </Button>
+
+                          {e.employmentType === "Probationary" && e.status === "Active" && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -2067,7 +2193,7 @@ function EmployeeListManager({
                             </Button>
                           )}
 
-                        {e.status === "Active" && e.employmentType !== "Probationary" && (
+                          {e.status === "Active" && e.employmentType !== "Probationary" && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -2086,23 +2212,23 @@ function EmployeeListManager({
                             </Button>
                           )}
 
-                        {e.status === "Active" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
-                            onClick={() => {
-                              setSelectedEmp(e);
-                              setShowExitModal(true);
-                            }}
-                          >
-                            <UserX className="mr-1 h-3.5 w-3.5" /> Exit
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {e.status === "Active" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                              onClick={() => {
+                                setSelectedEmp(e);
+                                setShowExitModal(true);
+                              }}
+                            >
+                              <UserX className="mr-1 h-3.5 w-3.5" /> Exit
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           </div>
@@ -2672,7 +2798,9 @@ function EmployeeListManager({
                     variant="outline"
                     className="h-8 text-xs"
                     disabled={mockRecLoading === "promote"}
-                    onClick={() => selectedEmp && createMockRecommendation(selectedEmp, "Promotion")}
+                    onClick={() =>
+                      selectedEmp && createMockRecommendation(selectedEmp, "Promotion")
+                    }
                   >
                     {mockRecLoading === "promote"
                       ? "Creating evaluation..."
@@ -2769,7 +2897,9 @@ function EmployeeListManager({
                     variant="outline"
                     className="h-8 text-xs"
                     disabled={mockRecLoading === "regularize"}
-                    onClick={() => selectedEmp && createMockRecommendation(selectedEmp, "Regularization")}
+                    onClick={() =>
+                      selectedEmp && createMockRecommendation(selectedEmp, "Regularization")
+                    }
                   >
                     {mockRecLoading === "regularize"
                       ? "Creating evaluation..."
@@ -2926,7 +3056,9 @@ function EmployeeListManager({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">Unsaved Changes</AlertDialogTitle>
+            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">
+              Unsaved Changes
+            </AlertDialogTitle>
             <AlertDialogDescription>
               You have unsaved changes in this form. Are you sure you want to exit without saving?
             </AlertDialogDescription>
@@ -2962,7 +3094,9 @@ function EmployeeListManager({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">Unsaved Changes</AlertDialogTitle>
+            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">
+              Unsaved Changes
+            </AlertDialogTitle>
             <AlertDialogDescription>
               You have unsaved changes in this form. Are you sure you want to exit without saving?
             </AlertDialogDescription>
@@ -2995,7 +3129,9 @@ function PromotionRequestsManager() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [reviewFor, setReviewFor] = useState<ApiPromotionRequest | null>(null);
-  const [decision, setDecision] = useState<"approve" | "reject" | "return" | "terminate" | "defer">("approve");
+  const [decision, setDecision] = useState<"approve" | "reject" | "return" | "terminate" | "defer">(
+    "approve",
+  );
   const [notes, setNotes] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -3065,10 +3201,10 @@ function PromotionRequestsManager() {
         />
       </HeaderActions>
       <Card className="border-border/70 shadow-sm">
-        <CardHeader className="border-b border-border/50 pb-4">
+        <CardHeader className="pb-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
+              <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
                 <TrendingUp className="h-4 w-4 text-primary" /> Promotion Requests
                 {pendingCount > 0 && (
                   <Badge variant="outline" className="border-gold/40 text-gold text-[10px]">
@@ -3111,130 +3247,141 @@ function PromotionRequestsManager() {
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortHead sortKey="employee" sort={promoSort.sort} onSort={promoSort.toggle} className="pl-6">Employee</SortHead>
-                    <SortHead sortKey="requested" sort={promoSort.sort} onSort={promoSort.toggle}>Current → Requested</SortHead>
-                    <TableHead>Justification</TableHead>
-                    <SortHead sortKey="status" sort={promoSort.sort} onSort={promoSort.toggle}>Status</SortHead>
-                    <SortHead sortKey="filed" sort={promoSort.sort} onSort={promoSort.toggle}>Filed</SortHead>
-                    <TableHead className="text-right pr-6">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading && <TableRowsSkeleton cols={6} rows={6} />}
-                  {!loading &&
-                    page.pageItems.map((r) => (
-                    <TableRow key={r.promotion_request_id}>
-                      <TableCell className="pl-6 text-xs">
-                        <p className="font-semibold">
-                          {r.employee?.first_name} {r.employee?.last_name}
+            <TableHeader>
+              <TableRow>
+                <SortHead
+                  sortKey="employee"
+                  sort={promoSort.sort}
+                  onSort={promoSort.toggle}
+                  className="pl-6"
+                >
+                  Employee
+                </SortHead>
+                <SortHead sortKey="requested" sort={promoSort.sort} onSort={promoSort.toggle}>
+                  Current → Requested
+                </SortHead>
+                <TableHead>Justification</TableHead>
+                <SortHead sortKey="status" sort={promoSort.sort} onSort={promoSort.toggle}>
+                  Status
+                </SortHead>
+                <SortHead sortKey="filed" sort={promoSort.sort} onSort={promoSort.toggle}>
+                  Filed
+                </SortHead>
+                <TableHead className="text-right pr-6">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && <TableRowsSkeleton cols={6} rows={6} />}
+              {!loading &&
+                page.pageItems.map((r) => (
+                  <TableRow key={r.promotion_request_id}>
+                    <TableCell className="pl-6 text-xs">
+                      <p className="font-semibold">
+                        {r.employee?.first_name} {r.employee?.last_name}
+                      </p>
+                      <p className="font-mono text-[11px] text-muted-foreground">
+                        {r.employee?.employee_code}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {r.employee?.position?.title ?? "—"} →{" "}
+                      <span className="font-medium text-foreground">
+                        {r.requested_position?.title ?? "For HR review"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-64 truncate text-xs text-muted-foreground">
+                      {r.justification}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={
+                          r.status === "Approved"
+                            ? "border-success/40 bg-success/10 text-success text-[10px]"
+                            : r.status === "Rejected" || r.status === "Terminated"
+                              ? "border-destructive/40 bg-destructive/10 text-destructive text-[10px]"
+                              : r.status === "Under HR3 Review" || r.status === "Pending HR Action"
+                                ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
+                                : "border-gold/40 text-gold text-[10px]"
+                        }
+                      >
+                        {r.status}
+                      </Badge>
+                      {r.hr3_recommendation && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          HR3: {r.hr3_recommendation.evaluation_score}% ·{" "}
+                          {r.hr3_recommendation.recommendation_type}
                         </p>
-                        <p className="font-mono text-[11px] text-muted-foreground">
-                          {r.employee?.employee_code}
-                        </p>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {r.employee?.position?.title ?? "—"} →{" "}
-                        <span className="font-medium text-foreground">
-                          {r.requested_position?.title ?? "For HR review"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="max-w-64 truncate text-xs text-muted-foreground">
-                        {r.justification}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            r.status === "Approved"
-                              ? "border-success/40 bg-success/10 text-success text-[10px]"
-                              : r.status === "Rejected" || r.status === "Terminated"
-                                ? "border-destructive/40 bg-destructive/10 text-destructive text-[10px]"
-                                : r.status === "Under HR3 Review" || r.status === "Pending HR Action"
-                                  ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
-                                  : "border-gold/40 text-gold text-[10px]"
-                          }
-                        >
-                          {r.status}
-                        </Badge>
-                        {r.hr3_recommendation && (
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            HR3: {r.hr3_recommendation.evaluation_score}% ·{" "}
-                            {r.hr3_recommendation.recommendation_type}
-                          </p>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(r.created_at).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right pr-6">
-                        <div className="flex justify-end gap-1.5">
-                          {(r.status === "Pending" || r.status === "Returned") && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
-                              onClick={async () => {
-                                try {
-                                  const res = await hcmApi.promotions.forwardToHr3(
-                                    r.promotion_request_id,
-                                  );
-                                  toast.success(
-                                    res.message || "Forwarded to HR3 for evaluation.",
-                                  );
-                                  load();
-                                  notifyHcmChanged();
-                                } catch (e: any) {
-                                  toast.error(e?.message || "Could not forward to HR3.");
-                                }
-                              }}
-                            >
-                              <Send className="mr-1 h-3.5 w-3.5" /> To HR3
-                            </Button>
-                          )}
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(r.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right pr-6">
+                      <div className="flex justify-end gap-1.5">
+                        {(r.status === "Pending" || r.status === "Returned") && (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 text-xs"
-                            disabled={
-                              r.status !== "Pending" &&
-                              r.status !== "Returned" &&
-                              r.status !== "Pending HR Action"
-                            }
-                            onClick={() => {
-                              setReviewFor(r);
-                              setDecision("approve");
-                              setNotes("");
+                            className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                            onClick={async () => {
+                              try {
+                                const res = await hcmApi.promotions.forwardToHr3(
+                                  r.promotion_request_id,
+                                );
+                                toast.success(res.message || "Forwarded to HR3 for evaluation.");
+                                load();
+                                notifyHcmChanged();
+                              } catch (e: any) {
+                                toast.error(e?.message || "Could not forward to HR3.");
+                              }
                             }}
                           >
-                            <Eye className="mr-1 h-3.5 w-3.5" /> Review
+                            <Send className="mr-1 h-3.5 w-3.5" /> To HR3
                           </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!loading && filtered.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center text-xs text-muted-foreground">
-                        No promotion requests found.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-              <div className="p-4 pt-2">
-                <TablePagination
-                  page={page.page}
-                  pageCount={page.pageCount}
-                  from={page.from}
-                  to={page.to}
-                  total={page.total}
-                  label="promotion requests"
-                  showRangeLabel={false}
-                  onPageChange={page.setPage}
-                />
-              </div>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={
+                            r.status !== "Pending" &&
+                            r.status !== "Returned" &&
+                            r.status !== "Pending HR Action"
+                          }
+                          onClick={() => {
+                            setReviewFor(r);
+                            setDecision("approve");
+                            setNotes("");
+                          }}
+                        >
+                          <Eye className="mr-1 h-3.5 w-3.5" /> Review
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {!loading && filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-xs text-muted-foreground">
+                    No promotion requests found.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          <div className="p-4 pt-2">
+            <TablePagination
+              page={page.page}
+              pageCount={page.pageCount}
+              from={page.from}
+              to={page.to}
+              total={page.total}
+              label="promotion requests"
+              showRangeLabel={false}
+              onPageChange={page.setPage}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -3260,8 +3407,8 @@ function PromotionRequestsManager() {
                 {reviewFor.hr3_recommendation.recommendation_type}
               </p>
               <p className="text-muted-foreground">
-                Status: {reviewFor.hr3_recommendation.status}. Approval consumes
-                this evaluation (marks it processed).
+                Status: {reviewFor.hr3_recommendation.status}. Approval consumes this evaluation
+                (marks it processed).
               </p>
             </div>
           )}
@@ -3271,12 +3418,9 @@ function PromotionRequestsManager() {
               className="border-primary/40 text-primary hover:bg-primary/10"
               onClick={async () => {
                 try {
-                  const res = await hcmApi.promotions.forwardToHr3(
-                    reviewFor.promotion_request_id,
-                    {
-                      note: notes || undefined,
-                    },
-                  );
+                  const res = await hcmApi.promotions.forwardToHr3(reviewFor.promotion_request_id, {
+                    note: notes || undefined,
+                  });
                   toast.success(res.message || "Forwarded to HR3 for evaluation.");
                   setReviewFor(null);
                   load();
@@ -3430,16 +3574,15 @@ function LifecycleLogsViewer() {
           const detailsText = a.details || a.action || "";
           const actionText = a.action.toLowerCase();
           const detailsLower = detailsText.toLowerCase();
-          const category: LifecycleLog["category"] =
-            actionText.includes("regulariz")
-              ? "Regularization"
-              : detailsLower.includes("retired")
-                ? "Retirement"
-                : detailsLower.includes("terminated") || actionText.includes("terminated")
-                  ? "Termination"
-                  : actionText.includes("promot")
-                    ? "Promotion"
-                    : "Resignation";
+          const category: LifecycleLog["category"] = actionText.includes("regulariz")
+            ? "Regularization"
+            : detailsLower.includes("retired")
+              ? "Retirement"
+              : detailsLower.includes("terminated") || actionText.includes("terminated")
+                ? "Termination"
+                : actionText.includes("promot")
+                  ? "Promotion"
+                  : "Resignation";
           const emp = employees.find(
             (e) => e.employee_code === a.target_id || String(e.employee_id) === a.target_id,
           );
@@ -3526,151 +3669,170 @@ function LifecycleLogsViewer() {
 
   return (
     <>
-    <HeaderActions>
-      <ReportMenu
-        size="sm"
-        recordCount={filteredLogs.length}
-        report={() => ({
-          title: "Lifecycle Logs Report",
-          subtitle: `${filteredLogs.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
-          sensitive: true,
-          columns: [
-            { header: "Log ID", key: "id" },
-            { header: "Timestamp", key: "timestamp" },
-            { header: "Category", key: "category" },
-            { header: "Employee", key: "employeeName" },
-            { header: "Position", key: "position" },
-            { header: "Department", key: "department" },
-            { header: "Actor", key: "actor" },
-          ],
-          rows: filteredLogs.map((r) => ({ ...r })),
-        })}
-      />
-    </HeaderActions>
-    <Card className="border-border/70 shadow-sm">
-      <CardContent className="p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div>
-            <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
-              <History className="h-5 w-5 text-primary" /> Lifecycle Transition Logs
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Audit log records of employee regularizations, promotions, resignations, terminations,
-              and retirements.
-            </p>
-          </div>
-          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search employee, position, action details…"
-                className="h-9 pl-8 text-xs bg-card"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <Select value={filterDept} onValueChange={setFilterDept}>
-              <SelectTrigger className="h-9 w-44 text-xs bg-card">
-                <SelectValue placeholder="All departments" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All departments</SelectItem>
-                {deptOptions.map((d) => (
-                  <SelectItem key={d} value={d}>
-                    {d}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="h-9 w-44 text-xs bg-card">
-                <SelectValue placeholder="All event categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All lifecycle events</SelectItem>
-                <SelectItem value="Regularization">Regularization</SelectItem>
-                <SelectItem value="Promotion">Promotion</SelectItem>
-                <SelectItem value="Resignation">Resignation</SelectItem>
-                <SelectItem value="Termination">Termination</SelectItem>
-                <SelectItem value="Retirement">Retirement</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortHead sortKey="id" sort={logSort.sort} onSort={logSort.toggle}>Log ID</SortHead>
-                <SortHead sortKey="timestamp" sort={logSort.sort} onSort={logSort.toggle}>Timestamp</SortHead>
-                <SortHead sortKey="category" sort={logSort.sort} onSort={logSort.toggle}>Action Category</SortHead>
-                <SortHead sortKey="employee" sort={logSort.sort} onSort={logSort.toggle}>Target Employee (Status Changed)</SortHead>
-                <SortHead sortKey="position" sort={logSort.sort} onSort={logSort.toggle}>Position & Department</SortHead>
-                <SortHead sortKey="actor" sort={logSort.sort} onSort={logSort.toggle}>HR Admin / Actor</SortHead>
-                <TableHead>Action Details & Justification</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logsLoading && <TableRowsSkeleton cols={7} rows={6} />}
-              {!logsLoading &&
-                page.pageItems.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="font-mono text-xs font-medium">{log.id}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{log.timestamp}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[10px] font-semibold",
-                        getCategoryBadgeClass(log.category),
-                      )}
-                    >
-                      {log.category}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <div className="font-semibold text-foreground">{log.employeeName}</div>
-                    <div className="font-mono text-[11px] text-muted-foreground">
-                      {log.employeeId}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <div className="font-medium">{log.position}</div>
-                    <div className="text-[11px] text-muted-foreground">{log.department}</div>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <span className="font-medium">{log.actor}</span>
-                    <span className="text-muted-foreground block text-[11px]">{log.actorRole}</span>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-xs">
-                    {log.details}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!logsLoading && filteredLogs.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
-                    {logsError || "No matching lifecycle transition log entries found."}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-
-        <TablePagination
-          page={page.page}
-          pageCount={page.pageCount}
-          from={page.from}
-          to={page.to}
-          total={page.total}
-          label="lifecycle logs"
-          showRangeLabel={false}
-          onPageChange={page.setPage}
+      <HeaderActions>
+        <ReportMenu
+          size="sm"
+          recordCount={filteredLogs.length}
+          report={() => ({
+            title: "Lifecycle Logs Report",
+            subtitle: `${filteredLogs.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            sensitive: true,
+            columns: [
+              { header: "Log ID", key: "id" },
+              { header: "Timestamp", key: "timestamp" },
+              { header: "Category", key: "category" },
+              { header: "Employee", key: "employeeName" },
+              { header: "Position", key: "position" },
+              { header: "Department", key: "department" },
+              { header: "Actor", key: "actor" },
+            ],
+            rows: filteredLogs.map((r) => ({ ...r })),
+          })}
         />
-      </CardContent>
-    </Card>
+      </HeaderActions>
+      <Card className="border-border/70 shadow-sm">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                <History className="h-5 w-5 text-primary" /> Lifecycle Transition Logs
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Audit log records of employee regularizations, promotions, resignations,
+                terminations, and retirements.
+              </p>
+            </div>
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search employee, position, action details…"
+                  className="h-9 pl-8 text-xs bg-card"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Select value={filterDept} onValueChange={setFilterDept}>
+                <SelectTrigger className="h-9 w-44 text-xs bg-card">
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All departments</SelectItem>
+                  {deptOptions.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="h-9 w-44 text-xs bg-card">
+                  <SelectValue placeholder="All event categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All lifecycle events</SelectItem>
+                  <SelectItem value="Regularization">Regularization</SelectItem>
+                  <SelectItem value="Promotion">Promotion</SelectItem>
+                  <SelectItem value="Resignation">Resignation</SelectItem>
+                  <SelectItem value="Termination">Termination</SelectItem>
+                  <SelectItem value="Retirement">Retirement</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <SortHead sortKey="id" sort={logSort.sort} onSort={logSort.toggle}>
+                    Log ID
+                  </SortHead>
+                  <SortHead sortKey="timestamp" sort={logSort.sort} onSort={logSort.toggle}>
+                    Timestamp
+                  </SortHead>
+                  <SortHead sortKey="category" sort={logSort.sort} onSort={logSort.toggle}>
+                    Action Category
+                  </SortHead>
+                  <SortHead sortKey="employee" sort={logSort.sort} onSort={logSort.toggle}>
+                    Target Employee (Status Changed)
+                  </SortHead>
+                  <SortHead sortKey="position" sort={logSort.sort} onSort={logSort.toggle}>
+                    Position & Department
+                  </SortHead>
+                  <SortHead sortKey="actor" sort={logSort.sort} onSort={logSort.toggle}>
+                    HR Admin / Actor
+                  </SortHead>
+                  <TableHead>Action Details & Justification</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logsLoading && <TableRowsSkeleton cols={7} rows={6} />}
+                {!logsLoading &&
+                  page.pageItems.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="font-mono text-xs font-medium">{log.id}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {log.timestamp}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] font-semibold",
+                            getCategoryBadgeClass(log.category),
+                          )}
+                        >
+                          {log.category}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-semibold text-foreground">{log.employeeName}</div>
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {log.employeeId}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium">{log.position}</div>
+                        <div className="text-[11px] text-muted-foreground">{log.department}</div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <span className="font-medium">{log.actor}</span>
+                        <span className="text-muted-foreground block text-[11px]">
+                          {log.actorRole}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-xs">
+                        {log.details}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                {!logsLoading && filteredLogs.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="py-8 text-center text-xs text-muted-foreground"
+                    >
+                      {logsError || "No matching lifecycle transition log entries found."}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <TablePagination
+            page={page.page}
+            pageCount={page.pageCount}
+            from={page.from}
+            to={page.to}
+            total={page.total}
+            label="lifecycle logs"
+            showRangeLabel={false}
+            onPageChange={page.setPage}
+          />
+        </CardContent>
+      </Card>
     </>
   );
 }
@@ -3686,12 +3848,7 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("hcm-deptpos-tab");
-    if (
-      saved === "depts" ||
-      saved === "positions" ||
-      saved === "salary" ||
-      saved === "reqs"
-    ) {
+    if (saved === "depts" || saved === "positions" || saved === "salary" || saved === "reqs") {
       setActiveTab(saved);
     }
   }, []);
@@ -3712,83 +3869,121 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Department, Position & Salary Grade Management"
-        description="Departments, position master list, salary grade management and vacancy requisitions."
-        actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
-      />
+      <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11 fill-current">
+                <path fillRule="evenodd" clipRule="evenodd" d="M4.5 2.5A1.5 1.5 0 0 0 3 4v16.25c0 .41.34.75.75.75h8.2a6.48 6.48 0 0 1-.95-3.4c0-3.59 2.91-6.5 6.5-6.5.51 0 1 .06 1.48.17V7.5A1.5 1.5 0 0 0 17.5 6H14V4a1.5 1.5 0 0 0-1.5-1.5h-8ZM6 5.5h2v2H6v-2Zm4.5 0h2v2h-2v-2ZM6 9.5h2v2H6v-2Zm4.5 0h2v2h-2v-2ZM6 13.5h2v2H6v-2Z" />
+                <path fillRule="evenodd" clipRule="evenodd" d="M17.5 12.6a4.9 4.9 0 1 0 0 9.8 4.9 4.9 0 0 0 0-9.8Zm.6 2.15v.68c.58.14 1.03.56 1.13 1.15a.65.65 0 0 1-1.28.22c-.05-.26-.25-.38-.5-.38-.31 0-.5.15-.5.38 0 .22.17.34.67.47.76.2 1.43.51 1.43 1.37 0 .68-.47 1.17-1.15 1.31v.68a.6.6 0 1 1-1.2 0v-.67c-.66-.13-1.15-.57-1.26-1.22a.65.65 0 0 1 1.28-.21c.06.31.29.45.62.45.34 0 .54-.16.54-.4 0-.25-.2-.37-.7-.5-.74-.2-1.4-.5-1.4-1.34 0-.65.45-1.14 1.12-1.28v-.68a.6.6 0 1 1 1.2 0Z" />
+              </svg>
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                Department, Position &amp; Salary Grade Management
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Departments, position master list, salary grade management and vacancy requisitions.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start">
+            <div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />
+          </div>
+        </div>
+      </div>
 
       {hcmLoading && employees.length === 0 ? (
         <StatCardsSkeleton count={4} />
       ) : (
-        <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total Employees" value={employees.length} icon={Users} tone="primary" />
-          <StatCard
-            label="Regular"
-            value={employees.filter((e) => e.employmentType === "Regular").length}
-            icon={UserCheck}
-            tone="success"
-          />
-          <StatCard
-            label="Probationary"
-            value={employees.filter((e) => e.employmentType === "Probationary").length}
-            icon={ClipboardList}
-            tone="gold"
-          />
-          <StatCard
-            label="Inactive"
-            value={employees.filter((e) => e.status === "Inactive").length}
-            icon={UserX}
-            tone="caution"
-          />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              label: "Total Employees",
+              value: employees.length,
+              icon: Users,
+            },
+            {
+              label: "Regular",
+              value: employees.filter((e) => e.employmentType === "Regular").length,
+              icon: UserCheck,
+            },
+            {
+              label: "Probationary",
+              value: employees.filter((e) => e.employmentType === "Probationary").length,
+              icon: ClipboardList,
+            },
+            {
+              label: "Inactive",
+              value: employees.filter((e) => e.status === "Inactive").length,
+              icon: UserX,
+            },
+          ].map((m) => (
+            <div
+              key={m.label}
+              className="flex items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <m.icon className="h-6 w-6" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-muted-foreground">
+                  {m.label}
+                </span>
+                <span className="mt-1 block font-display text-[1.45rem] font-bold leading-none tabular-nums text-foreground">
+                  {m.value.toLocaleString()}
+                </span>
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
       <HeaderActionsContext.Provider value={headerActionsEl}>
-      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
-        <TabsList>
-          <TabsTrigger
-            value="depts"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
-            <Building2 className="mr-1.5 h-4 w-4" /> Departments
-          </TabsTrigger>
-          <TabsTrigger
-            value="positions"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
-            <Briefcase className="mr-1.5 h-4 w-4" /> Positions
-          </TabsTrigger>
-          <TabsTrigger
-            value="salary"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
-            <DollarSign className="mr-1.5 h-4 w-4" /> Salary Grade Management
-          </TabsTrigger>
-          <TabsTrigger
-            value="reqs"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
-            <Send className="mr-1.5 h-4 w-4" /> Requisitions
-          </TabsTrigger>
-        </TabsList>
+        <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
+          <TabsList>
+            <TabsTrigger
+              value="depts"
+              className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            >
+              <Building2 className="mr-1.5 h-4 w-4" /> Departments
+            </TabsTrigger>
+            <TabsTrigger
+              value="positions"
+              className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            >
+              <Briefcase className="mr-1.5 h-4 w-4" /> Positions
+            </TabsTrigger>
+            <TabsTrigger
+              value="salary"
+              className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            >
+              <DollarSign className="mr-1.5 h-4 w-4" /> Salary Grade Management
+            </TabsTrigger>
+            <TabsTrigger
+              value="reqs"
+              className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            >
+              <Send className="mr-1.5 h-4 w-4" /> Requisitions
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="depts" className="space-y-6">
-          <DepartmentAndPositionManager role={role} section="depts" />
-        </TabsContent>
+          <TabsContent value="depts" className="space-y-6">
+            <DepartmentAndPositionManager role={role} section="depts" />
+          </TabsContent>
 
-        <TabsContent value="positions" className="space-y-6">
-          <DepartmentAndPositionManager role={role} section="positions" />
-        </TabsContent>
+          <TabsContent value="positions" className="space-y-6">
+            <DepartmentAndPositionManager role={role} section="positions" />
+          </TabsContent>
 
-        <TabsContent value="salary" className="space-y-6">
-          <SalaryGradeManager />
-        </TabsContent>
+          <TabsContent value="salary" className="space-y-6">
+            <SalaryGradeManager />
+          </TabsContent>
 
-        <TabsContent value="reqs" className="space-y-6">
-          <RequisitionManager role={role} />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="reqs" className="space-y-6">
+            <RequisitionManager role={role} />
+          </TabsContent>
+        </Tabs>
       </HeaderActionsContext.Provider>
     </div>
   );
@@ -4158,650 +4353,729 @@ function DepartmentAndPositionManager({
       {/* 1. DEPARTMENTS SECTION CARD */}
       {showDepts && (
         <>
-      {/* Generate Report aligned with the page title via HeaderActions portal */}
-      <HeaderActions>
-        <ReportMenu
-          size="sm"
-          label="Export departments"
-          recordCount={filteredDepts.length}
-          report={() => ({
-            title: "Departments Report",
-            subtitle: `${filteredDepts.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
-            columns: [
-              { header: "Dept Code", key: "code" },
-              { header: "Department", key: "name" },
-              { header: "Head", key: "head" },
-            ],
-            rows: filteredDepts.map((r) => ({ ...r })),
-          })}
-        />
-      </HeaderActions>
-      <Card className="border-border/70 shadow-sm">
-        <CardHeader className="border-b border-border/50 pb-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
-                <Building2 className="h-4 w-4 text-primary" /> Hotel & Restaurant Departments
-              </CardTitle>
-            </div>
-            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search department, code, head…"
-                  className="h-9 pl-8 text-xs bg-card shadow-2xs"
-                  value={deptTableSearch}
-                  onChange={(e) => setDeptTableSearch(e.target.value)}
+          {/* Generate Report aligned with the page title via HeaderActions portal */}
+          <HeaderActions>
+            <ReportMenu
+              size="sm"
+              label="Export departments"
+              recordCount={filteredDepts.length}
+              report={() => ({
+                title: "Departments Report",
+                subtitle: `${filteredDepts.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+                columns: [
+                  { header: "Dept Code", key: "code" },
+                  { header: "Department", key: "name" },
+                  { header: "Head", key: "head" },
+                ],
+                rows: filteredDepts.map((r) => ({ ...r })),
+              })}
+            />
+          </HeaderActions>
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                    <Building2 className="h-4 w-4 text-primary" /> Hotel & Restaurant Departments
+                  </CardTitle>
+                </div>
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search department, code, head…"
+                      className="h-9 pl-8 text-xs bg-card shadow-2xs"
+                      value={deptTableSearch}
+                      onChange={(e) => setDeptTableSearch(e.target.value)}
+                    />
+                  </div>
+                  {role === "superadmin" && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setDeptCode(`DEP-0${deptList.length + 1}`);
+                        setDeptName("");
+                        setDeptHead("");
+                        setIsNewDept(true);
+                        setEditingDept({
+                          code: "",
+                          name: "",
+                          description: "",
+                          head: "Unassigned",
+                          staff: 0,
+                          openRequisitions: 0,
+                          budget: 0,
+                        });
+                      }}
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" /> Add Department
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortHead
+                      sortKey="code"
+                      sort={deptSort.sort}
+                      onSort={deptSort.toggle}
+                      className="w-28 pl-6"
+                    >
+                      Dept Code
+                    </SortHead>
+                    <SortHead sortKey="name" sort={deptSort.sort} onSort={deptSort.toggle}>
+                      Department Name
+                    </SortHead>
+                    <SortHead sortKey="head" sort={deptSort.sort} onSort={deptSort.toggle}>
+                      Department Head
+                    </SortHead>
+                    <SortHead
+                      sortKey="positions"
+                      sort={deptSort.sort}
+                      onSort={deptSort.toggle}
+                      align="center"
+                    >
+                      Positions Count
+                    </SortHead>
+                    <SortHead
+                      sortKey="staff"
+                      sort={deptSort.sort}
+                      onSort={deptSort.toggle}
+                      align="center"
+                    >
+                      Staff Count (Derived)
+                    </SortHead>
+                    <TableHead className="w-28 text-center pr-6">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {hcmLoading && deptList.length === 0 && <TableRowsSkeleton cols={6} rows={5} />}
+                  {(!hcmLoading || deptList.length > 0) &&
+                    deptPage.pageItems.map((d) => {
+                      const positionsUnder = posList.filter((p) => p.department === d.name);
+                      const derivedStaff = getDerivedStaffCount(d.name);
+
+                      return (
+                        <TableRow key={d.code}>
+                          <TableCell className="pl-6 font-mono text-xs font-medium">
+                            {d.code}
+                          </TableCell>
+                          <TableCell className="font-medium">{d.name}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{d.head}</TableCell>
+                          <TableCell className="text-center font-mono text-xs">
+                            {positionsUnder.length}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="secondary" className="font-mono text-xs">
+                              {derivedStaff} active staff
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center pr-6">
+                            <div className="flex justify-center gap-1.5">
+                              {role === "superadmin" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 px-3 text-xs"
+                                  onClick={() => {
+                                    setEditingDept(d);
+                                    setDeptCode(d.code);
+                                    setDeptName(d.name);
+                                    setDeptHead(d.head);
+                                    setOrigDeptCode(d.code);
+                                    setOrigDeptName(d.name);
+                                    setOrigDeptHead(d.head);
+                                    setIsNewDept(false);
+                                  }}
+                                >
+                                  <Pencil className="mr-1 h-3 w-3" /> Edit
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                                onClick={() => openReqDialog(d)}
+                              >
+                                <Send className="mr-1 h-3 w-3" /> Requisition
+                              </Button>
+                              {role === "superadmin" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                                  onClick={() => {
+                                    const dbId = deptIdByCode.get(d.code);
+                                    if (dbId)
+                                      setPendingDelete({ type: "dept", id: dbId, name: d.name });
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </TableBody>
+              </Table>
+              <div className="p-4 pt-2">
+                <TablePagination
+                  page={deptPage.page}
+                  pageCount={deptPage.pageCount}
+                  from={deptPage.from}
+                  to={deptPage.to}
+                  total={deptPage.total}
+                  label="departments"
+                  showRangeLabel={false}
+                  onPageChange={deptPage.setPage}
                 />
               </div>
-              {role === "superadmin" && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setDeptCode(`DEP-0${deptList.length + 1}`);
-                    setDeptName("");
-                    setDeptHead("");
-                    setIsNewDept(true);
-                    setEditingDept({
-                      code: "",
-                      name: "",
-                      description: "",
-                      head: "Unassigned",
-                      staff: 0,
-                      openRequisitions: 0,
-                      budget: 0,
-                    });
-                  }}
-                >
-                  <Plus className="mr-1.5 h-4 w-4" /> Add Department
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortHead sortKey="code" sort={deptSort.sort} onSort={deptSort.toggle} className="w-28 pl-6">Dept Code</SortHead>
-                <SortHead sortKey="name" sort={deptSort.sort} onSort={deptSort.toggle}>Department Name</SortHead>
-                <SortHead sortKey="head" sort={deptSort.sort} onSort={deptSort.toggle}>Department Head</SortHead>
-                <SortHead sortKey="positions" sort={deptSort.sort} onSort={deptSort.toggle} align="center">Positions Count</SortHead>
-                <SortHead sortKey="staff" sort={deptSort.sort} onSort={deptSort.toggle} align="center">Staff Count (Derived)</SortHead>
-                <TableHead className="w-28 text-center pr-6">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {hcmLoading && deptList.length === 0 && <TableRowsSkeleton cols={6} rows={5} />}
-              {(!hcmLoading || deptList.length > 0) &&
-                deptPage.pageItems.map((d) => {
-                const positionsUnder = posList.filter((p) => p.department === d.name);
-                const derivedStaff = getDerivedStaffCount(d.name);
-
-                return (
-                  <TableRow key={d.code}>
-                    <TableCell className="pl-6 font-mono text-xs font-medium">{d.code}</TableCell>
-                    <TableCell className="font-medium">{d.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{d.head}</TableCell>
-                    <TableCell className="text-center font-mono text-xs">
-                      {positionsUnder.length}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="secondary" className="font-mono text-xs">
-                        {derivedStaff} active staff
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center pr-6">
-                      <div className="flex justify-center gap-1.5">
-                        {role === "superadmin" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 px-3 text-xs"
-                            onClick={() => {
-                              setEditingDept(d);
-                              setDeptCode(d.code);
-                              setDeptName(d.name);
-                              setDeptHead(d.head);
-                              setOrigDeptCode(d.code);
-                              setOrigDeptName(d.name);
-                              setOrigDeptHead(d.head);
-                              setIsNewDept(false);
-                            }}
-                          >
-                            <Pencil className="mr-1 h-3 w-3" /> Edit
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-2 text-xs border-primary/40 text-primary hover:bg-primary/10"
-                          onClick={() => openReqDialog(d)}
-                        >
-                          <Send className="mr-1 h-3 w-3" /> Requisition
-                        </Button>
-                        {role === "superadmin" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
-                            onClick={() => {
-                              const dbId = deptIdByCode.get(d.code);
-                              if (dbId) setPendingDelete({ type: "dept", id: dbId, name: d.name });
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          <div className="p-4 pt-2">
-            <TablePagination
-              page={deptPage.page}
-              pageCount={deptPage.pageCount}
-              from={deptPage.from}
-              to={deptPage.to}
-              total={deptPage.total}
-              label="departments"
-              showRangeLabel={false}
-              onPageChange={deptPage.setPage}
-            />
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
         </>
       )}
 
       {/* 2. POSITIONS SECTION CARD */}
       {showPositions && (
         <>
-      <HeaderActions>
-        <ReportMenu
-          size="sm"
-          label="Export positions"
-          recordCount={filteredPositions.length}
-          report={() => ({
-            title: "Positions Report",
-            subtitle: `${filteredPositions.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
-            columns: [
-              { header: "POS ID", key: "id" },
-              { header: "Title", key: "title" },
-              { header: "Department", key: "department" },
-              { header: "Level", key: "level" },
-              { header: "Headcount", key: "headcount" },
-              { header: "Filled", key: "filled" },
-              { header: "Salary Band", key: "salaryBand" },
-            ],
-            rows: filteredPositions.map((r) => ({ ...r })),
-          })}
-        />
-      </HeaderActions>
-      <Card className="border-border/70 shadow-sm">
-        <CardHeader className="border-b border-border/50 pb-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
-                <Briefcase className="h-4 w-4 text-primary" /> Job Positions & Salary Bands
-              </CardTitle>
-            </div>
-            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search title, ID, department…"
-                  className="h-9 pl-8 text-xs bg-card shadow-2xs"
-                  value={posTableSearch}
-                  onChange={(e) => setPosTableSearch(e.target.value)}
+          <HeaderActions>
+            <ReportMenu
+              size="sm"
+              label="Export positions"
+              recordCount={filteredPositions.length}
+              report={() => ({
+                title: "Positions Report",
+                subtitle: `${filteredPositions.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+                columns: [
+                  { header: "POS ID", key: "id" },
+                  { header: "Title", key: "title" },
+                  { header: "Department", key: "department" },
+                  { header: "Level", key: "level" },
+                  { header: "Headcount", key: "headcount" },
+                  { header: "Filled", key: "filled" },
+                  { header: "Salary Band", key: "salaryBand" },
+                ],
+                rows: filteredPositions.map((r) => ({ ...r })),
+              })}
+            />
+          </HeaderActions>
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                    <Briefcase className="h-4 w-4 text-primary" /> Job Positions & Salary Bands
+                  </CardTitle>
+                </div>
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search title, ID, department…"
+                      className="h-9 pl-8 text-xs bg-card shadow-2xs"
+                      value={posTableSearch}
+                      onChange={(e) => setPosTableSearch(e.target.value)}
+                    />
+                  </div>
+                  <Select value={deptFilter} onValueChange={setDeptFilter}>
+                    <SelectTrigger className="h-9 w-44 text-xs bg-card shadow-2xs">
+                      <SelectValue placeholder="All departments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All departments</SelectItem>
+                      {deptList.map((d) => (
+                        <SelectItem key={d.code} value={d.name}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {role === "superadmin" && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setPosTitle("");
+                        setPosDept(deptList[0]?.name || "Front Office");
+                        setPosLevel("Rank & File");
+                        setPosTarget("5");
+                        setPosFilled("3");
+                        setPosSGrade("SG-05");
+                        setPosRequiresAssessment(false);
+                        setPosRequiresPractical(false);
+                        setIsNewPos(true);
+                        setEditingPos({
+                          id: "",
+                          title: "",
+                          department: "",
+                          level: "Rank & File",
+                          headcount: 5,
+                          filled: 3,
+                          salaryBand: "",
+                        });
+                      }}
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" /> Add Position
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <SortHead
+                        sortKey="id"
+                        sort={posSort.sort}
+                        onSort={posSort.toggle}
+                        className="w-24 pl-6"
+                      >
+                        POS ID
+                      </SortHead>
+                      <SortHead sortKey="title" sort={posSort.sort} onSort={posSort.toggle}>
+                        Job Position Title
+                      </SortHead>
+                      <SortHead sortKey="department" sort={posSort.sort} onSort={posSort.toggle}>
+                        Department
+                      </SortHead>
+                      <SortHead sortKey="level" sort={posSort.sort} onSort={posSort.toggle}>
+                        Level
+                      </SortHead>
+                      <SortHead
+                        sortKey="headcount"
+                        sort={posSort.sort}
+                        onSort={posSort.toggle}
+                        align="center"
+                      >
+                        Target Headcount
+                      </SortHead>
+                      <SortHead
+                        sortKey="filled"
+                        sort={posSort.sort}
+                        onSort={posSort.toggle}
+                        align="center"
+                      >
+                        Filled Staff
+                      </SortHead>
+                      <SortHead
+                        sortKey="vacancies"
+                        sort={posSort.sort}
+                        onSort={posSort.toggle}
+                        align="center"
+                      >
+                        Vacancies
+                      </SortHead>
+                      <SortHead sortKey="grade" sort={posSort.sort} onSort={posSort.toggle}>
+                        Assigned Salary Grade / Band
+                      </SortHead>
+                      {role === "superadmin" && (
+                        <TableHead className="w-28 text-center pr-4">Actions</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {hcmLoading && posList.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
+                    {(!hcmLoading || posList.length > 0) &&
+                      posPage.pageItems.map((p) => (
+                        <TableRow key={p.id}>
+                          <TableCell className="pl-6 font-mono text-xs font-medium">
+                            {p.id}
+                          </TableCell>
+                          <TableCell className="font-medium">{p.title}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {p.department}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-[11px]">
+                              {p.level}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center font-mono text-xs">
+                            {p.headcount}
+                          </TableCell>
+                          <TableCell className="text-center font-mono text-xs font-semibold">
+                            {p.filled}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant={p.vacancies && p.vacancies > 0 ? "outline" : "secondary"}
+                              className={
+                                p.vacancies && p.vacancies > 0
+                                  ? "border-gold/40 bg-gold/10 text-gold font-mono text-xs"
+                                  : "font-mono text-xs"
+                              }
+                            >
+                              {p.vacancies ?? 0}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-primary font-medium">
+                            {p.salaryBand}
+                          </TableCell>
+                          {role === "superadmin" && (
+                            <TableCell className="text-center pr-4">
+                              <div className="flex justify-center gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 px-3 text-xs"
+                                  onClick={() => {
+                                    setEditingPos(p);
+                                    setPosTitle(p.title);
+                                    setPosDept(p.department);
+                                    setPosLevel(p.level);
+                                    setPosTarget(String(p.headcount));
+                                    setPosFilled(String(p.filled));
+                                    setPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                                    setPosRequiresAssessment(p.requires_assessment ?? false);
+                                    setPosRequiresPractical(p.requires_practical ?? false);
+                                    setOrigPosTitle(p.title);
+                                    setOrigPosDept(p.department);
+                                    setOrigPosLevel(p.level);
+                                    setOrigPosTarget(String(p.headcount));
+                                    setOrigPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                                    setOrigPosRequiresAssessment(p.requires_assessment ?? false);
+                                    setOrigPosRequiresPractical(p.requires_practical ?? false);
+                                    setIsNewPos(false);
+                                  }}
+                                >
+                                  <Pencil className="mr-1 h-3 w-3" /> Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                                  onClick={() => {
+                                    const dbId = posIdByCode.get(p.id);
+                                    if (dbId)
+                                      setPendingDelete({ type: "pos", id: dbId, name: p.title });
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="p-4 pt-2">
+                <TablePagination
+                  page={posPage.page}
+                  pageCount={posPage.pageCount}
+                  from={posPage.from}
+                  to={posPage.to}
+                  total={posPage.total}
+                  label="positions"
+                  showRangeLabel={false}
+                  onPageChange={posPage.setPage}
                 />
               </div>
-              <Select value={deptFilter} onValueChange={setDeptFilter}>
-                <SelectTrigger className="h-9 w-44 text-xs bg-card shadow-2xs">
-                  <SelectValue placeholder="All departments" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All departments</SelectItem>
-                  {deptList.map((d) => (
-                    <SelectItem key={d.code} value={d.name}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {role === "superadmin" && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setPosTitle("");
-                    setPosDept(deptList[0]?.name || "Front Office");
-                    setPosLevel("Rank & File");
-                    setPosTarget("5");
-                    setPosFilled("3");
-                    setPosSGrade("SG-05");
-                    setPosRequiresAssessment(false);
-                    setPosRequiresPractical(false);
-                    setIsNewPos(true);
-                    setEditingPos({
-                      id: "",
-                      title: "",
-                      department: "",
-                      level: "Rank & File",
-                      headcount: 5,
-                      filled: 3,
-                      salaryBand: "",
-                    });
-                  }}
-                >
-                  <Plus className="mr-1.5 h-4 w-4" /> Add Position
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <SortHead sortKey="id" sort={posSort.sort} onSort={posSort.toggle} className="w-24 pl-6">POS ID</SortHead>
-                  <SortHead sortKey="title" sort={posSort.sort} onSort={posSort.toggle}>Job Position Title</SortHead>
-                  <SortHead sortKey="department" sort={posSort.sort} onSort={posSort.toggle}>Department</SortHead>
-                  <SortHead sortKey="level" sort={posSort.sort} onSort={posSort.toggle}>Level</SortHead>
-                  <SortHead sortKey="headcount" sort={posSort.sort} onSort={posSort.toggle} align="center">Target Headcount</SortHead>
-                  <SortHead sortKey="filled" sort={posSort.sort} onSort={posSort.toggle} align="center">Filled Staff</SortHead>
-                  <SortHead sortKey="vacancies" sort={posSort.sort} onSort={posSort.toggle} align="center">Vacancies</SortHead>
-                  <SortHead sortKey="grade" sort={posSort.sort} onSort={posSort.toggle}>Assigned Salary Grade / Band</SortHead>
-                  {role === "superadmin" && (
-                    <TableHead className="w-28 text-center pr-4">Actions</TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {hcmLoading && posList.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
-                {(!hcmLoading || posList.length > 0) &&
-                  posPage.pageItems.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="pl-6 font-mono text-xs font-medium">{p.id}</TableCell>
-                    <TableCell className="font-medium">{p.title}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{p.department}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[11px]">
-                        {p.level}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center font-mono text-xs">{p.headcount}</TableCell>
-                    <TableCell className="text-center font-mono text-xs font-semibold">
-                      {p.filled}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge
-                        variant={p.vacancies && p.vacancies > 0 ? "outline" : "secondary"}
-                        className={
-                          p.vacancies && p.vacancies > 0
-                            ? "border-gold/40 bg-gold/10 text-gold font-mono text-xs"
-                            : "font-mono text-xs"
-                        }
-                      >
-                        {p.vacancies ?? 0}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-primary font-medium">
-                      {p.salaryBand}
-                    </TableCell>
-                    {role === "superadmin" && (
-                      <TableCell className="text-center pr-4">
-                        <div className="flex justify-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 px-3 text-xs"
-                            onClick={() => {
-                              setEditingPos(p);
-                              setPosTitle(p.title);
-                              setPosDept(p.department);
-                              setPosLevel(p.level);
-                              setPosTarget(String(p.headcount));
-                              setPosFilled(String(p.filled));
-                              setPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
-                              setPosRequiresAssessment(p.requires_assessment ?? false);
-                              setPosRequiresPractical(p.requires_practical ?? false);
-                              setOrigPosTitle(p.title);
-                              setOrigPosDept(p.department);
-                              setOrigPosLevel(p.level);
-                              setOrigPosTarget(String(p.headcount));
-                              setOrigPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
-                              setOrigPosRequiresAssessment(p.requires_assessment ?? false);
-                              setOrigPosRequiresPractical(p.requires_practical ?? false);
-                              setIsNewPos(false);
-                            }}
-                          >
-                            <Pencil className="mr-1 h-3 w-3" /> Edit
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
-                            onClick={() => {
-                              const dbId = posIdByCode.get(p.id);
-                              if (dbId) setPendingDelete({ type: "pos", id: dbId, name: p.title });
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="p-4 pt-2">
-            <TablePagination
-              page={posPage.page}
-              pageCount={posPage.pageCount}
-              from={posPage.from}
-              to={posPage.to}
-              total={posPage.total}
-              label="positions"
-              showRangeLabel={false}
-              onPageChange={posPage.setPage}
-            />
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
         </>
       )}
 
       {/* EDIT / ADD DEPARTMENT MODAL */}
       {showDepts && (
-      <Dialog
-        open={!!editingDept}
-        onOpenChange={(open) => {
-          if (!open && deptHasChanges) {
-            setPendingUnsavedExit({ target: "dept" });
-          } else if (!open) {
-            setEditingDept(null);
-            setIsNewDept(false);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {isNewDept ? "Add New Department" : `Edit Department — ${editingDept?.name}`}
-            </DialogTitle>
-            <DialogDescription>
-              Configure department information. Associated positions and staff count are updated
-              automatically.
-            </DialogDescription>
-          </DialogHeader>
+        <Dialog
+          open={!!editingDept}
+          onOpenChange={(open) => {
+            if (!open && deptHasChanges) {
+              setPendingUnsavedExit({ target: "dept" });
+            } else if (!open) {
+              setEditingDept(null);
+              setIsNewDept(false);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>
+                {isNewDept ? "Add New Department" : `Edit Department — ${editingDept?.name}`}
+              </DialogTitle>
+              <DialogDescription>
+                Configure department information. Associated positions and staff count are updated
+                automatically.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-4 py-2 text-xs">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Department Code</Label>
-                <Input
-                  value={deptCode}
-                  onChange={(e) => setDeptCode(e.target.value)}
-                  className="text-xs"
-                />
+            <div className="space-y-4 py-2 text-xs">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Department Code</Label>
+                  <Input
+                    value={deptCode}
+                    onChange={(e) => setDeptCode(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Department Name</Label>
+                  <Input
+                    value={deptName}
+                    onChange={(e) => setDeptName(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Department Name</Label>
-                <Input
-                  value={deptName}
-                  onChange={(e) => setDeptName(e.target.value)}
-                  className="text-xs"
-                />
-              </div>
-            </div>
 
-            {!isNewDept && editingDept ? (
-              <div className="space-y-1">
-                <Label className="text-xs">
-                  Department Head (Active {editingDept.name} Staff Only)
-                </Label>
-                {getDeptSpecificHeads(editingDept.name).length > 0 ? (
-                  <Select value={deptHead} onValueChange={setDeptHead}>
-                    <SelectTrigger className="text-xs">
-                      <SelectValue placeholder="Select active department head" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {getDeptSpecificHeads(editingDept.name).map((h) => (
-                        <SelectItem key={h.id} value={h.name}>
-                          {h.name} ({h.position} · {h.department})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-400">
-                    No active employees currently assigned to <strong>{editingDept.name}</strong>.
-                    Add or assign positions to this department first to designate a department head.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 text-[11px] text-muted-foreground">
-                <strong>Department Head Assignment:</strong> A department head can be assigned after
-                creation once active employees are assigned to this department.
-              </div>
-            )}
-
-            <div className="space-y-1.5 rounded-lg border p-3 bg-muted/20">
-              <Label className="text-xs font-semibold">
-                Associated Job Positions in {deptName || "Department"}:
-              </Label>
-              {posList.filter((p) => p.department === deptName).length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {posList
-                    .filter((p) => p.department === deptName)
-                    .map((p) => (
-                      <Badge key={p.id} variant="secondary" className="text-[11px]">
-                        {p.title} ({p.filled} staff)
-                      </Badge>
-                    ))}
+              {!isNewDept && editingDept ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    Department Head (Active {editingDept.name} Staff Only)
+                  </Label>
+                  {getDeptSpecificHeads(editingDept.name).length > 0 ? (
+                    <Select value={deptHead} onValueChange={setDeptHead}>
+                      <SelectTrigger className="text-xs">
+                        <SelectValue placeholder="Select active department head" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getDeptSpecificHeads(editingDept.name).map((h) => (
+                          <SelectItem key={h.id} value={h.name}>
+                            {h.name} ({h.position} · {h.department})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-400">
+                      No active employees currently assigned to <strong>{editingDept.name}</strong>.
+                      Add or assign positions to this department first to designate a department
+                      head.
+                    </div>
+                  )}
                 </div>
               ) : (
-                <p className="text-muted-foreground italic text-[11px]">
-                  No job positions currently assigned. Positions added to this department will
-                  display here automatically.
-                </p>
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 text-[11px] text-muted-foreground">
+                  <strong>Department Head Assignment:</strong> A department head can be assigned
+                  after creation once active employees are assigned to this department.
+                </div>
               )}
-            </div>
 
-            <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
-              <div>
-                <span className="font-semibold text-xs text-foreground">
-                  Total Staff Count (Derived):
-                </span>
-                <p className="text-[11px] text-muted-foreground">
-                  Calculated automatically from filled staff across all positions.
-                </p>
+              <div className="space-y-1.5 rounded-lg border p-3 bg-muted/20">
+                <Label className="text-xs font-semibold">
+                  Associated Job Positions in {deptName || "Department"}:
+                </Label>
+                {posList.filter((p) => p.department === deptName).length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {posList
+                      .filter((p) => p.department === deptName)
+                      .map((p) => (
+                        <Badge key={p.id} variant="secondary" className="text-[11px]">
+                          {p.title} ({p.filled} staff)
+                        </Badge>
+                      ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground italic text-[11px]">
+                    No job positions currently assigned. Positions added to this department will
+                    display here automatically.
+                  </p>
+                )}
               </div>
-              <Badge variant="default" className="font-mono text-sm">
-                {getDerivedStaffCount(deptName)} Staff
-              </Badge>
-            </div>
-          </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (deptHasChanges) {
-                  setPendingUnsavedExit({ target: "dept" });
-                } else {
-                  setEditingDept(null);
-                  setIsNewDept(false);
-                }
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => setPendingConfirmSave({ type: "dept" })}>Save Department</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
+                <div>
+                  <span className="font-semibold text-xs text-foreground">
+                    Total Staff Count (Derived):
+                  </span>
+                  <p className="text-[11px] text-muted-foreground">
+                    Calculated automatically from filled staff across all positions.
+                  </p>
+                </div>
+                <Badge variant="default" className="font-mono text-sm">
+                  {getDerivedStaffCount(deptName)} Staff
+                </Badge>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (deptHasChanges) {
+                    setPendingUnsavedExit({ target: "dept" });
+                  } else {
+                    setEditingDept(null);
+                    setIsNewDept(false);
+                  }
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={() => setPendingConfirmSave({ type: "dept" })}>
+                Save Department
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* EDIT / ADD POSITION MODAL */}
       {showPositions && (
-      <Dialog
-        open={!!editingPos}
-        onOpenChange={(open) => {
-          if (!open && posHasChanges) {
-            setPendingUnsavedExit({ target: "pos" });
-          } else if (!open) {
-            setEditingPos(null);
-            setIsNewPos(false);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {isNewPos ? "Add New Job Position" : `Edit Position — ${editingPos?.title}`}
-            </DialogTitle>
-            <DialogDescription>
-              Assign job level, target headcount, department and dynamic Salary Grade.
-            </DialogDescription>
-          </DialogHeader>
+        <Dialog
+          open={!!editingPos}
+          onOpenChange={(open) => {
+            if (!open && posHasChanges) {
+              setPendingUnsavedExit({ target: "pos" });
+            } else if (!open) {
+              setEditingPos(null);
+              setIsNewPos(false);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {isNewPos ? "Add New Job Position" : `Edit Position — ${editingPos?.title}`}
+              </DialogTitle>
+              <DialogDescription>
+                Assign job level, target headcount, department and dynamic Salary Grade.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-4 py-2 text-xs">
-            <div className="space-y-1">
-              <Label className="text-xs">Job Position Title</Label>
-              <Input
-                value={posTitle}
-                onChange={(e) => setPosTitle(e.target.value)}
-                className="text-xs"
-                placeholder="e.g. Pastry Chef"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-4 py-2 text-xs">
               <div className="space-y-1">
-                <Label className="text-xs">Department</Label>
-                <Select value={posDept} onValueChange={setPosDept}>
-                  <SelectTrigger className="text-xs">
+                <Label className="text-xs">Job Position Title</Label>
+                <Input
+                  value={posTitle}
+                  onChange={(e) => setPosTitle(e.target.value)}
+                  className="text-xs"
+                  placeholder="e.g. Pastry Chef"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Department</Label>
+                  <Select value={posDept} onValueChange={setPosDept}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deptList.map((d) => (
+                        <SelectItem key={d.code} value={d.name}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Job Level</Label>
+                  <Select value={posLevel} onValueChange={(v: any) => setPosLevel(v)}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Rank & File">Rank & File</SelectItem>
+                      <SelectItem value="Supervisory">Supervisory</SelectItem>
+                      <SelectItem value="Managerial">Managerial</SelectItem>
+                      <SelectItem value="Executive">Executive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Target Headcount</Label>
+                  <Input
+                    type="number"
+                    value={posTarget}
+                    onChange={(e) => setPosTarget(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Filled Staff</Label>
+                  <Input type="number" value={posFilled} disabled className="text-xs bg-muted" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-primary">
+                  Assign Salary Grade (From Salary Grade Management)
+                </Label>
+                <Select value={posSGrade} onValueChange={setPosSGrade}>
+                  <SelectTrigger className="text-xs border-primary/40 bg-primary/5">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {deptList.map((d) => (
-                      <SelectItem key={d.code} value={d.name}>
-                        {d.name}
+                    {sGrades.map((sg) => (
+                      <SelectItem key={sg.id} value={sg.code}>
+                        {sg.code} — {sg.title} ({formatMoney(sg.minSalary)} –{" "}
+                        {formatMoney(sg.maxSalary)})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Job Level</Label>
-                <Select value={posLevel} onValueChange={(v: any) => setPosLevel(v)}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Rank & File">Rank & File</SelectItem>
-                    <SelectItem value="Supervisory">Supervisory</SelectItem>
-                    <SelectItem value="Managerial">Managerial</SelectItem>
-                    <SelectItem value="Executive">Executive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Target Headcount</Label>
-                <Input
-                  type="number"
-                  value={posTarget}
-                  onChange={(e) => setPosTarget(e.target.value)}
-                  className="text-xs"
+            {/* Assessment Test & Practical Test toggles */}
+            <div className="space-y-3 pt-2 border-t border-border/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-xs font-medium">Assessment Test</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Written test + applicant self-service links in Applicant Management.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={posRequiresAssessment}
+                  onCheckedChange={(v) => setPosRequiresAssessment(v)}
                 />
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Filled Staff</Label>
-                <Input type="number" value={posFilled} disabled className="text-xs bg-muted" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Hammer className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-xs font-medium">Practical Test</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Hands-on exam for designated positions. Per-job flags still apply when
+                      enabled.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={posRequiresPractical}
+                  onCheckedChange={(v) => setPosRequiresPractical(v)}
+                />
               </div>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-primary">
-                Assign Salary Grade (From Salary Grade Management)
-              </Label>
-              <Select value={posSGrade} onValueChange={setPosSGrade}>
-                <SelectTrigger className="text-xs border-primary/40 bg-primary/5">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {sGrades.map((sg) => (
-                    <SelectItem key={sg.id} value={sg.code}>
-                      {sg.code} — {sg.title} ({formatMoney(sg.minSalary)} –{" "}
-                      {formatMoney(sg.maxSalary)})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-</Select>
-             </div>
-           </div>
-
-           {/* Assessment Test & Practical Test toggles */}
-           <div className="space-y-3 pt-2 border-t border-border/50">
-             <div className="flex items-center justify-between">
-               <div className="flex items-center gap-2">
-                 <ClipboardList className="h-4 w-4 text-primary" />
-                 <div>
-                   <p className="text-xs font-medium">Assessment Test</p>
-                   <p className="text-[10px] text-muted-foreground">Written test + applicant self-service links in Applicant Management.</p>
-                 </div>
-               </div>
-               <Switch
-                 checked={posRequiresAssessment}
-                 onCheckedChange={(v) => setPosRequiresAssessment(v)}
-               />
-             </div>
-             <div className="flex items-center justify-between">
-               <div className="flex items-center gap-2">
-                 <Hammer className="h-4 w-4 text-primary" />
-                 <div>
-                   <p className="text-xs font-medium">Practical Test</p>
-                   <p className="text-[10px] text-muted-foreground">Hands-on exam for designated positions. Per-job flags still apply when enabled.</p>
-                 </div>
-               </div>
-               <Switch
-                 checked={posRequiresPractical}
-                 onCheckedChange={(v) => setPosRequiresPractical(v)}
-               />
-             </div>
-           </div>
-
-           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (posHasChanges) {
-                  setPendingUnsavedExit({ target: "pos" });
-                } else {
-                  setEditingPos(null);
-                  setIsNewPos(false);
-                }
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => setPendingConfirmSave({ type: "pos" })}>Save Position</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (posHasChanges) {
+                    setPendingUnsavedExit({ target: "pos" });
+                  } else {
+                    setEditingPos(null);
+                    setIsNewPos(false);
+                  }
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={() => setPendingConfirmSave({ type: "pos" })}>Save Position</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* CONFIRMATION ALERT DIALOG (SAVE DEPT / SAVE POS) */}
@@ -4866,7 +5140,9 @@ function DepartmentAndPositionManager({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">Discard Unsaved Changes?</AlertDialogTitle>
+            <AlertDialogTitle className="text-amber-600 dark:text-amber-400">
+              Discard Unsaved Changes?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               You have modified fields in this modal. Are you sure you want to exit without saving?
             </AlertDialogDescription>
@@ -4897,121 +5173,123 @@ function DepartmentAndPositionManager({
 
       {/* VACANCY REQUISITION DIALOG (per department) */}
       {showDepts && (
-      <Dialog open={!!reqDialogDept} onOpenChange={(open) => !open && setReqDialogDept(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5 text-primary" /> Vacancy Requisition — {reqDialogDept}
-            </DialogTitle>
-            <DialogDescription>
-              Send a new requisition for this department or adjust the requested slots of existing
-              requisitions.
-            </DialogDescription>
-          </DialogHeader>
+        <Dialog open={!!reqDialogDept} onOpenChange={(open) => !open && setReqDialogDept(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5 text-primary" /> Vacancy Requisition — {reqDialogDept}
+              </DialogTitle>
+              <DialogDescription>
+                Send a new requisition for this department or adjust the requested slots of existing
+                requisitions.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-4 py-2 text-xs">
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">New Requisition</Label>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">Position</Label>
-                  <Select value={reqPosition} onValueChange={onReqPositionChange}>
-                    <SelectTrigger className="text-xs">
-                      <SelectValue placeholder="Select position" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {deptPositions.map((p) => (
-                        <SelectItem key={p.id} value={p.title}>
-                          {p.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Number of Vacancies</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={reqCount}
-                    onChange={(e) => setReqCount(e.target.value)}
-                    className="text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Urgency</Label>
-                  <Select value={reqUrgency} onValueChange={setReqUrgency}>
-                    <SelectTrigger className="text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {["Normal", "High", "Urgent", "Low"].map((u) => (
-                        <SelectItem key={u} value={u}>
-                          {u}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Justification</Label>
-                  <Input
-                    value={reqJustification}
-                    onChange={(e) => setReqJustification(e.target.value)}
-                    placeholder="Reason for hiring…"
-                    className="text-xs"
-                  />
-                </div>
-              </div>
-              <Button size="sm" onClick={submitRequisition} className="mt-2">
-                <Send className="mr-2 h-3.5 w-3.5" /> Send Requisition
-              </Button>
-            </div>
-
-            {deptReqs.length > 0 && (
+            <div className="space-y-4 py-2 text-xs">
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Existing Requisitions — edit slots</Label>
-                <div className="space-y-2">
-                  {deptReqs.map((r) => (
-                    <div
-                      key={r.id}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-medium">
-                          {r.id} · {r.position}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {r.status} · {r.urgency}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Input
-                          type="number"
-                          min={1}
-                          className="h-8 w-16 text-center text-xs"
-                          value={reqCountEdits[r.id] ?? String(r.count)}
-                          onChange={(e) =>
-                            setReqCountEdits((prev) => ({ ...prev, [r.id]: e.target.value }))
-                          }
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 text-xs"
-                          onClick={() => saveReqCount(r)}
-                        >
-                          Save
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                <Label className="text-xs font-semibold">New Requisition</Label>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Position</Label>
+                    <Select value={reqPosition} onValueChange={onReqPositionChange}>
+                      <SelectTrigger className="text-xs">
+                        <SelectValue placeholder="Select position" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {deptPositions.map((p) => (
+                          <SelectItem key={p.id} value={p.title}>
+                            {p.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Number of Vacancies</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={reqCount}
+                      onChange={(e) => setReqCount(e.target.value)}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Urgency</Label>
+                    <Select value={reqUrgency} onValueChange={setReqUrgency}>
+                      <SelectTrigger className="text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["Normal", "High", "Urgent", "Low"].map((u) => (
+                          <SelectItem key={u} value={u}>
+                            {u}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Justification</Label>
+                    <Input
+                      value={reqJustification}
+                      onChange={(e) => setReqJustification(e.target.value)}
+                      placeholder="Reason for hiring…"
+                      className="text-xs"
+                    />
+                  </div>
                 </div>
+                <Button size="sm" onClick={submitRequisition} className="mt-2">
+                  <Send className="mr-2 h-3.5 w-3.5" /> Send Requisition
+                </Button>
               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+
+              {deptReqs.length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">
+                    Existing Requisitions — edit slots
+                  </Label>
+                  <div className="space-y-2">
+                    {deptReqs.map((r) => (
+                      <div
+                        key={r.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium">
+                            {r.id} · {r.position}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {r.status} · {r.urgency}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Input
+                            type="number"
+                            min={1}
+                            className="h-8 w-16 text-center text-xs"
+                            value={reqCountEdits[r.id] ?? String(r.count)}
+                            onChange={(e) =>
+                              setReqCountEdits((prev) => ({ ...prev, [r.id]: e.target.value }))
+                            }
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs"
+                            onClick={() => saveReqCount(r)}
+                          >
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
@@ -5024,7 +5302,11 @@ function SalaryGradeManager() {
   const grades = useMemo<SalaryGrade[]>(() => hcm.salaryGrades.map(toUiSalaryGrade), [hcm]);
   const [sgSearch, setSgSearch] = useState("");
   const [sgLevelFilter, setSgLevelFilter] = useState("all");
-  const [pendingDelete, setPendingDelete] = useState<{ type: "sg"; id: number; name: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    type: "sg";
+    id: number;
+    name: string;
+  } | null>(null);
 
   const [sgDialogOpen, setSgDialogOpen] = useState(false);
   const [editingSg, setEditingSg] = useState<SalaryGrade | null>(null);
@@ -5100,7 +5382,13 @@ function SalaryGradeManager() {
     } catch (err) {
       const status = (err as { status?: number }).status;
       const msg = (err as { errors?: Record<string, string[]> }).errors;
-      toast.error(msg ? Object.values(msg).flat()[0] : status === 422 ? "Validation failed." : "Could not save salary grade.");
+      toast.error(
+        msg
+          ? Object.values(msg).flat()[0]
+          : status === 422
+            ? "Validation failed."
+            : "Could not save salary grade.",
+      );
       return;
     } finally {
       setSgSaving(false);
@@ -5143,222 +5431,289 @@ function SalaryGradeManager() {
 
   return (
     <>
-    <HeaderActions>
-      <ReportMenu
-        size="sm"
-        recordCount={filteredGrades.length}
-        report={() => ({
-          title: "Salary Grades Report",
-          subtitle: `${filteredGrades.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
-          columns: [
-            { header: "Grade Code", key: "code" },
-            { header: "Band Title", key: "title" },
-            { header: "Job Level", key: "level" },
-            { header: "Min Salary", key: "minSalary" },
-            { header: "Max Salary", key: "maxSalary" },
-            { header: "Currency", key: "currency" },
-          ],
-          rows: filteredGrades.map((r) => ({ ...r })),
-        })}
-      />
-    </HeaderActions>
-    <Card className="border-border/70 shadow-sm">
-      <CardHeader className="border-b border-border/50 pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
-              <DollarSign className="h-4 w-4 text-primary" /> Salary Grade & Compensation Management
-            </CardTitle>
-          </div>
-          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search code, title, level…"
-                className="h-9 pl-8 text-xs bg-card shadow-2xs"
-                value={sgSearch}
-                onChange={(e) => setSgSearch(e.target.value)}
-              />
+      <HeaderActions>
+        <ReportMenu
+          size="sm"
+          recordCount={filteredGrades.length}
+          report={() => ({
+            title: "Salary Grades Report",
+            subtitle: `${filteredGrades.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            columns: [
+              { header: "Grade Code", key: "code" },
+              { header: "Band Title", key: "title" },
+              { header: "Job Level", key: "level" },
+              { header: "Min Salary", key: "minSalary" },
+              { header: "Max Salary", key: "maxSalary" },
+              { header: "Currency", key: "currency" },
+            ],
+            rows: filteredGrades.map((r) => ({ ...r })),
+          })}
+        />
+      </HeaderActions>
+      <Card className="border-border/70 shadow-sm">
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                <DollarSign className="h-4 w-4 text-primary" /> Salary Grade & Compensation
+                Management
+              </CardTitle>
             </div>
-            <Select value={sgLevelFilter} onValueChange={setSgLevelFilter}>
-              <SelectTrigger className="h-9 w-40 text-xs bg-card shadow-2xs">
-                <SelectValue placeholder="All job levels" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All job levels</SelectItem>
-                <SelectItem value="Rank & File">Rank & File</SelectItem>
-                <SelectItem value="Supervisory">Supervisory</SelectItem>
-                <SelectItem value="Managerial">Managerial</SelectItem>
-                <SelectItem value="Executive">Executive</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={openAddSg}>
-              <Plus className="h-4 w-4" /> Add Grade
-            </Button>
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search code, title, level…"
+                  className="h-9 pl-8 text-xs bg-card shadow-2xs"
+                  value={sgSearch}
+                  onChange={(e) => setSgSearch(e.target.value)}
+                />
+              </div>
+              <Select value={sgLevelFilter} onValueChange={setSgLevelFilter}>
+                <SelectTrigger className="h-9 w-40 text-xs bg-card shadow-2xs">
+                  <SelectValue placeholder="All job levels" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All job levels</SelectItem>
+                  <SelectItem value="Rank & File">Rank & File</SelectItem>
+                  <SelectItem value="Supervisory">Supervisory</SelectItem>
+                  <SelectItem value="Managerial">Managerial</SelectItem>
+                  <SelectItem value="Executive">Executive</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={openAddSg}>
+                <Plus className="h-4 w-4" /> Add Grade
+              </Button>
+            </div>
           </div>
-        </div>
-      </CardHeader>
+        </CardHeader>
 
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <SortHead sortKey="code" sort={sgSort.sort} onSort={sgSort.toggle} className="w-28 pl-6">Grade Code</SortHead>
-              <SortHead sortKey="title" sort={sgSort.sort} onSort={sgSort.toggle}>Band Title</SortHead>
-              <SortHead sortKey="level" sort={sgSort.sort} onSort={sgSort.toggle}>Job Level</SortHead>
-              <SortHead sortKey="minSalary" sort={sgSort.sort} onSort={sgSort.toggle} align="right">Min Salary</SortHead>
-              <SortHead sortKey="maxSalary" sort={sgSort.sort} onSort={sgSort.toggle} align="right">Max Salary</SortHead>
-              <TableHead>Pay Band Range</TableHead>
-              <TableHead className="text-right pr-6">Currency</TableHead>
-              <TableHead className="text-center pr-4">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {hcmLoading && grades.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
-            {(!hcmLoading || grades.length > 0) &&
-              sgPage.pageItems.map((sg) => (
-              <TableRow key={sg.id}>
-                <TableCell className="pl-6 font-mono text-xs font-semibold text-primary">
-                  {sg.code}
-                </TableCell>
-                <TableCell className="font-medium text-xs">{sg.title}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="text-[11px]">
-                    {sg.level}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right font-mono text-xs">
-                  {formatMoney(sg.minSalary)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-xs">
-                  {formatMoney(sg.maxSalary)}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {formatMoney(sg.minSalary)} – {formatMoney(sg.maxSalary)}
-                </TableCell>
-                <TableCell className="text-right pr-6 font-mono text-xs">{sg.currency}</TableCell>
-                <TableCell className="text-center pr-4">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 px-2 text-xs"
-                      onClick={() => openEditSg(sg)}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
-                      onClick={() => {
-                        const dbId = hcm.salaryGrades.find((g) => g.code === sg.code)?.salary_grade_id;
-                        if (dbId) setPendingDelete({ type: "sg", id: dbId, name: sg.code });
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </TableCell>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <SortHead
+                  sortKey="code"
+                  sort={sgSort.sort}
+                  onSort={sgSort.toggle}
+                  className="w-28 pl-6"
+                >
+                  Grade Code
+                </SortHead>
+                <SortHead sortKey="title" sort={sgSort.sort} onSort={sgSort.toggle}>
+                  Band Title
+                </SortHead>
+                <SortHead sortKey="level" sort={sgSort.sort} onSort={sgSort.toggle}>
+                  Job Level
+                </SortHead>
+                <SortHead
+                  sortKey="minSalary"
+                  sort={sgSort.sort}
+                  onSort={sgSort.toggle}
+                  align="right"
+                >
+                  Min Salary
+                </SortHead>
+                <SortHead
+                  sortKey="maxSalary"
+                  sort={sgSort.sort}
+                  onSort={sgSort.toggle}
+                  align="right"
+                >
+                  Max Salary
+                </SortHead>
+                <TableHead>Pay Band Range</TableHead>
+                <TableHead className="text-right pr-6">Currency</TableHead>
+                <TableHead className="text-center pr-4">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        <div className="p-4 pt-2">
-          <TablePagination
-            page={sgPage.page}
-            pageCount={sgPage.pageCount}
-            from={sgPage.from}
-            to={sgPage.to}
-            total={sgPage.total}
-            label="salary grades"
-            showRangeLabel={false}
-            onPageChange={sgPage.setPage}
-          />
-        </div>
-      </CardContent>
-
-      {/* ADD / EDIT SALARY GRADE DIALOG */}
-      <Dialog open={sgDialogOpen} onOpenChange={setSgDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingSg ? `Edit Salary Grade — ${editingSg.code}` : "Add Salary Grade"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2 text-xs">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Grade Code</Label>
-                <Input value={sgCode} onChange={(e) => setSgCode(e.target.value)} className="text-xs font-mono" placeholder="e.g. SG-09" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Job Level</Label>
-                <Select value={sgLevel} onValueChange={setSgLevel}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Rank & File">Rank & File</SelectItem>
-                    <SelectItem value="Supervisory">Supervisory</SelectItem>
-                    <SelectItem value="Managerial">Managerial</SelectItem>
-                    <SelectItem value="Executive">Executive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Band Title</Label>
-              <Input value={sgTitle} onChange={(e) => setSgTitle(e.target.value)} className="text-xs" placeholder="e.g. Senior Staff" />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Min Salary</Label>
-                <Input type="number" value={sgMin} onChange={(e) => setSgMin(e.target.value)} className="text-xs font-mono" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Max Salary</Label>
-                <Input type="number" value={sgMax} onChange={(e) => setSgMax(e.target.value)} className="text-xs font-mono" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Currency</Label>
-                <Input value={sgCurrency} onChange={(e) => setSgCurrency(e.target.value)} className="text-xs font-mono" maxLength={3} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Notes</Label>
-              <Input value={sgNotes} onChange={(e) => setSgNotes(e.target.value)} className="text-xs" placeholder="Optional notes" />
-            </div>
+            </TableHeader>
+            <TableBody>
+              {hcmLoading && grades.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
+              {(!hcmLoading || grades.length > 0) &&
+                sgPage.pageItems.map((sg) => (
+                  <TableRow key={sg.id}>
+                    <TableCell className="pl-6 font-mono text-xs font-semibold text-primary">
+                      {sg.code}
+                    </TableCell>
+                    <TableCell className="font-medium text-xs">{sg.title}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[11px]">
+                        {sg.level}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs">
+                      {formatMoney(sg.minSalary)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs">
+                      {formatMoney(sg.maxSalary)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {formatMoney(sg.minSalary)} – {formatMoney(sg.maxSalary)}
+                    </TableCell>
+                    <TableCell className="text-right pr-6 font-mono text-xs">
+                      {sg.currency}
+                    </TableCell>
+                    <TableCell className="text-center pr-4">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2 text-xs"
+                          onClick={() => openEditSg(sg)}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            const dbId = hcm.salaryGrades.find(
+                              (g) => g.code === sg.code,
+                            )?.salary_grade_id;
+                            if (dbId) setPendingDelete({ type: "sg", id: dbId, name: sg.code });
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
+          <div className="p-4 pt-2">
+            <TablePagination
+              page={sgPage.page}
+              pageCount={sgPage.pageCount}
+              from={sgPage.from}
+              to={sgPage.to}
+              total={sgPage.total}
+              label="salary grades"
+              showRangeLabel={false}
+              onPageChange={sgPage.setPage}
+            />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSgDialogOpen(false)} disabled={sgSaving}>Cancel</Button>
-            <Button onClick={saveSg} disabled={sgSaving}>
-              {sgSaving ? "Saving…" : editingSg ? "Save Changes" : "Add Salary Grade"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </CardContent>
 
-      {/* DELETE CONFIRMATION DIALOG */}
-      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive">Confirm Deletion</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete salary grade "{pendingDelete?.name}"? This action
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingDelete(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={executeDelete}
-            >
-              Yes, Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </Card>
+        {/* ADD / EDIT SALARY GRADE DIALOG */}
+        <Dialog open={sgDialogOpen} onOpenChange={setSgDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {editingSg ? `Edit Salary Grade — ${editingSg.code}` : "Add Salary Grade"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2 text-xs">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Grade Code</Label>
+                  <Input
+                    value={sgCode}
+                    onChange={(e) => setSgCode(e.target.value)}
+                    className="text-xs font-mono"
+                    placeholder="e.g. SG-09"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Job Level</Label>
+                  <Select value={sgLevel} onValueChange={setSgLevel}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Rank & File">Rank & File</SelectItem>
+                      <SelectItem value="Supervisory">Supervisory</SelectItem>
+                      <SelectItem value="Managerial">Managerial</SelectItem>
+                      <SelectItem value="Executive">Executive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Band Title</Label>
+                <Input
+                  value={sgTitle}
+                  onChange={(e) => setSgTitle(e.target.value)}
+                  className="text-xs"
+                  placeholder="e.g. Senior Staff"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Min Salary</Label>
+                  <Input
+                    type="number"
+                    value={sgMin}
+                    onChange={(e) => setSgMin(e.target.value)}
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Max Salary</Label>
+                  <Input
+                    type="number"
+                    value={sgMax}
+                    onChange={(e) => setSgMax(e.target.value)}
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Currency</Label>
+                  <Input
+                    value={sgCurrency}
+                    onChange={(e) => setSgCurrency(e.target.value)}
+                    className="text-xs font-mono"
+                    maxLength={3}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Notes</Label>
+                <Input
+                  value={sgNotes}
+                  onChange={(e) => setSgNotes(e.target.value)}
+                  className="text-xs"
+                  placeholder="Optional notes"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSgDialogOpen(false)} disabled={sgSaving}>
+                Cancel
+              </Button>
+              <Button onClick={saveSg} disabled={sgSaving}>
+                {sgSaving ? "Saving…" : editingSg ? "Save Changes" : "Add Salary Grade"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* DELETE CONFIRMATION DIALOG */}
+        <AlertDialog
+          open={!!pendingDelete}
+          onOpenChange={(open) => !open && setPendingDelete(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-destructive">Confirm Deletion</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete salary grade "{pendingDelete?.name}"? This action
+                cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingDelete(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={executeDelete}
+              >
+                Yes, Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </Card>
     </>
   );
 }
@@ -5414,405 +5769,424 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
 
   return (
     <>
-    <HeaderActions>
-      <ReportMenu
-        size="sm"
-        recordCount={filteredReqs.length}
-        report={() => ({
-          title: "Vacancy Requisitions Report",
-          subtitle: `${filteredReqs.length} requisition(s) · exported ${new Date().toISOString().slice(0, 10)}`,
-          columns: [
-            { header: "Req Code", key: "id" },
-            { header: "Position", key: "position" },
-            { header: "Department", key: "department" },
-            { header: "Slots", key: "count" },
-            { header: "Urgency", key: "urgency" },
-            { header: "Status", key: "status" },
-            { header: "Requested", key: "requestedAt" },
-          ],
-          rows: filteredReqs.map((r) => ({ ...r })),
-          summary: [
-            { label: "Total", value: filteredReqs.length },
-            {
-              label: "Pending",
-              value: filteredReqs.filter((r) => r.status === "Pending").length,
-            },
-            {
-              label: "Converted",
-              value: filteredReqs.filter((r) => r.status === "Converted").length,
-            },
-          ],
-        })}
-      />
-    </HeaderActions>
-    <Card className="border-border/70 shadow-sm">
-      <CardHeader className="border-b border-border/50 pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
-              <Send className="h-4 w-4 text-primary" /> Vacancy Requisitions
-            </CardTitle>
-          </div>
-
-          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search requisitions, position, justification…"
-                className="h-9 pl-8 text-xs bg-card shadow-2xs"
-                value={reqSearch}
-                onChange={(e) => setReqSearch(e.target.value)}
-              />
+      <HeaderActions>
+        <ReportMenu
+          size="sm"
+          recordCount={filteredReqs.length}
+          report={() => ({
+            title: "Vacancy Requisitions Report",
+            subtitle: `${filteredReqs.length} requisition(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            columns: [
+              { header: "Req Code", key: "id" },
+              { header: "Position", key: "position" },
+              { header: "Department", key: "department" },
+              { header: "Slots", key: "count" },
+              { header: "Urgency", key: "urgency" },
+              { header: "Status", key: "status" },
+              { header: "Requested", key: "requestedAt" },
+            ],
+            rows: filteredReqs.map((r) => ({ ...r })),
+            summary: [
+              { label: "Total", value: filteredReqs.length },
+              {
+                label: "Pending",
+                value: filteredReqs.filter((r) => r.status === "Pending").length,
+              },
+              {
+                label: "Converted",
+                value: filteredReqs.filter((r) => r.status === "Converted").length,
+              },
+            ],
+          })}
+        />
+      </HeaderActions>
+      <Card className="border-border/70 shadow-sm">
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+                <Send className="h-4 w-4 text-primary" /> Vacancy Requisitions
+              </CardTitle>
             </div>
 
-            <Select value={reqDeptFilter} onValueChange={setReqDeptFilter}>
-              <SelectTrigger className="h-9 w-40 text-xs bg-card shadow-2xs">
-                <SelectValue placeholder="All departments" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All departments</SelectItem>
-                {deptOptions.map((d) => (
-                  <SelectItem key={d} value={d}>
-                    {d}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={reqStatusFilter} onValueChange={setReqStatusFilter}>
-              <SelectTrigger className="h-9 w-32 text-xs bg-card shadow-2xs">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="Done">Done</SelectItem>
-                <SelectItem value="Converted">Converted</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={reqUrgencyFilter} onValueChange={setReqUrgencyFilter}>
-              <SelectTrigger className="h-9 w-32 text-xs bg-card shadow-2xs">
-                <SelectValue placeholder="All urgency" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All urgency</SelectItem>
-                <SelectItem value="High">High</SelectItem>
-                <SelectItem value="Urgent">Urgent</SelectItem>
-                <SelectItem value="Normal">Normal</SelectItem>
-                <SelectItem value="Low">Low</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <SortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle} className="pl-6">Req Code</SortHead>
-              <SortHead sortKey="position" sort={reqSort.sort} onSort={reqSort.toggle}>Position Title</SortHead>
-              <SortHead sortKey="department" sort={reqSort.sort} onSort={reqSort.toggle}>Department</SortHead>
-              <SortHead sortKey="count" sort={reqSort.sort} onSort={reqSort.toggle} align="center">Slots Requested</SortHead>
-              <SortHead sortKey="urgency" sort={reqSort.sort} onSort={reqSort.toggle}>Urgency</SortHead>
-              <SortHead sortKey="status" sort={reqSort.sort} onSort={reqSort.toggle}>Status</SortHead>
-              <SortHead sortKey="requestedAt" sort={reqSort.sort} onSort={reqSort.toggle}>Date Requested</SortHead>
-              <TableHead className="text-right pr-6">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reqLoading && reqs.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
-            {(!reqLoading || reqs.length > 0) &&
-              reqPage.pageItems.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="pl-6 font-mono text-xs font-medium">{r.id}</TableCell>
-                <TableCell className="font-medium text-xs">{r.position}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{r.department}</TableCell>
-                <TableCell className="text-center font-mono text-xs">{r.count}</TableCell>
-                <TableCell className="text-xs">
-                  <Badge
-                    variant="outline"
-                    className={
-                      r.urgency === "Urgent" || r.urgency === "High"
-                        ? "border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px] dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-400"
-                        : "border-border text-muted-foreground text-[10px]"
-                    }
-                  >
-                    {r.urgency}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={
-                      r.status === "Done"
-                        ? "border-success/40 bg-success/10 text-success text-[10px]"
-                        : r.status === "Converted"
-                          ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
-                          : "border-gold/40 text-gold text-[10px]"
-                    }
-                  >
-                    {r.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {r.requestedAt}
-                </TableCell>
-                <TableCell className="text-right pr-6">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      title="Edit requisition (with confirmation)"
-                      disabled={r.status === "Converted"}
-                      onClick={() => {
-                        setEditing(r);
-                        setEditCount(String(r.count));
-                        setEditUrgency(r.urgency);
-                        setEditJustification(r.justification);
-                        setEditStatus(r.status === "Converted" ? "Converted" : r.status);
-                      }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      title="Action history (created / updated / deleted)"
-                      onClick={async () => {
-                        setHistoryFor(r);
-                        setHistoryLoading(true);
-                        try {
-                          const res = await auditLogApi.list({ per_page: 100, search: r.id });
-                          const logs = (res?.data ?? []).filter(
-                            (l) =>
-                              l.target_id === String(r.dbId ?? "") ||
-                              (l.details ?? "").includes(r.id),
-                          );
-                          setHistoryLogs(logs);
-                        } catch {
-                          setHistoryLogs([]);
-                        } finally {
-                          setHistoryLoading(false);
-                        }
-                      }}
-                    >
-                      <History className="h-3.5 w-3.5" />
-                    </Button>
-                    {role === "superadmin" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive hover:text-destructive"
-                        title="Delete requisition (superadmin)"
-                        disabled={r.status === "Converted"}
-                        onClick={() => setDeleteFor(r)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-            {(!reqLoading || reqs.length > 0) &&
-              filteredReqs.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">
-                  No vacancy requisitions match your search and filter criteria.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-        <div className="p-4 pt-2">
-          <TablePagination
-            page={reqPage.page}
-            pageCount={reqPage.pageCount}
-            from={reqPage.from}
-            to={reqPage.to}
-            total={reqPage.total}
-            label="requisitions"
-            showRangeLabel={false}
-            onPageChange={reqPage.setPage}
-          />
-        </div>
-      </CardContent>
-    </Card>
-
-    {/* Edit requisition dialog — saving always asks for confirmation */}
-    <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit requisition {editing?.id}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-1">
-          <div className="space-y-1.5">
-            <Label>Slots requested</Label>
-            <Input
-              type="number"
-              min={1}
-              value={editCount}
-              onChange={(e) => setEditCount(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Urgency</Label>
-            <Select value={editUrgency} onValueChange={setEditUrgency}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {["Low", "Normal", "High", "Urgent"].map((u) => (
-                  <SelectItem key={u} value={u}>
-                    {u}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Status</Label>
-            <Select value={editStatus} onValueChange={(v: any) => setEditStatus(v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="Done">Done</SelectItem>
-                <SelectItem value="Converted">Converted</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Justification</Label>
-            <Textarea
-              rows={3}
-              value={editJustification}
-              onChange={(e) => setEditJustification(e.target.value)}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setEditing(null)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => setConfirmEdit(true)}
-            disabled={savingEdit || Number(editCount) < 1}
-          >
-            Review changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
-    <AlertDialog open={confirmEdit} onOpenChange={setConfirmEdit}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Confirm requisition update?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {editing?.id}: slots {editing?.count} → {editCount}, urgency {editing?.urgency} →{" "}
-            {editUrgency}, status {editing?.status} → {editStatus}. This is recorded in the
-            action history.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Back</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={async () => {
-              if (!editing) return;
-              setSavingEdit(true);
-              try {
-                await requisitionStore.update(editing.id, {
-                  count: Math.max(1, Number(editCount) || 1),
-                  urgency: editUrgency,
-                  justification: editJustification,
-                  status: editStatus,
-                });
-                toast.success(`Requisition ${editing.id} updated.`);
-                setEditing(null);
-                setConfirmEdit(false);
-              } catch {
-                // requisitionStore already toasted
-              } finally {
-                setSavingEdit(false);
-              }
-            }}
-          >
-            Confirm update
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-
-    {/* Action history dialog */}
-    <Dialog open={!!historyFor} onOpenChange={(o) => !o && setHistoryFor(null)}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>History — {historyFor?.id}</DialogTitle>
-        </DialogHeader>
-        {historyLoading ? (
-          <ListSkeleton items={4} />
-        ) : historyLogs.length === 0 ? (
-          <p className="py-6 text-center text-xs text-muted-foreground">
-            No audit entries found for {historyFor?.id} yet. New creates, updates and deletes
-            are logged automatically.
-          </p>
-        ) : (
-          <div className="max-h-80 space-y-2 overflow-y-auto py-1">
-            {historyLogs.map((l) => (
-              <div key={l.audit_log_id} className="rounded-md border border-border/60 p-3 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold">{l.action}</span>
-                  <span className="text-muted-foreground">
-                    {new Date(l.occurred_at ?? l.timestamp).toLocaleString()}
-                  </span>
-                </div>
-                <p className="mt-1 text-muted-foreground">{l.details}</p>
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search requisitions, position, justification…"
+                  className="h-9 pl-8 text-xs bg-card shadow-2xs"
+                  value={reqSearch}
+                  onChange={(e) => setReqSearch(e.target.value)}
+                />
               </div>
-            ))}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
 
-    {/* Superadmin delete with confirmation */}
-    <AlertDialog open={!!deleteFor} onOpenChange={(o) => !o && setDeleteFor(null)}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete requisition {deleteFor?.id}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This permanently removes the request for {deleteFor?.position} (
-            {deleteFor?.department}). Converted requisitions are kept as history and cannot be
-            deleted. This cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            onClick={async () => {
-              if (!deleteFor) return;
-              setDeleting(true);
-              try {
-                await requisitionStore.remove(deleteFor.id);
-                setDeleteFor(null);
-              } catch {
-                // store already toasted
-              } finally {
-                setDeleting(false);
-              }
-            }}
-          >
-            {deleting ? "Deleting…" : "Delete requisition"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+              <Select value={reqDeptFilter} onValueChange={setReqDeptFilter}>
+                <SelectTrigger className="h-9 w-40 text-xs bg-card shadow-2xs">
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All departments</SelectItem>
+                  {deptOptions.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={reqStatusFilter} onValueChange={setReqStatusFilter}>
+                <SelectTrigger className="h-9 w-32 text-xs bg-card shadow-2xs">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Done">Done</SelectItem>
+                  <SelectItem value="Converted">Converted</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={reqUrgencyFilter} onValueChange={setReqUrgencyFilter}>
+                <SelectTrigger className="h-9 w-32 text-xs bg-card shadow-2xs">
+                  <SelectValue placeholder="All urgency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All urgency</SelectItem>
+                  <SelectItem value="High">High</SelectItem>
+                  <SelectItem value="Urgent">Urgent</SelectItem>
+                  <SelectItem value="Normal">Normal</SelectItem>
+                  <SelectItem value="Low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <SortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle} className="pl-6">
+                  Req Code
+                </SortHead>
+                <SortHead sortKey="position" sort={reqSort.sort} onSort={reqSort.toggle}>
+                  Position Title
+                </SortHead>
+                <SortHead sortKey="department" sort={reqSort.sort} onSort={reqSort.toggle}>
+                  Department
+                </SortHead>
+                <SortHead
+                  sortKey="count"
+                  sort={reqSort.sort}
+                  onSort={reqSort.toggle}
+                  align="center"
+                >
+                  Slots Requested
+                </SortHead>
+                <SortHead sortKey="urgency" sort={reqSort.sort} onSort={reqSort.toggle}>
+                  Urgency
+                </SortHead>
+                <SortHead sortKey="status" sort={reqSort.sort} onSort={reqSort.toggle}>
+                  Status
+                </SortHead>
+                <SortHead sortKey="requestedAt" sort={reqSort.sort} onSort={reqSort.toggle}>
+                  Date Requested
+                </SortHead>
+                <TableHead className="text-right pr-6">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {reqLoading && reqs.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
+              {(!reqLoading || reqs.length > 0) &&
+                reqPage.pageItems.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="pl-6 font-mono text-xs font-medium">{r.id}</TableCell>
+                    <TableCell className="font-medium text-xs">{r.position}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.department}</TableCell>
+                    <TableCell className="text-center font-mono text-xs">{r.count}</TableCell>
+                    <TableCell className="text-xs">
+                      <Badge
+                        variant="outline"
+                        className={
+                          r.urgency === "Urgent" || r.urgency === "High"
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px] dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-400"
+                            : "border-border text-muted-foreground text-[10px]"
+                        }
+                      >
+                        {r.urgency}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={
+                          r.status === "Done"
+                            ? "border-success/40 bg-success/10 text-success text-[10px]"
+                            : r.status === "Converted"
+                              ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
+                              : "border-gold/40 text-gold text-[10px]"
+                        }
+                      >
+                        {r.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.requestedAt}</TableCell>
+                    <TableCell className="text-right pr-6">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Edit requisition (with confirmation)"
+                          disabled={r.status === "Converted"}
+                          onClick={() => {
+                            setEditing(r);
+                            setEditCount(String(r.count));
+                            setEditUrgency(r.urgency);
+                            setEditJustification(r.justification);
+                            setEditStatus(r.status === "Converted" ? "Converted" : r.status);
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Action history (created / updated / deleted)"
+                          onClick={async () => {
+                            setHistoryFor(r);
+                            setHistoryLoading(true);
+                            try {
+                              const res = await auditLogApi.list({ per_page: 100, search: r.id });
+                              const logs = (res?.data ?? []).filter(
+                                (l) =>
+                                  l.target_id === String(r.dbId ?? "") ||
+                                  (l.details ?? "").includes(r.id),
+                              );
+                              setHistoryLogs(logs);
+                            } catch {
+                              setHistoryLogs([]);
+                            } finally {
+                              setHistoryLoading(false);
+                            }
+                          }}
+                        >
+                          <History className="h-3.5 w-3.5" />
+                        </Button>
+                        {role === "superadmin" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            title="Delete requisition (superadmin)"
+                            disabled={r.status === "Converted"}
+                            onClick={() => setDeleteFor(r)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {(!reqLoading || reqs.length > 0) && filteredReqs.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">
+                    No vacancy requisitions match your search and filter criteria.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          <div className="p-4 pt-2">
+            <TablePagination
+              page={reqPage.page}
+              pageCount={reqPage.pageCount}
+              from={reqPage.from}
+              to={reqPage.to}
+              total={reqPage.total}
+              label="requisitions"
+              showRangeLabel={false}
+              onPageChange={reqPage.setPage}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Edit requisition dialog — saving always asks for confirmation */}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit requisition {editing?.id}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>Slots requested</Label>
+              <Input
+                type="number"
+                min={1}
+                value={editCount}
+                onChange={(e) => setEditCount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Urgency</Label>
+              <Select value={editUrgency} onValueChange={setEditUrgency}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Low", "Normal", "High", "Urgent"].map((u) => (
+                    <SelectItem key={u} value={u}>
+                      {u}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={editStatus} onValueChange={(v: any) => setEditStatus(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Done">Done</SelectItem>
+                  <SelectItem value="Converted">Converted</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Justification</Label>
+              <Textarea
+                rows={3}
+                value={editJustification}
+                onChange={(e) => setEditJustification(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => setConfirmEdit(true)}
+              disabled={savingEdit || Number(editCount) < 1}
+            >
+              Review changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmEdit} onOpenChange={setConfirmEdit}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm requisition update?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {editing?.id}: slots {editing?.count} → {editCount}, urgency {editing?.urgency} →{" "}
+              {editUrgency}, status {editing?.status} → {editStatus}. This is recorded in the action
+              history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!editing) return;
+                setSavingEdit(true);
+                try {
+                  await requisitionStore.update(editing.id, {
+                    count: Math.max(1, Number(editCount) || 1),
+                    urgency: editUrgency,
+                    justification: editJustification,
+                    status: editStatus,
+                  });
+                  toast.success(`Requisition ${editing.id} updated.`);
+                  setEditing(null);
+                  setConfirmEdit(false);
+                } catch {
+                  // requisitionStore already toasted
+                } finally {
+                  setSavingEdit(false);
+                }
+              }}
+            >
+              Confirm update
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Action history dialog */}
+      <Dialog open={!!historyFor} onOpenChange={(o) => !o && setHistoryFor(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>History — {historyFor?.id}</DialogTitle>
+          </DialogHeader>
+          {historyLoading ? (
+            <ListSkeleton items={4} />
+          ) : historyLogs.length === 0 ? (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              No audit entries found for {historyFor?.id} yet. New creates, updates and deletes are
+              logged automatically.
+            </p>
+          ) : (
+            <div className="max-h-80 space-y-2 overflow-y-auto py-1">
+              {historyLogs.map((l) => (
+                <div
+                  key={l.audit_log_id}
+                  className="rounded-md border border-border/60 p-3 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold">{l.action}</span>
+                    <span className="text-muted-foreground">
+                      {new Date(l.occurred_at ?? l.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-muted-foreground">{l.details}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Superadmin delete with confirmation */}
+      <AlertDialog open={!!deleteFor} onOpenChange={(o) => !o && setDeleteFor(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete requisition {deleteFor?.id}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the request for {deleteFor?.position} (
+              {deleteFor?.department}). Converted requisitions are kept as history and cannot be
+              deleted. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!deleteFor) return;
+                setDeleting(true);
+                try {
+                  await requisitionStore.remove(deleteFor.id);
+                  setDeleteFor(null);
+                } catch {
+                  // store already toasted
+                } finally {
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete requisition"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

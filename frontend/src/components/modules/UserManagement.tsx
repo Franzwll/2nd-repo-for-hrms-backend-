@@ -13,9 +13,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/portal/PageHeader";
 import { SortHead, type SortState } from "@/components/portal/sortable";
-import { StatCard } from "@/components/portal/StatCard";
+import { Skeleton } from "@/components/ui/loading-skeletons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -199,6 +198,7 @@ export function UserManagement() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<SortState<UserSortKey>>(null);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [statsLoaded, setStatsLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("users");
   const [deptOptions, setDeptOptions] = useState<string[]>(FALLBACK_DEPARTMENTS);
   const [roles, setRoles] = useState<RoleOption[]>(FALLBACK_ROLES);
@@ -262,6 +262,7 @@ export function UserManagement() {
       toast.error(e instanceof Error ? e.message : "Unable to load users.");
     } finally {
       setLoadingUsers(false);
+      setStatsLoaded(true);
     }
   }, [page, search, roleFilter, statusFilter, roleIdByName, sort]);
 
@@ -467,60 +468,111 @@ export function UserManagement() {
 
   return (
     <div>
-      <PageHeader
-        title="User Management"
-        description="System accounts, login activity, and per-module permission matrix."
-      />
+      <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+        <div className="flex items-start gap-4">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11 fill-current">
+              <path fillRule="evenodd" clipRule="evenodd" d="M12 2.25 4.25 5.4v6.1c0 5.18 3.31 9.95 7.75 11.25 4.44-1.3 7.75-6.07 7.75-11.25V5.4L12 2.25Zm0 4.25a2.75 2.75 0 1 0 0 5.5 2.75 2.75 0 0 0 0-5.5Zm-4.5 9.65c0-1.95 2.02-3.4 4.5-3.4s4.5 1.45 4.5 3.4c-.98 1.28-2.63 2.1-4.5 2.1s-3.52-.82-4.5-2.1Z" />
+            </svg>
+          </span>
+          <div>
+            <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+              User Management
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              System accounts, login activity, and per-module permission matrix.
+            </p>
+          </div>
+        </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total Users"
-          value={totalUsers}
-          tone="primary"
-          icon={Users}
-          onClick={() => {
-            setRoleFilter("all");
-            setStatusFilter("all");
-            setPage(1);
-            setActiveTab("users");
-          }}
-        />
-        <StatCard
-          label="Active"
-          value={activeUsers}
-          tone="success"
-          icon={UserCheck}
-          onClick={() => {
-            setStatusFilter("Active");
-            setRoleFilter("all");
-            setPage(1);
-            setActiveTab("users");
-          }}
-        />
-        <StatCard
-          label="Suspended"
-          value={suspendedUsers}
-          tone="caution"
-          icon={UserX}
-          onClick={() => {
-            setStatusFilter("Suspended");
-            setRoleFilter("all");
-            setPage(1);
-            setActiveTab("users");
-          }}
-        />
-        <StatCard
-          label="Admins"
-          value={adminUsers}
-          tone="gold"
-          icon={ShieldCheck}
-          onClick={() => {
-            setRoleFilter("Admin");
-            setStatusFilter("all");
-            setPage(1);
-            setActiveTab("users");
-          }}
-        />
+        {!statsLoaded ? (
+          <div
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            aria-busy="true"
+            aria-label="Loading metrics"
+          >
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={`skeleton-metric-${i}`}
+                className="flex items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5"
+              >
+                <Skeleton className="h-12 w-12 rounded-xl" />
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              {
+                label: "Total Users",
+                value: totalUsers,
+                icon: Users,
+                onClick: () => {
+                  setRoleFilter("all");
+                  setStatusFilter("all");
+                  setPage(1);
+                  setActiveTab("users");
+                },
+              },
+              {
+                label: "Active",
+                value: activeUsers,
+                icon: UserCheck,
+                onClick: () => {
+                  setStatusFilter("Active");
+                  setRoleFilter("all");
+                  setPage(1);
+                  setActiveTab("users");
+                },
+              },
+              {
+                label: "Suspended",
+                value: suspendedUsers,
+                icon: UserX,
+                onClick: () => {
+                  setStatusFilter("Suspended");
+                  setRoleFilter("all");
+                  setPage(1);
+                  setActiveTab("users");
+                },
+              },
+              {
+                label: "Admins",
+                value: adminUsers,
+                icon: ShieldCheck,
+                onClick: () => {
+                  setRoleFilter("Admin");
+                  setStatusFilter("all");
+                  setPage(1);
+                  setActiveTab("users");
+                },
+              },
+            ].map((m) => (
+              <button
+                key={m.label}
+                type="button"
+                onClick={m.onClick}
+                className="group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <m.icon className="h-6 w-6" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-medium text-muted-foreground">
+                    {m.label}
+                  </span>
+                  <span className="mt-1 block font-display text-[1.45rem] font-bold leading-none tabular-nums text-foreground">
+                    {m.value.toLocaleString()}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
@@ -546,18 +598,19 @@ export function UserManagement() {
         </TabsList>
 
         <TabsContent value="users" className="mt-4">
-          <Card className="border-border/70">
-            <CardContent className="p-6">
+          <Card className="rounded-xl border-border/60 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                  <Users className="h-5 w-5 text-primary" /> User Roster
+                <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                  <Users className="h-4.5 w-4.5 text-primary" />
+                  User Roster
                 </h2>
-                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                   <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                     <DialogTrigger asChild>
                       <Button
                         size="sm"
-                        className="order-last col-span-2 cursor-pointer md:order-none"
+                        className="order-5 w-full cursor-pointer sm:ml-auto sm:w-auto"
                       >
                         <UserPlus className="mr-2 h-4 w-4" /> Create User
                       </Button>
@@ -679,10 +732,10 @@ export function UserManagement() {
                     </DialogContent>
                   </Dialog>
 
-                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
+                  <div className="relative order-1 w-full min-w-0 sm:w-64">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="pl-8"
+                      className="w-full pl-8"
                       placeholder="Search users…"
                       value={search}
                       onChange={(e) => {
@@ -698,7 +751,7 @@ export function UserManagement() {
                       setPage(1);
                     }}
                   >
-                    <SelectTrigger className="w-44">
+                    <SelectTrigger className="order-2 w-[calc(50%-0.25rem)] sm:w-36">
                       <SelectValue placeholder="Role" />
                     </SelectTrigger>
                     <SelectContent>
@@ -717,7 +770,7 @@ export function UserManagement() {
                       setPage(1);
                     }}
                   >
-                    <SelectTrigger className="w-44">
+                    <SelectTrigger className="order-3 w-[calc(50%-0.25rem)] sm:w-36">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -729,11 +782,26 @@ export function UserManagement() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {(search || roleFilter !== "all" || statusFilter !== "all") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="order-4 h-9 px-2 text-xs text-muted-foreground"
+                      onClick={() => {
+                        setSearch("");
+                        setRoleFilter("all");
+                        setStatusFilter("all");
+                        setPage(1);
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
-                <Table>
+              <div className="mt-3 overflow-x-auto">
+                <Table className="text-xs">
                   <TableHeader>
                     <TableRow>
                       <SortHead sortKey="system_user_id" sort={sort} onSort={toggleSort}>
@@ -884,15 +952,9 @@ export function UserManagement() {
           <Card className="border-border/70">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                    <ShieldCheck className="h-5 w-5 text-primary" /> Permission Matrix
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Per-module permissions. Each module is saved independently, including Read and
-                    Approve / Reject Only levels.
-                  </p>
-                </div>
+                <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                  <ShieldCheck className="h-5 w-5 text-primary" /> Permission Matrix
+                </h2>
                 <div className="flex flex-wrap gap-2">
                   {!isEditingMatrix ? (
                     <Button
@@ -925,7 +987,7 @@ export function UserManagement() {
                 </div>
               </div>
               <div className="mt-4 overflow-x-auto">
-                <Table>
+                <Table className="text-xs">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[14rem]">Module</TableHead>
@@ -933,7 +995,7 @@ export function UserManagement() {
                         <TableHead key={role.role_id} className="min-w-[12rem]">
                           {roleLabel(role.role_name)}
                           {role.is_protected && (
-                            <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                            <span className="ml-2 rounded bg-gold-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
                               System
                             </span>
                           )}
@@ -1004,15 +1066,9 @@ export function UserManagement() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="border-border/70">
               <CardContent className="space-y-4 p-6">
-                <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                    <KeyRound className="h-5 w-5 text-primary" /> Effective Session Policy
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Read-only limits enforced by the authentication service. Sessions expire after
-                    the role token limit or the idle limit, whichever comes first.
-                  </p>
-                </div>
+                <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                  <KeyRound className="h-5 w-5 text-primary" /> Effective Session Policy
+                </h2>
                 {sessionPolicy && Object.keys(sessionPolicy).length > 0 ? (
                   <div className="space-y-3">
                     {Object.entries(sessionPolicy).map(([key, policy]) => (
@@ -1037,14 +1093,9 @@ export function UserManagement() {
 
             <Card className="border-border/70">
               <CardContent className="space-y-4 p-6">
-                <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                    <ShieldCheck className="h-5 w-5 text-primary" /> Password &amp; Lockout
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Current enforced baseline for portal accounts.
-                  </p>
-                </div>
+                <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                  <ShieldCheck className="h-5 w-5 text-primary" /> Password &amp; Lockout
+                </h2>
                 <ul className="space-y-2 text-sm">
                   <li className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
                     <span>Minimum password length</span>

@@ -30,12 +30,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/portal/PageHeader";
+import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { ReportMenu } from "@/components/ui/report-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
-import { StatCard } from "@/components/portal/StatCard";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,7 +83,13 @@ import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { EmployeeEss } from "./EmployeeEss";
 import { ModuleQueuesPanel } from "./ModuleQueuesPanel";
-import { essApi, hcmApi, type ApiEmployee, type ApiEssRequestAttachment, type ApiEssRequestItem } from "@/lib/api";
+import {
+  essApi,
+  hcmApi,
+  type ApiEmployee,
+  type ApiEssRequestAttachment,
+  type ApiEssRequestItem,
+} from "@/lib/api";
 
 type Status = ESSRequest["status"] | "Returned for Clarification";
 type Row = Omit<ESSRequest, "status" | "note"> & {
@@ -231,9 +236,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const [behalfEmployeeList, setBehalfEmployeeList] = useState<
     { id: string; name: string; department: string; position: string }[]
   >([]);
-  const [departmentOptions, setDepartmentOptions] = useState<
-    { code: string; name: string }[]
-  >([]);
+  const [departmentOptions, setDepartmentOptions] = useState<{ code: string; name: string }[]>([]);
 
   const loadRequests = async () => {
     try {
@@ -326,7 +329,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     }
     if (
       search &&
-      !`${r.employee} ${r.type} ${r.id} ${r.details || ""}`.toLowerCase().includes(search.toLowerCase())
+      !`${r.employee} ${r.type} ${r.id} ${r.details || ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
     )
       return false;
     return true;
@@ -623,9 +628,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       setReviewStarting(true);
       try {
         await essApi.reviewRequest(id, "start");
-        setRows((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, status: "Under Review" } : r)),
-        );
+        setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: "Under Review" } : r)));
         loadAuditLogs();
       } catch (err: any) {
         toast.error(err.message || "Could not open this request for review.");
@@ -655,8 +658,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
       const res = await essApi.fulfillRequest(fulfillRow.id, payload);
       toast.success(
-        res.message ||
-          `${fulfillRow.id} released — the employee can now download the document.`,
+        res.message || `${fulfillRow.id} released — the employee can now download the document.`,
       );
       setFulfillRow(null);
       setFulfillFile(null);
@@ -765,58 +767,81 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
   return (
     <div>
-      <PageHeader
-        title="ESS Management"
-        description="Monitor, process and configure employee self-service requests."
-        actions={<ReportMenu size="sm" reports={essReportOptions} />}
-      />
+      <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11 fill-current">
+                <circle cx="9.75" cy="7.25" r="4.25" />
+                <path d="M9.75 13C5.3 13 2 15.75 2 19.25v.75c0 .55.45 1 1 1h8.83a6.5 6.5 0 0 1-.83-3.2c0-1.93.84-3.66 2.18-4.86A9.4 9.4 0 0 0 9.75 13Z" />
+                <path fillRule="evenodd" clipRule="evenodd" d="M16.7 12.2a.7.7 0 0 1 .7-.7h1.2a.7.7 0 0 1 .7.7v.66c.35.1.68.24.99.41l.47-.47a.7.7 0 0 1 .99 0l.85.85a.7.7 0 0 1 0 .99l-.47.47c.17.31.31.64.41.99h.66a.7.7 0 0 1 .7.7v1.2a.7.7 0 0 1-.7.7h-.66c-.1.35-.24.68-.41.99l.47.47a.7.7 0 0 1 0 .99l-.85.85a.7.7 0 0 1-.99 0l-.47-.47c-.31.17-.64.31-.99.41v.66a.7.7 0 0 1-.7.7h-1.2a.7.7 0 0 1-.7-.7v-.66a4.7 4.7 0 0 1-.99-.41l-.47.47a.7.7 0 0 1-.99 0l-.85-.85a.7.7 0 0 1 0-.99l.47-.47a4.7 4.7 0 0 1-.41-.99h-.66a.7.7 0 0 1-.7-.7v-1.2a.7.7 0 0 1 .7-.7h.66c.1-.35.24-.68.41-.99l-.47-.47a.7.7 0 0 1 0-.99l.85-.85a.7.7 0 0 1 .99 0l.47.47c.31-.17.64-.31.99-.41v-.66Zm1.3 3.4a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4Z" />
+              </svg>
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                ESS Management
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Monitor, process and configure employee self-service requests.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start">
+            <ReportMenu size="sm" reports={essReportOptions} />
+          </div>
+        </div>
+      </div>
 
       {loading ? (
-        <StatCardsSkeleton count={6} />
+        <StatCardsSkeleton count={4} />
       ) : (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-        <StatCard
-          label="Total Requests"
-          value={rows.length}
-          icon={ClipboardList}
-          tone="primary"
-          onClick={() => setStatus("all")}
-        />
-        <StatCard
-          label="Pending"
-          value={count("Pending")}
-          icon={ClipboardList}
-          tone="caution"
-          onClick={() => setStatus("Pending")}
-        />
-        <StatCard
-          label="Under Review"
-          value={count("Under Review")}
-          icon={Eye}
-          tone="gold"
-          onClick={() => setStatus("Under Review")}
-        />
-        <StatCard
-          label="With Module"
-          value={count("With Module")}
-          icon={Send}
-          tone="gold"
-          onClick={() => setStatus("With Module")}
-        />
-        <StatCard
-          label="For Release"
-          value={count("For Release")}
-          icon={Upload}
-          tone="gold"
-          onClick={() => setStatus("For Release")}
-        />
-        <StatCard
-          label="Completed"
-          value={count("Completed")}
-          icon={CircleCheckBig}
-          onClick={() => setStatus("Completed")}
-        />
-      </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              label: "Total Requests",
+              value: rows.length,
+              icon: ClipboardList,
+              onClick: () => setStatus("all"),
+            },
+            {
+              label: "Pending",
+              value: count("Pending"),
+              icon: ClipboardList,
+              onClick: () => setStatus("Pending"),
+            },
+            {
+              label: "Under Review",
+              value: count("Under Review"),
+              icon: Eye,
+              onClick: () => setStatus("Under Review"),
+            },
+            {
+              label: "Completed",
+              value: count("Completed"),
+              icon: CircleCheckBig,
+              onClick: () => setStatus("Completed"),
+            },
+          ].map((m) => (
+            <button
+              key={m.label}
+              type="button"
+              onClick={m.onClick}
+              className="group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <m.icon className="h-6 w-6" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-muted-foreground">
+                  {m.label}
+                </span>
+                <span className="mt-1 block font-display text-[1.45rem] font-bold leading-none tabular-nums text-foreground">
+                  {m.value.toLocaleString()}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
       )}
 
       <Tabs defaultValue="requests" className="mt-6">
@@ -840,17 +865,17 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         </TabsList>
 
         <TabsContent value="requests" className="mt-4">
-          <Card className="border-border/70">
-            <CardContent className="p-6">
+          <Card className="rounded-xl border-border/60 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                  <Send className="h-5 w-5 text-primary" /> Employee Requests
+                <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                  <Send className="h-4 w-4 text-primary" /> Employee Requests
                 </h2>
                 <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
                   <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="pl-9"
+                      className="pl-8"
                       placeholder="Search employee or request…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -1002,16 +1027,14 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         </div>
                       </div>
                       <DialogFooter>
-                        <Button onClick={handleFileOnBehalf}>
-                          File request
-                        </Button>
+                        <Button onClick={handleFileOnBehalf}>File request</Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
                 </div>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-3 overflow-x-auto">
                 <ListBody>
                   <Table>
                     <TableHeader>
@@ -1042,163 +1065,165 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       {loading && <TableRowsSkeleton cols={8} rows={6} />}
                       {!loading &&
                         requestPage.pageItems.map((r) => (
-                        <TableRow key={r.id}>
-                          {role === "superadmin" && (
-                            <TableCell>
-                              <Checkbox
-                                checked={selected.includes(r.id)}
-                                disabled={!["Pending", "Under Review"].includes(r.status)}
-                                title={
-                                  ["Pending", "Under Review"].includes(r.status)
-                                    ? "Select for bulk action"
-                                    : "Only pending/review requests can be bulk processed"
-                                }
-                                onCheckedChange={() =>
-                                  setSelected((p) =>
-                                    p.includes(r.id) ? p.filter((x) => x !== r.id) : [...p, r.id],
-                                  )
-                                }
-                              />
+                          <TableRow key={r.id}>
+                            {role === "superadmin" && (
+                              <TableCell>
+                                <Checkbox
+                                  checked={selected.includes(r.id)}
+                                  disabled={!["Pending", "Under Review"].includes(r.status)}
+                                  title={
+                                    ["Pending", "Under Review"].includes(r.status)
+                                      ? "Select for bulk action"
+                                      : "Only pending/review requests can be bulk processed"
+                                  }
+                                  onCheckedChange={() =>
+                                    setSelected((p) =>
+                                      p.includes(r.id) ? p.filter((x) => x !== r.id) : [...p, r.id],
+                                    )
+                                  }
+                                />
+                              </TableCell>
+                            )}
+                            <TableCell className="text-xs font-medium">{r.id}</TableCell>
+                            <TableCell className="text-sm">
+                              <p>{r.employee}</p>
+                              <p className="text-xs text-muted-foreground">{r.department}</p>
                             </TableCell>
-                          )}
-                          <TableCell className="text-xs font-medium">{r.id}</TableCell>
-                          <TableCell className="text-sm">
-                            <p>{r.employee}</p>
-                            <p className="text-xs text-muted-foreground">{r.department}</p>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            <p>{r.type}</p>
-                            <p className="text-xs text-muted-foreground">{r.category}</p>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{r.filed}</TableCell>
-                          <TableCell className="text-xs">{r.assignedTo}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={statusClass[r.status]}>
-                              {r.status === "Returned for Clarification" ? "Returned" : r.status}
-                            </Badge>
-                            {r.moduleLabel && (
-                              <p className="mt-1 text-[11px] text-muted-foreground">
-                                {r.moduleLabel}
-                              </p>
-                            )}
-                            {r.status === "Under Review" && r.moduleNote && (
-                              <p
-                                className="mt-1 max-w-[180px] truncate text-[11px] text-amber-600"
-                                title={r.moduleNote}
-                              >
-                                Declined: {r.moduleNote}
-                              </p>
-                            )}
-                            {(r.returnedCount ?? 0) > 1 && (
-                              <p className="mt-1 text-[11px] text-caution">
-                                Returned {r.returnedCount}×
-                              </p>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex justify-end gap-1">
-                              {r.status === "Returned for Clarification" ? (
-                                <span className="text-xs text-muted-foreground">
-                                  Awaiting employee response
-                                </span>
-                              ) : r.status === "Pending" || r.status === "Under Review" ? (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-success/40 bg-success/10 text-success hover:bg-success/20 hover:text-success"
-                                    title="Approve"
-                                    onClick={() => void quickApprove(r)}
-                                  >
-                                    <CheckCircle2 className="mr-2 h-4 w-4" /> Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
-                                    title="Reject (opens review — a reason is required)"
-                                    onClick={() => {
-                                      void openReview(r.id);
-                                      setReviewDecision("Rejected");
-                                    }}
-                                  >
-                                    <XCircle className="mr-2 h-4 w-4" /> Reject
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => void openReview(r.id)}
-                                  >
-                                    <Eye className="mr-2 h-4 w-4" /> Review
-                                  </Button>
-                                  {r.status === "Under Review" && (
+                            <TableCell className="text-sm">
+                              <p>{r.type}</p>
+                              <p className="text-xs text-muted-foreground">{r.category}</p>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {r.filed}
+                            </TableCell>
+                            <TableCell className="text-xs">{r.assignedTo}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={statusClass[r.status]}>
+                                {r.status === "Returned for Clarification" ? "Returned" : r.status}
+                              </Badge>
+                              {r.moduleLabel && (
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  {r.moduleLabel}
+                                </p>
+                              )}
+                              {r.status === "Under Review" && r.moduleNote && (
+                                <p
+                                  className="mt-1 max-w-[180px] truncate text-[11px] text-amber-600"
+                                  title={r.moduleNote}
+                                >
+                                  Declined: {r.moduleNote}
+                                </p>
+                              )}
+                              {(r.returnedCount ?? 0) > 1 && (
+                                <p className="mt-1 text-[11px] text-caution">
+                                  Returned {r.returnedCount}×
+                                </p>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex justify-end gap-1">
+                                {r.status === "Returned for Clarification" ? (
+                                  <span className="text-xs text-muted-foreground">
+                                    Awaiting employee response
+                                  </span>
+                                ) : r.status === "Pending" || r.status === "Under Review" ? (
+                                  <>
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      title="Send to a different module"
+                                      className="border-success/40 bg-success/10 text-success hover:bg-success/20 hover:text-success"
+                                      title="Approve"
+                                      onClick={() => void quickApprove(r)}
+                                    >
+                                      <CheckCircle2 className="mr-2 h-4 w-4" /> Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
+                                      title="Reject (opens review — a reason is required)"
+                                      onClick={() => {
+                                        void openReview(r.id);
+                                        setReviewDecision("Rejected");
+                                      }}
+                                    >
+                                      <XCircle className="mr-2 h-4 w-4" /> Reject
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => void openReview(r.id)}
+                                    >
+                                      <Eye className="mr-2 h-4 w-4" /> Review
+                                    </Button>
+                                    {r.status === "Under Review" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        title="Send to a different module"
+                                        onClick={() => void rerouteRow(r)}
+                                      >
+                                        Reroute
+                                      </Button>
+                                    )}
+                                  </>
+                                ) : r.status === "For Release" ? (
+                                  <>
+                                    {requiresDocument(r) && !r.hasFulfillment ? (
+                                      <Button
+                                        size="sm"
+                                        className="bg-primary text-primary-foreground"
+                                        onClick={() => openFulfill(r)}
+                                      >
+                                        <Upload className="mr-2 h-4 w-4" /> Attach &amp; release
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        className="bg-primary text-primary-foreground"
+                                        onClick={() => void releaseRow(r)}
+                                      >
+                                        <Send className="mr-2 h-4 w-4" /> Release
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
                                       onClick={() => void rerouteRow(r)}
                                     >
                                       Reroute
                                     </Button>
-                                  )}
-                                </>
-                              ) : r.status === "For Release" ? (
-                                <>
-                                  {requiresDocument(r) && !r.hasFulfillment ? (
+                                  </>
+                                ) : r.status === "For Dispatch" || r.status === "With Module" ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground">
+                                      {r.status === "For Dispatch"
+                                        ? `Dispatching to ${r.moduleLabel ?? "module"}`
+                                        : `${r.moduleLabel ?? "Module"} is processing`}
+                                    </span>
                                     <Button
                                       size="sm"
-                                      className="bg-primary text-primary-foreground"
-                                      onClick={() => openFulfill(r)}
+                                      variant="outline"
+                                      onClick={() => void rerouteRow(r)}
                                     >
-                                      <Upload className="mr-2 h-4 w-4" /> Attach &amp; release
+                                      Reroute
                                     </Button>
-                                  ) : (
-                                    <Button
-                                      size="sm"
-                                      className="bg-primary text-primary-foreground"
-                                      onClick={() => void releaseRow(r)}
-                                    >
-                                      <Send className="mr-2 h-4 w-4" /> Release
-                                    </Button>
-                                  )}
+                                  </div>
+                                ) : r.status === "For Fulfillment" ? (
                                   <Button
                                     size="sm"
-                                    variant="outline"
-                                    onClick={() => void rerouteRow(r)}
+                                    className="bg-primary text-primary-foreground"
+                                    onClick={() => openFulfill(r)}
                                   >
-                                    Reroute
+                                    <Upload className="mr-2 h-4 w-4" /> Fulfill / Upload
                                   </Button>
-                                </>
-                              ) : r.status === "For Dispatch" || r.status === "With Module" ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-muted-foreground">
-                                    {r.status === "For Dispatch"
-                                      ? `Dispatching to ${r.moduleLabel ?? "module"}`
-                                      : `${r.moduleLabel ?? "Module"} is processing`}
-                                  </span>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => void rerouteRow(r)}
-                                  >
-                                    Reroute
-                                  </Button>
-                                </div>
-                              ) : r.status === "For Fulfillment" ? (
-                                <Button
-                                  size="sm"
-                                  className="bg-primary text-primary-foreground"
-                                  onClick={() => openFulfill(r)}
-                                >
-                                  <Upload className="mr-2 h-4 w-4" /> Fulfill / Upload
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Closed</span>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Closed</span>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       {!loading && requestPage.pageItems.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={role === "superadmin" ? 8 : 7} className="py-8">
@@ -1235,9 +1260,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           <TabsContent value="config" className="mt-4">
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="border-border/70">
-                <CardContent className="p-6">
+                <CardContent className="p-4 sm:p-5">
                   <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
                       <Cog className="h-5 w-5 text-primary" /> Category Management
                     </h2>
                   </div>
@@ -1252,8 +1277,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         <ListChecks className="h-3.5 w-3.5" /> New category
                       </span>
                       <ChevronDown
-                        className={`h-4 w-4 text-muted-foreground transition-transform ${newCategoryOpen ? "rotate-180" : ""
-                          }`}
+                        className={`h-4 w-4 text-muted-foreground transition-transform ${
+                          newCategoryOpen ? "rotate-180" : ""
+                        }`}
                       />
                     </button>
                     {newCategoryOpen && (
@@ -1394,8 +1420,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       ) : (
                         <div
                           key={c.name}
-                          className={`flex flex-wrap items-center justify-between gap-2 rounded-md border p-2.5 ${c.open === false ? "border-border bg-muted/40" : "border-border"
-                            }`}
+                          className={`flex flex-wrap items-center justify-between gap-2 rounded-md border p-2.5 ${
+                            c.open === false ? "border-border bg-muted/40" : "border-border"
+                          }`}
                         >
                           <div className="min-w-0">
                             <p className="flex items-center gap-1.5 text-sm font-medium">
@@ -1490,9 +1517,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
               </Card>
 
               <Card className="border-border/70">
-                <CardContent className="space-y-5 p-6">
+                <CardContent className="space-y-5 p-4 sm:p-5">
                   <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
                       <Settings2 className="h-5 w-5 text-primary" />
                       Request Management Settings
                     </h2>
@@ -1546,9 +1573,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         {role === "superadmin" && (
           <TabsContent value="audit" className="mt-4">
             <Card className="border-border/70">
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <h2 className="flex items-center gap-2 font-display text-base font-bold">
                     <Clock className="h-5 w-5 text-primary" /> ESS Activity Log
                   </h2>
                   <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
@@ -1632,17 +1659,18 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       </TableHeader>
                       <TableBody>
                         {loading && <TableRowsSkeleton cols={7} rows={5} />}
-                        {!loading && logPage.pageItems.map((a) => (
-                          <TableRow key={a.id}>
-                            <TableCell className="text-xs">{a.timestamp}</TableCell>
-                            <TableCell className="text-xs">{a.user}</TableCell>
-                            <TableCell className="text-sm">{a.action}</TableCell>
-                            <TableCell className="text-xs">{a.module}</TableCell>
-                            <TableCell className="text-xs">{a.category}</TableCell>
-                            <TableCell className="text-xs">{a.department}</TableCell>
-                            <TableCell className="text-xs font-medium">{a.requestId}</TableCell>
-                          </TableRow>
-                        ))}
+                        {!loading &&
+                          logPage.pageItems.map((a) => (
+                            <TableRow key={a.id}>
+                              <TableCell className="text-xs">{a.timestamp}</TableCell>
+                              <TableCell className="text-xs">{a.user}</TableCell>
+                              <TableCell className="text-sm">{a.action}</TableCell>
+                              <TableCell className="text-xs">{a.module}</TableCell>
+                              <TableCell className="text-xs">{a.category}</TableCell>
+                              <TableCell className="text-xs">{a.department}</TableCell>
+                              <TableCell className="text-xs font-medium">{a.requestId}</TableCell>
+                            </TableRow>
+                          ))}
                         {!loading && logPage.pageItems.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="py-8">
@@ -1773,8 +1801,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                     <label
                       key={o.value}
                       htmlFor={o.id}
-                      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${reviewDecision === o.value ? o.active : "border-border hover:bg-muted/50"
-                        }`}
+                      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${
+                        reviewDecision === o.value ? o.active : "border-border hover:bg-muted/50"
+                      }`}
                     >
                       <RadioGroupItem value={o.value} id={o.id} className="mt-0.5" />
                       <span>
@@ -1902,9 +1931,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       <Dialog open={!!fulfillRow} onOpenChange={(open) => !open && setFulfillRow(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl">
-              Fulfill {fulfillRow?.id}
-            </DialogTitle>
+            <DialogTitle className="font-display text-2xl">Fulfill {fulfillRow?.id}</DialogTitle>
           </DialogHeader>
           {fulfillRow && (
             <div className="space-y-4">
@@ -1972,7 +1999,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }

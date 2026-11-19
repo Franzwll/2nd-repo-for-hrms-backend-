@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   AlertTriangle,
-  ArrowRight,
   ArrowDown,
   ArrowUp,
   BookOpen,
@@ -39,6 +38,7 @@ import {
   Plus,
   Printer,
   Repeat,
+  Undo2,
   ScanLine,
   Search,
   Send,
@@ -56,9 +56,6 @@ import { toast } from "sonner";
 import { useBlocker } from "@tanstack/react-router";
 
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
-import { PageHeader } from "@/components/portal/PageHeader";
-import { StatCard } from "@/components/portal/StatCard";
-import { WorkflowTabs } from "@/components/portal/WorkflowTabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -84,8 +81,17 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { CardSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
+import { CardSkeleton } from "@/components/ui/loading-skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { ListBody } from "@/components/portal/ListBody";
 import { DEFAULT_PAGE_SIZE } from "@/hooks/usePagination";
@@ -157,14 +163,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  type ReportData,
-} from "@/lib/report-export";
+import { type ReportData } from "@/lib/report-export";
 import { ReportMenu } from "@/components/ui/report-menu";
 import {
   RequirementMatchPanel,
   ResumeInfoPanel,
-  ScreeningDetailsAccordion,
   ScreeningModalSummary,
   ScreeningReferenceManager,
   ScreeningResumeDocsMatchDetail,
@@ -396,12 +399,8 @@ function templateRequirementParts(template: ApiRequirementTemplate) {
     lines: [
       ...values("certification"),
       ...values("job_role").map((v) => `Experience as ${v}`),
-      ...educationValues
-        .filter((v) => !isEducationLevel(v))
-        .map((v) => `Education: ${v}`),
-      ...experienceValues
-        .filter((v) => !isExperienceLevel(v))
-        .map((v) => `Experience: ${v}`),
+      ...educationValues.filter((v) => !isEducationLevel(v)).map((v) => `Education: ${v}`),
+      ...experienceValues.filter((v) => !isExperienceLevel(v)).map((v) => `Experience: ${v}`),
     ],
     /* Canonical levels the template requires. A template can name several — the
        chips accept "any of these" — while values outside the dropdown scale stay
@@ -438,7 +437,7 @@ export function ReportedEntitiesManager() {
   const promote = async (r: ReportedEntity) => {
     setBusyId(r.id);
     try {
-      await screeningApi.referenceData.create({
+      const res = await screeningApi.referenceData.create({
         data_type: typeOf(r),
         canonical_value: r.value,
         aliases_json: (aliasDrafts[r.id] ?? "")
@@ -447,9 +446,9 @@ export function ReportedEntitiesManager() {
           .filter(Boolean),
         active: true,
       });
-      reportedEntitiesStore.markProcessed(r.id);
+      reportedEntitiesStore.markProcessed(r.id, res.data?.ref_id);
       toast.success(`"${r.value}" added to the screening vocabulary`, {
-        description: "Future screenings will classify it as recognized.",
+        description: "Future screenings will classify it as recognized. Undo it in Handled below.",
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
@@ -464,18 +463,33 @@ export function ReportedEntitiesManager() {
     }
   };
 
+  /** Undo — returns the report to the queue and removes a vocabulary entry it created. */
+  const undo = async (r: ReportedEntity) => {
+    setBusyId(r.id);
+    try {
+      if (r.vocabularyId) {
+        await screeningApi.referenceData.remove(r.vocabularyId);
+      }
+      reportedEntitiesStore.restore(r.id);
+      toast.success(
+        r.status === "processed"
+          ? `"${r.value}" moved back to pending${r.vocabularyId ? " and removed from the vocabulary" : ""}`
+          : `"${r.value}" moved back to pending`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      toast.error(`"${r.value}" could not be undone — ${msg || "please try again."}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-            <Flag className="h-4 w-4 text-warning-foreground" /> Reported Entities
-            {pending.length > 0 && <Badge variant="secondary">{pending.length} pending</Badge>}
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Flagged as unrecognized during screening. Add them to the vocabulary so future runs
-            recognize them.
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold">Reported entities</h3>
+          <Badge variant="secondary">{pending.length} pending</Badge>
         </div>
         {handled.length > 0 && (
           <Button
@@ -490,9 +504,8 @@ export function ReportedEntitiesManager() {
       </div>
 
       {pending.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border bg-muted/20 p-6 text-center text-xs text-muted-foreground">
-          Nothing reported yet. Flag an unrecognized entry from a Resume Screening Result and it
-          will appear here.
+        <p className="rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center text-xs text-muted-foreground">
+          Nothing reported yet. Flag an entry from a screening result and it appears here.
         </p>
       ) : (
         <div className="space-y-2">
@@ -563,21 +576,53 @@ export function ReportedEntitiesManager() {
         </div>
       )}
       {handled.length > 0 && (
-        <div className="rounded-md border border-border/70 bg-muted/20 p-3">
-          <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
-            Handled ({handled.length})
-          </p>
-          <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              Handled ({handled.length})
+            </p>
+            <p className="text-[0.65rem] text-muted-foreground">
+              Undo puts an entry back in the queue.
+            </p>
+          </div>
+          <ul className="mt-1.5 divide-y divide-border/60">
             {handled.slice(0, 10).map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center gap-2">
+              <li
+                key={r.id}
+                className="flex flex-wrap items-center gap-2 py-1.5 text-xs text-muted-foreground"
+              >
                 <CheckCircle2
                   className={r.status === "processed" ? "h-3.5 w-3.5 text-success" : "h-3.5 w-3.5"}
                 />
                 <span className="font-medium text-foreground">{r.value}</span>
                 <span>· {r.status === "processed" ? "added to vocabulary" : "dismissed"}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto h-7 cursor-pointer gap-1 px-2 text-[0.7rem]"
+                  disabled={busyId === r.id}
+                  title={
+                    r.status === "processed" && r.vocabularyId
+                      ? "Undo — remove it from the vocabulary and return it to pending"
+                      : "Undo — return it to pending"
+                  }
+                  onClick={() => void undo(r)}
+                >
+                  {busyId === r.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Undo2 className="h-3.5 w-3.5" />
+                  )}
+                  Undo
+                </Button>
               </li>
             ))}
           </ul>
+          {handled.length > 10 && (
+            <p className="mt-1.5 text-[0.65rem] text-muted-foreground">
+              +{handled.length - 10} older entries — Clear handled removes them without undo.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -717,6 +762,32 @@ function analyzeBuilderEntityLines(
     recognized: [...recognized.entries()].map(([canonical, sample]) => ({ canonical, sample })),
     unrecognized,
   };
+}
+
+/** Escapes a literal for RegExp use — vocabulary keys can hold "+", "/" or "." */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Vocabulary terms a block of prose mentions: "Operate the POS system" → "POS". */
+function findBuilderEntityMentions(text: string, index: BuilderEntityIndex): BuilderEntityHit[] {
+  if (!text.trim()) return [];
+  const norm = ` ${normalizeEntityText(text)} `;
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const hits = new Map<string, string>();
+  for (const key of index.keys) {
+    if (key.length < 4) continue;
+    const re = new RegExp(`(^|[^a-z0-9])${escapeRegExp(key)}([^a-z0-9]|$)`);
+    if (!re.test(norm)) continue;
+    const canonical = index.exact.get(key);
+    if (!canonical || hits.has(canonical)) continue;
+    const line = lines.find((l) => re.test(` ${normalizeEntityText(l)} `));
+    hits.set(canonical, (line ?? text.trim()).slice(0, 120));
+  }
+  return [...hits.entries()].map(([canonical, sample]) => ({ canonical, sample }));
 }
 
 /** Per-resume scoring reference: group weights (points out of 100) plus the
@@ -891,10 +962,7 @@ function ScreeningRequirementsPanel({
   ) => void;
   /** Education / experience live here now — the two fields NLP scores against.
    *  Lists, because the chips accept several levels ("any of these"). */
-  onLevelsChange: (levels: {
-    educationLevels: string[];
-    experienceLevels: string[];
-  }) => void;
+  onLevelsChange: (levels: { educationLevels: string[]; experienceLevels: string[] }) => void;
   onSkillsChange: (next: string) => void;
   /** Adds a certification line to Qualifications, where the panel reads them. */
   onCertificationsChange: (next: string) => void;
@@ -910,26 +978,15 @@ function ScreeningRequirementsPanel({
   const [certQuery, setCertQuery] = useState("");
   /* Options come from screening reference data so the dropdown, the
      requirement templates and the NLP vocabulary never drift apart. */
-  const educationLevels = levelsFromReference(
-    mapping,
-    "education",
-    FALLBACK_EDUCATION_LEVELS,
-  );
-  const experienceLevels = levelsFromReference(
-    mapping,
-    "experience",
-    FALLBACK_EXPERIENCE_LEVELS,
-  );
+  const educationLevels = levelsFromReference(mapping, "education", FALLBACK_EDUCATION_LEVELS);
+  const experienceLevels = levelsFromReference(mapping, "experience", FALLBACK_EXPERIENCE_LEVELS);
   const splitLines = (s: string) =>
     s
       .split("\n")
       .map((x) => x.trim())
       .filter(Boolean);
 
-  const skillsIndex = useMemo(
-    () => buildBuilderEntityIndex(mapping?.skills ?? {}),
-    [mapping],
-  );
+  const skillsIndex = useMemo(() => buildBuilderEntityIndex(mapping?.skills ?? {}), [mapping]);
   const certsIndex = useMemo(
     () => buildBuilderEntityIndex(mapping?.certifications ?? {}),
     [mapping],
@@ -997,9 +1054,8 @@ function ScreeningRequirementsPanel({
     setCertQuery("");
   };
 
-  const removeSkill = (term: string) => {    const next = splitLines(draft.skills).filter(
-      (s) => s.toLowerCase() !== term.toLowerCase(),
-    );
+  const removeSkill = (term: string) => {
+    const next = splitLines(draft.skills).filter((s) => s.toLowerCase() !== term.toLowerCase());
     onSkillsChange(next.join("\n"));
   };
   const addSkill = (term: string) => {
@@ -1025,13 +1081,11 @@ function ScreeningRequirementsPanel({
     title: string;
     department: string;
   }) =>
-    p.dbId !== undefined && p.dbId !== null
-      ? `id:${p.dbId}`
-      : `name:${p.department}|||${p.title}`;
+    p.dbId !== undefined && p.dbId !== null ? `id:${p.dbId}` : `name:${p.department}|||${p.title}`;
 
-  const titleDuplicates = positions.filter(
-    (p) => p.department === draft.department && p.title === draft.title,
-  ).length > 1;
+  const titleDuplicates =
+    positions.filter((p) => p.department === draft.department && p.title === draft.title).length >
+    1;
 
   const positionLabel = (p: {
     title: string;
@@ -1101,9 +1155,9 @@ function ScreeningRequirementsPanel({
       {templateName ? (
         <p className="rounded-md bg-secondary/40 px-2.5 py-1.5 text-[0.65rem] leading-relaxed text-muted-foreground">
           From template <span className="font-medium text-foreground">{templateName}</span> ·{" "}
-          {templateSkillCount} skill{templateSkillCount === 1 ? "" : "s"},{" "}
-          {templateCertCount} certification{templateCertCount === 1 ? "" : "s"} · every
-          future posting of this role reuses it.
+          {templateSkillCount} skill{templateSkillCount === 1 ? "" : "s"}, {templateCertCount}{" "}
+          certification{templateCertCount === 1 ? "" : "s"} · every future posting of this role
+          reuses it.
         </p>
       ) : (
         <div className="rounded-md border border-warning/40 bg-warning/10 p-2.5">
@@ -1113,8 +1167,8 @@ function ScreeningRequirementsPanel({
               : `No requirement template for ${draft.title || "this position"}.`}
           </p>
           <p className="mt-0.5 text-[0.65rem] text-muted-foreground">
-            Screening will have no skills to match against. Pick from the vocabulary below, or
-            save them as this position&apos;s requirement template.
+            Screening will have no skills to match against. Pick from the vocabulary below, or save
+            them as this position&apos;s requirement template.
           </p>
           <Button
             type="button"
@@ -1155,8 +1209,8 @@ function ScreeningRequirementsPanel({
                   : "add recognized skills to score"}
               </span>
               <span className="block text-[0.68rem] font-medium text-muted-foreground">
-                {skillsResult.recognized.length} recognized · {skillsResult.unrecognized.length}{" "}
-                to review
+                {skillsResult.recognized.length} recognized · {skillsResult.unrecognized.length} to
+                review
               </span>
             </span>
             <Button
@@ -1177,15 +1231,14 @@ function ScreeningRequirementsPanel({
         ) : (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {skillsResult.recognized.map(({ canonical, sample }) => (
-              <Badge
-                key={canonical}
-                variant="secondary"
-                className="gap-1 py-1 pl-2 pr-1 text-xs"
-              >
+              <Badge key={canonical} variant="secondary" className="gap-1 py-1 pl-2 pr-1 text-xs">
                 <span title={sample !== canonical ? `From: ${sample}` : undefined}>
                   {canonical}
                 </span>
-                <span className="text-[0.6rem] text-success" title="Recognized by the screening model">
+                <span
+                  className="text-[0.6rem] text-success"
+                  title="Recognized by the screening model"
+                >
                   ✓
                 </span>
                 <button
@@ -1311,15 +1364,14 @@ function ScreeningRequirementsPanel({
         ) : (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {certResult.recognized.map(({ canonical, sample }) => (
-              <Badge
-                key={canonical}
-                variant="secondary"
-                className="gap-1 py-1 pl-2 pr-1 text-xs"
-              >
+              <Badge key={canonical} variant="secondary" className="gap-1 py-1 pl-2 pr-1 text-xs">
                 <span title={sample !== canonical ? `From: ${sample}` : undefined}>
                   {canonical}
                 </span>
-                <span className="text-[0.6rem] text-success" title="Recognized by the screening model">
+                <span
+                  className="text-[0.6rem] text-success"
+                  title="Recognized by the screening model"
+                >
                   ✓
                 </span>
               </Badge>
@@ -1371,8 +1423,7 @@ function ScreeningRequirementsPanel({
                   onClick={() => addCertification(certQuery.trim())}
                 >
                   <span>
-                    Add{" "}
-                    <span className="font-medium">“{certQuery.trim()}”</span> to this post
+                    Add <span className="font-medium">“{certQuery.trim()}”</span> to this post
                   </span>
                   <span className="text-[0.65rem] text-muted-foreground">new vocabulary term</span>
                 </button>
@@ -1573,23 +1624,14 @@ function BuilderEntitiesCard({
       .map((x) => x.trim())
       .filter(Boolean);
 
-  const filledFields: string[] = [];
-  if (draft.title.trim()) filledFields.push(draft.title.trim());
-  if (draft.department.trim()) filledFields.push(draft.department.trim());
-  if (draft.employmentType.trim()) filledFields.push(draft.employmentType.trim());
-  if (draft.schedule.trim()) filledFields.push(draft.schedule.trim());
-  if (draft.vacancies.trim()) filledFields.push(`${draft.vacancies.trim()} vacancies`);
-  if (draft.salaryMin.trim() || draft.salaryMax.trim())
-    filledFields.push(`₱${draft.salaryMin.trim() || "—"} – ₱${draft.salaryMax.trim() || "—"}`);
-
   const skillsIndex = buildBuilderEntityIndex(mapping?.skills ?? {});
   const rolesIndex = buildBuilderEntityIndex(mapping?.job_roles ?? {});
   const certsIndex = buildBuilderEntityIndex(mapping?.certifications ?? {});
+  const eduIndex = buildBuilderEntityIndex(mapping?.education ?? {});
+  const expIndex = buildBuilderEntityIndex(mapping?.experience ?? {});
 
+  /* Declared requirements — what the scorer actually matches. */
   const skillsResult = analyzeBuilderEntityLines(splitLines(draft.skills), skillsIndex);
-  const titleCanonical = draft.title.trim()
-    ? canonicalizeBuilderEntity(draft.title.trim(), rolesIndex)
-    : null;
   // Only certification-like lines are checked — plain sentences and skill tags
   // are not certificates, so showing them "to review" would invite adding
   // garbage to the vocabulary.
@@ -1598,6 +1640,70 @@ function BuilderEntitiesCard({
     ...splitLines(draft.skills),
   ].filter((line) => CERTIFICATION_LINE_RE.test(line));
   const certResult = analyzeBuilderEntityLines(certCandidateLines, certsIndex);
+
+  /* Mentioned in the copy — vocabulary the written blocks already name. Kept
+     apart from the declared requirements, so the card reports the whole post
+     without pretending the ad's prose is a scored requirement. */
+  const prose = [
+    draft.description,
+    draft.responsibilities,
+    draft.qualifications,
+    draft.additional,
+    draft.instructions,
+    draft.about,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const declaredSkillSet = new Set(skillsResult.recognized.map((h) => h.canonical));
+  const declaredCertSet = new Set(certResult.recognized.map((h) => h.canonical));
+  const mentionedSkills = findBuilderEntityMentions(prose, skillsIndex).filter(
+    (h) => !declaredSkillSet.has(h.canonical),
+  );
+  const mentionedCerts = findBuilderEntityMentions(prose, certsIndex).filter(
+    (h) => !declaredCertSet.has(h.canonical),
+  );
+  const mentionedRoles = findBuilderEntityMentions(prose, rolesIndex);
+
+  const titleCanonical = draft.title.trim()
+    ? canonicalizeBuilderEntity(draft.title.trim(), rolesIndex)
+    : null;
+
+  /* Education / experience levels picked in Job Info are declared entities
+     too: the scorer matches them, so the card must not report "not
+     indicated" while the post already requires a level. */
+  const canonicalHits = (values: string[], index: BuilderEntityIndex) => {
+    const recognized: BuilderEntityHit[] = [];
+    const unrecognized: string[] = [];
+    const seen = new Set<string>();
+    values.forEach((value) => {
+      const canonical = canonicalizeBuilderEntity(value, index);
+      if (!canonical) {
+        if (!unrecognized.includes(value)) unrecognized.push(value);
+        return;
+      }
+      if (seen.has(canonical)) return;
+      seen.add(canonical);
+      recognized.push({ canonical, sample: value });
+    });
+    return { recognized, unrecognized };
+  };
+  const educationResult = canonicalHits(draft.educationLevels, eduIndex);
+  const experienceResult = canonicalHits(draft.experienceLevels, expIndex);
+
+  const recognizedCount =
+    (titleCanonical ? 1 : 0) +
+    skillsResult.recognized.length +
+    certResult.recognized.length +
+    mentionedCerts.length +
+    educationResult.recognized.length +
+    experienceResult.recognized.length +
+    mentionedSkills.length;
+  const reviewCount =
+    (draft.title.trim() && !titleCanonical ? 1 : 0) +
+    skillsResult.unrecognized.length +
+    certResult.unrecognized.length +
+    educationResult.unrecognized.length +
+    experienceResult.unrecognized.length;
 
   // Per-card scoring lines — simple points each indicated reference is worth
   // to a resume. Required skills share 70% of the skills weight; each
@@ -1613,18 +1719,25 @@ function BuilderEntitiesCard({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
           <ScanLine className="h-4 w-4 text-primary" /> Entities Indicated
         </h2>
         <Button type="button" size="sm" variant="outline" onClick={onFlipBack}>
           <Repeat className="mr-1.5 h-3.5 w-3.5" /> Back to editing
         </Button>
       </div>
-      <p className="text-[0.7rem] text-muted-foreground">
-        Whatever is filled in the builder inputs and dropdowns, indicated as screening entities.
-        Recognized terms match resumes — others are flagged until added to the vocabulary.
-      </p>
+
+      {/* Scan result at a glance: how much the post declares, how much still
+          needs vocabulary review, and which fields were read. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border/60 bg-secondary/30 px-3 py-2 text-[0.7rem]">
+        <span className="font-semibold text-foreground">{recognizedCount} recognized</span>
+        <span className="text-muted-foreground">{reviewCount} to review</span>
+        <span className="text-muted-foreground">
+          Scanned: title, screening requirements, job info levels, description, responsibilities,
+          qualifications, additional info, instructions, about
+        </span>
+      </div>
 
       {loading ? (
         <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
@@ -1639,105 +1752,106 @@ function BuilderEntitiesCard({
         </div>
       ) : (
         <>
-          <div className="rounded-lg border border-border/60 p-3">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-              Filled fields
-            </p>
-            {filledFields.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {filledFields.map((f) => (
-                  <Badge key={f} variant="secondary" className="text-xs">
-                    {f}
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-1.5 text-xs italic text-muted-foreground">
-                Nothing filled yet — fill the builder, then flip here.
-              </p>
+          <div className="grid items-start gap-3 lg:grid-cols-2">
+            <BuilderEntityGroup
+              icon={<Users className="h-3.5 w-3.5 text-primary" />}
+              title="Job role"
+              hint="Job title, plus roles the copy names"
+              recognized={[
+                ...(titleCanonical && draft.title.trim()
+                  ? [{ canonical: titleCanonical, sample: draft.title.trim() }]
+                  : []),
+                ...mentionedRoles.filter((r) => r.canonical !== titleCanonical),
+              ]}
+              unrecognized={draft.title.trim() && !titleCanonical ? [draft.title.trim()] : []}
+              addType={() => "job_role"}
+              addingTerm={addingTerm}
+              onAdd={onAdd}
+              emptyText="No job title selected yet."
+            />
+
+            <BuilderEntityGroup
+              icon={<Briefcase className="h-3.5 w-3.5 text-primary" />}
+              title="Required skills"
+              hint="Every line in the Screening Requirements panel"
+              scoreLine={
+                perSkill !== null
+                  ? `${scoring.weights.skills} pts · ≈${perSkill.toFixed(2)} pts each`
+                  : `${scoring.weights.skills} pts · add recognized skills to score`
+              }
+              recognized={skillsResult.recognized}
+              unrecognized={skillsResult.unrecognized}
+              addType={() => "skill"}
+              addingTerm={addingTerm}
+              onAdd={onAdd}
+              emptyText="No skills filled in Screening Requirements yet."
+            />
+
+            <BuilderEntityGroup
+              icon={<BookOpen className="h-3.5 w-3.5 text-primary" />}
+              title="Education"
+              hint="Levels accepted in Job Info"
+              scoreLine={`${scoring.weights.education} pts · ${educationResult.recognized.length} level${educationResult.recognized.length === 1 ? "" : "s"}`}
+              recognized={educationResult.recognized}
+              unrecognized={educationResult.unrecognized}
+              addType={() => "skill"}
+              addingTerm={addingTerm}
+              onAdd={onAdd}
+              emptyText="No education level set in Job Info."
+            />
+
+            <BuilderEntityGroup
+              icon={<Clock className="h-3.5 w-3.5 text-primary" />}
+              title="Experience"
+              hint="Levels accepted in Job Info"
+              scoreLine={`${scoring.weights.experience} pts · ${experienceResult.recognized.length} level${experienceResult.recognized.length === 1 ? "" : "s"}`}
+              recognized={experienceResult.recognized}
+              unrecognized={experienceResult.unrecognized}
+              addType={() => "skill"}
+              addingTerm={addingTerm}
+              onAdd={onAdd}
+              emptyText="No experience level set in Job Info."
+            />
+
+            <BuilderEntityGroup
+              icon={<GraduationCap className="h-3.5 w-3.5 text-primary" />}
+              title="Certifications"
+              hint="Certification lines in Qualifications and Screening Requirements, plus certs named in the copy"
+              scoreLine={
+                perCert !== null
+                  ? `${scoring.weights.certifications} pts · ≈${perCert.toFixed(2)} pts each`
+                  : `${scoring.weights.certifications} pts · add recognized certs to score`
+              }
+              recognized={[...certResult.recognized, ...mentionedCerts]}
+              unrecognized={certResult.unrecognized}
+              addType={(term) => guessRefType(term)}
+              addingTerm={addingTerm}
+              onAdd={onAdd}
+              emptyText="No certifications detected in the filled blocks yet."
+            />
+
+            {/* Mentions are evidence the ad names the term, not a scored
+                requirement — shown only when the copy has any. */}
+            {mentionedSkills.length > 0 && (
+              <BuilderEntityGroup
+                icon={<Sparkles className="h-3.5 w-3.5 text-primary" />}
+                title="Mentioned in the copy"
+                hint="Named in the written blocks — not a scored requirement"
+                scoreLine="Not scored"
+                recognized={mentionedSkills}
+                unrecognized={[]}
+                addType={() => "skill"}
+                addingTerm={addingTerm}
+                onAdd={onAdd}
+                emptyText=""
+              />
             )}
           </div>
 
-          <BuilderEntityGroup
-            icon={<Users className="h-3.5 w-3.5 text-primary" />}
-            title="Job role"
-            hint="From the Job title dropdown"
-            recognized={
-              titleCanonical && draft.title.trim()
-                ? [{ canonical: titleCanonical, sample: draft.title.trim() }]
-                : []
-            }
-            unrecognized={draft.title.trim() && !titleCanonical ? [draft.title.trim()] : []}
-            addType={() => "job_role"}
-            addingTerm={addingTerm}
-            onAdd={onAdd}
-            emptyText="No job title selected yet."
-          />
-
-          <BuilderEntityGroup
-            icon={<Briefcase className="h-3.5 w-3.5 text-primary" />}
-            title="Skills"
-            hint="From the Screening Requirements panel"
-            scoreLine={
-              perSkill !== null
-                ? `${scoring.weights.skills} pts · ≈${perSkill.toFixed(2)} pts each`
-                : `${scoring.weights.skills} pts · add recognized skills to score`
-            }
-            recognized={skillsResult.recognized}
-            unrecognized={skillsResult.unrecognized}
-            addType={() => "skill"}
-            addingTerm={addingTerm}
-            onAdd={onAdd}
-            emptyText="No skills filled in Screening Requirements yet."
-          />
-
-          <BuilderEntityGroup
-            icon={<Clock className="h-3.5 w-3.5 text-primary" />}
-            title="Experience"
-            hint="Years of experience required"
-            scoreLine={`${scoring.weights.experience} pts · auto-given, not indicated`}
-            recognized={[]}
-            unrecognized={[]}
-            addType={() => "skill"}
-            addingTerm={addingTerm}
-            onAdd={onAdd}
-            emptyText="Not indicated — the builder has no experience field."
-          />
-
-          <BuilderEntityGroup
-            icon={<BookOpen className="h-3.5 w-3.5 text-primary" />}
-            title="Education"
-            hint="Minimum education level required"
-            scoreLine={`${scoring.weights.education} pts · auto-given, not indicated`}
-            recognized={[]}
-            unrecognized={[]}
-            addType={() => "skill"}
-            addingTerm={addingTerm}
-            onAdd={onAdd}
-            emptyText="Not indicated — the builder has no education field."
-          />
-
-          <BuilderEntityGroup
-            icon={<GraduationCap className="h-3.5 w-3.5 text-primary" />}
-            title="Certifications"
-            hint="Certification-like lines from the Qualifications block and Screening Requirements panel"
-            scoreLine={
-              perCert !== null
-                ? `${scoring.weights.certifications} pts · ≈${perCert.toFixed(2)} pts each`
-                : `${scoring.weights.certifications} pts · add recognized certs to score`
-            }
-            recognized={certResult.recognized}
-            unrecognized={certResult.unrecognized}
-            addType={(term) => guessRefType(term)}
-            addingTerm={addingTerm}
-            onAdd={onAdd}
-            emptyText="No certifications detected in the filled blocks yet."
-          />
-
-          <p className="rounded-md bg-secondary/40 p-3 text-[0.7rem] leading-relaxed text-muted-foreground">
-            Unrecognized terms are still published with the post — but resumes mentioning them will
-            be flagged for review until the term is added to the vocabulary with the + button.
-            Resumes need ≥{Math.round(scoring.coverageMin * 100)}% of required skills and score ≥{" "}
+          <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
+            Recognized terms match resumes. Unrecognized skill or certificate lines still publish
+            with the post, but flag resumes until added to the vocabulary with +. Resumes need ≥
+            {Math.round(scoring.coverageMin * 100)}% of required skills and score ≥
             {scoring.passingScore} to pass.
           </p>
         </>
@@ -1747,13 +1861,19 @@ function BuilderEntitiesCard({
 }
 
 /** One-click reveal of a requisition's justification note. */
-function RequisitionNote({ req, label = "View note" }: { req: Requisition; label?: string }) {
+function RequisitionNote({ req }: { req: Requisition }) {
   if (!req.justification) return null;
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button size="sm" variant="outline" className="h-8 w-full min-w-0 gap-1 px-2 text-xs">
-          <FileText className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{label}</span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 w-7 shrink-0 rounded-full border-border/80 bg-card p-0"
+          title={`View note for ${req.id}`}
+          aria-label={`View request note for ${req.id}`}
+        >
+          <FileText className="h-3.5 w-3.5" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 space-y-2 p-4 text-left">
@@ -1850,11 +1970,19 @@ const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
   { id: "info", label: "Job Info", hint: "Type, schedule, vacancies, salary" },
   /* Requirements sit above the prose: what the screener matches against is the
      first thing HR should settle, before writing the ad around it. */
-  { id: "skills", label: "Screening Requirements", hint: "Skills, certifications, education and experience the resume screener matches" },
+  {
+    id: "skills",
+    label: "Screening Requirements",
+    hint: "Skills, certifications, education and experience the resume screener matches",
+  },
   { id: "description", label: "Job Description", hint: "Short role pitch" },
   { id: "responsibilities", label: "Key Responsibilities", hint: "Bulleted duties" },
   { id: "qualifications", label: "Qualifications", hint: "Bulleted requirements" },
-  { id: "additional", label: "Additional Info", hint: "Perks, shift details, dress code (optional)" },
+  {
+    id: "additional",
+    label: "Additional Info",
+    hint: "Perks, shift details, dress code (optional)",
+  },
   { id: "instructions", label: "Application Instruction", hint: "How to apply" },
   { id: "about", label: "About Company", hint: "Company blurb" },
   { id: "picture", label: "Picture of Hiring", hint: "Template or uploaded image" },
@@ -1990,7 +2118,8 @@ const AI_LIMIT_CODES = new Set(["quota_day", "rate_minute", "daily_limit", "quot
 const AI_TONE_CLASS = {
   ready: "border-success/30 bg-success/10 text-success",
   busy: "border-primary/30 bg-primary/10 text-primary",
-  limit: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-400",
+  limit:
+    "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-400",
   off: "border-border bg-muted text-muted-foreground",
   muted: "border-border bg-muted text-muted-foreground",
 } as const;
@@ -2187,9 +2316,10 @@ type RequirementTemplateBulkRow = {
   value: string;
 };
 
-function parseRequirementTemplateBulk(
-  text: string,
-): { rows: RequirementTemplateBulkRow[]; templateMode: boolean } {
+function parseRequirementTemplateBulk(text: string): {
+  rows: RequirementTemplateBulkRow[];
+  templateMode: boolean;
+} {
   const rows: RequirementTemplateBulkRow[] = [];
   let templateMode = false;
   text.split(/\r?\n/).forEach((line) => {
@@ -2198,7 +2328,9 @@ function parseRequirementTemplateBulk(
     const parts = trimmed.split(",").map((p) => p.trim());
     if (parts.length >= 4) {
       const [rawTemplate, rawPosition, rawType, ...rest] = parts;
-      const entityType = (rawType ?? "").toLowerCase().replace(/\s+/g, "_") as ScreeningRequirementEntityType;
+      const entityType = (rawType ?? "")
+        .toLowerCase()
+        .replace(/\s+/g, "_") as ScreeningRequirementEntityType;
       const value = rest.join(",").trim();
       if (!rawTemplate || !value || !REQUIREMENT_TEMPLATE_ENTITY_TYPES.includes(entityType)) return;
       templateMode = true;
@@ -2207,7 +2339,9 @@ function parseRequirementTemplateBulk(
     }
     if (parts.length === 2) {
       const [rawType, ...rest] = parts;
-      const entityType = (rawType ?? "").toLowerCase().replace(/\s+/g, "_") as ScreeningRequirementEntityType;
+      const entityType = (rawType ?? "")
+        .toLowerCase()
+        .replace(/\s+/g, "_") as ScreeningRequirementEntityType;
       const value = rest.join(",").trim();
       if (!value || !REQUIREMENT_TEMPLATE_ENTITY_TYPES.includes(entityType)) return;
       rows.push({ templateName: null, positionRef: null, entityType, value });
@@ -2269,6 +2403,8 @@ export function RequirementTemplateManager({
   const [form, setForm] = useState<RequirementTemplateForm>(blankRequirementForm);
   const [itemType, setItemType] = useState<ScreeningRequirementEntityType>("skill");
   const [itemValue, setItemValue] = useState("");
+  /** True while the open entity value is a custom entry instead of a vocabulary pick. */
+  const [itemCustom, setItemCustom] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ApiRequirementTemplate | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -2308,6 +2444,7 @@ export function RequirementTemplateManager({
     setForm(blankRequirementForm);
     setItemType("skill");
     setItemValue("");
+    setItemCustom(false);
     setEditorOpen(true);
   };
 
@@ -2322,6 +2459,7 @@ export function RequirementTemplateManager({
     });
     setItemType("skill");
     setItemValue("");
+    setItemCustom(false);
     setEditorOpen(true);
   };
 
@@ -2379,7 +2517,9 @@ export function RequirementTemplateManager({
           const next = [...f.items];
           for (const row of rows) {
             const exists = next.some(
-              (i) => i.entity_type === row.entityType && i.value.toLowerCase() === row.value.toLowerCase(),
+              (i) =>
+                i.entity_type === row.entityType &&
+                i.value.toLowerCase() === row.value.toLowerCase(),
             );
             if (exists) {
               dupes += 1;
@@ -2392,7 +2532,9 @@ export function RequirementTemplateManager({
         });
         toast.success(`${added} entit${added === 1 ? "y" : "ies"} added to this template`, {
           description:
-            dupes > 0 ? `${dupes} duplicate(s) skipped.` : "Review the list below, then press Create template.",
+            dupes > 0
+              ? `${dupes} duplicate(s) skipped.`
+              : "Review the list below, then press Create template.",
         });
         return;
       }
@@ -2408,14 +2550,24 @@ export function RequirementTemplateManager({
       for (const group of groups.values()) {
         const templateName = group[0]!.templateName!.trim();
         const positionId = resolveBulkPositionId(group[0]!.positionRef);
-        const items = group.map((r) => ({ entity_type: r.entityType, value: r.value, required: true }));
+        const items = group.map((r) => ({
+          entity_type: r.entityType,
+          value: r.value,
+          required: true,
+        }));
         try {
           const existing = templates.find(
-            (t) => t.name.toLowerCase() === templateName.toLowerCase() && (t.position_id ?? null) === positionId,
+            (t) =>
+              t.name.toLowerCase() === templateName.toLowerCase() &&
+              (t.position_id ?? null) === positionId,
           );
           if (existing) {
-            const known = new Set(existing.items.map((i) => `${i.entity_type}|${i.value.toLowerCase()}`));
-            const fresh = items.filter((i) => !known.has(`${i.entity_type}|${i.value.toLowerCase()}`));
+            const known = new Set(
+              existing.items.map((i) => `${i.entity_type}|${i.value.toLowerCase()}`),
+            );
+            const fresh = items.filter(
+              (i) => !known.has(`${i.entity_type}|${i.value.toLowerCase()}`),
+            );
             if (fresh.length === 0) {
               skipped += 1;
               continue;
@@ -2425,7 +2577,14 @@ export function RequirementTemplateManager({
               position_id: existing.position_id,
               description: existing.description ?? null,
               active: existing.active,
-              items: [...existing.items.map((i) => ({ entity_type: i.entity_type, value: i.value, required: true })), ...fresh],
+              items: [
+                ...existing.items.map((i) => ({
+                  entity_type: i.entity_type,
+                  value: i.value,
+                  required: true,
+                })),
+                ...fresh,
+              ],
             });
             updated += 1;
           } else {
@@ -2443,7 +2602,8 @@ export function RequirementTemplateManager({
         }
       }
       toast.success(`${created} template(s) created${updated > 0 ? `, ${updated} updated` : ""}`, {
-        description: skipped > 0 ? `${skipped} group(s) skipped (duplicate or invalid).` : undefined,
+        description:
+          skipped > 0 ? `${skipped} group(s) skipped (duplicate or invalid).` : undefined,
       });
       setEditorOpen(false);
       onReload();
@@ -2523,26 +2683,23 @@ export function RequirementTemplateManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold">Templates by position</h3>
-          <p className="text-xs text-muted-foreground">
-            Reusable requirements you can apply to a job post in one click.
-          </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="h-9 pl-8 text-xs"
+            placeholder="Search templates…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
-        <Button size="sm" className="cursor-pointer" onClick={openCreate}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> New template
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
         <Select value={positionFilter} onValueChange={setPositionFilter}>
-          <SelectTrigger className="h-9 w-64 text-xs">
+          <SelectTrigger className="h-9 w-full text-xs sm:w-52">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All positions</SelectItem>
-            <SelectItem value="unassigned">Any position (not position-bound)</SelectItem>
+            <SelectItem value="unassigned">Any position</SelectItem>
             {positions
               .filter((p) => p.dbId !== undefined)
               .map((p) => (
@@ -2552,18 +2709,12 @@ export function RequirementTemplateManager({
               ))}
           </SelectContent>
         </Select>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            className="h-9 w-56 pl-8 text-xs"
-            placeholder="Search templates…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <span className="text-[0.7rem] text-muted-foreground">
+        <span className="shrink-0 text-[0.7rem] text-muted-foreground">
           {filtered.length} of {templates.length} template{templates.length === 1 ? "" : "s"}
         </span>
+        <Button size="sm" className="shrink-0 cursor-pointer" onClick={openCreate}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> New template
+        </Button>
       </div>
       {loading ? (
         <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-6 text-xs text-muted-foreground">
@@ -2579,7 +2730,7 @@ export function RequirementTemplateManager({
       ) : filtered.length === 0 ? (
         <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
           {templates.length === 0
-            ? "No requirement templates yet — create one so every job post for that position reuses the same screening requirements."
+            ? "No requirement templates yet."
             : "No templates match your filters."}
         </p>
       ) : (
@@ -2618,7 +2769,7 @@ export function RequirementTemplateManager({
                     }
                     onClick={() => onUseTemplate(template)}
                   >
-                    <FilePlus2 className="mr-1.5 h-3.5 w-3.5" /> Use in job post
+                    <FilePlus2 className="mr-1.5 h-3.5 w-3.5" /> Use
                   </Button>
                   <Button
                     size="sm"
@@ -2690,9 +2841,7 @@ export function RequirementTemplateManager({
                   ];
                 })}
                 {template.items.length === 0 && (
-                  <span className="text-[0.7rem] text-muted-foreground">
-                    No requirement entities in this template yet — edit it to add some.
-                  </span>
+                  <span className="text-[0.7rem] text-muted-foreground">No requirements yet.</span>
                 )}
               </div>
             </div>
@@ -2706,10 +2855,8 @@ export function RequirementTemplateManager({
               {editingId !== null ? "Edit requirement template" : "New requirement template"}
             </DialogTitle>
             <DialogDescription>
-              Pick the position this template belongs to, then add the requirement entities a resume
-              must satisfy. Applying the template to a job post seeds the Screening Requirements panel, the
-              Qualifications block and the structured education / experience levels the screening
-              scores against.
+              Requirements a resume must satisfy. Applying the template seeds the job post's
+              screening panel and qualification blocks.
             </DialogDescription>
           </DialogHeader>
 
@@ -2724,7 +2871,7 @@ export function RequirementTemplateManager({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Position (entity)</Label>
+                <Label className="text-xs">Position</Label>
                 <Select
                   value={form.positionId}
                   onValueChange={(v) => setForm({ ...form, positionId: v })}
@@ -2758,7 +2905,7 @@ export function RequirementTemplateManager({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label className="text-xs">Requirement entities</Label>
                 <label className="flex items-center gap-2 text-[0.7rem] text-muted-foreground">
-                  Active for the builder
+                  Active
                   <Switch
                     checked={form.active}
                     onCheckedChange={(v) => setForm({ ...form, active: v })}
@@ -2771,92 +2918,93 @@ export function RequirementTemplateManager({
                   onValueChange={(v) => {
                     setItemType(v as ScreeningRequirementEntityType);
                     setItemValue("");
+                    setItemCustom(false);
                   }}
                 >
-                  <SelectTrigger className="h-9 w-40 text-xs">
+                  <SelectTrigger className="h-9 w-32 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {REQUIREMENT_ENTITY_META.map((m) => (
                       <SelectItem key={m.value} value={m.value}>
-                        {m.label} ({refOptions[m.value]?.length ?? 0})
+                        {m.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Select
-                  value=""
-                  onValueChange={(v) => {
-                    if (v === "__custom__") {
-                      customInputRef.current?.focus();
-                      return;
-                    }
-                    addItem(itemType, v);
-                  }}
-                >
-                  <SelectTrigger className="h-9 min-w-0 flex-1 text-xs">
-                    <SelectValue
-                      placeholder={
-                        (refOptions[itemType] ?? []).length > 0
-                          ? `Pick from Reference Data — ${(refOptions[itemType] ?? []).length} available, or type below`
-                          : "No vocabulary for this type yet — type a custom value below"
+                {itemCustom || (refOptions[itemType] ?? []).length === 0 ? (
+                  <Input
+                    ref={customInputRef}
+                    className="h-9 min-w-0 flex-1 text-xs"
+                    placeholder={`Type a custom ${requirementEntityMeta(itemType).label.toLowerCase()}…`}
+                    value={itemValue}
+                    onChange={(e) => setItemValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && itemValue.trim()) {
+                        e.preventDefault();
+                        addItem(itemType, itemValue);
+                        setItemValue("");
                       }
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {(refOptions[itemType] ?? []).map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value="__custom__">+ Type a custom value below…</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-9 cursor-pointer"
-                  disabled={!itemValue.trim()}
+                    }}
+                  />
+                ) : (
+                  <Select
+                    value=""
+                    onValueChange={(v) => {
+                      if (v === "__custom__") {
+                        setItemCustom(true);
+                        setItemValue("");
+                        customInputRef.current?.focus();
+                        return;
+                      }
+                      addItem(itemType, v);
+                    }}
+                  >
+                    <SelectTrigger className="h-9 min-w-0 flex-1 text-xs">
+                      <SelectValue
+                        placeholder={`Pick or add a ${requirementEntityMeta(itemType).label.toLowerCase()}…`}
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {(refOptions[itemType] ?? []).map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__custom__">+ Type a custom value</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                {(itemCustom || (refOptions[itemType] ?? []).length === 0) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 shrink-0 cursor-pointer"
+                    disabled={!itemValue.trim()}
+                    onClick={() => {
+                      addItem(itemType, itemValue);
+                      setItemValue("");
+                    }}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Add
+                  </Button>
+                )}
+              </div>
+              {itemCustom && (
+                <button
+                  type="button"
+                  className="cursor-pointer text-[0.7rem] font-medium text-primary hover:underline"
                   onClick={() => {
-                    addItem(itemType, itemValue);
+                    setItemCustom(false);
                     setItemValue("");
                   }}
                 >
-                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Add entity
-                </Button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  ref={customInputRef}
-                  className="h-9 min-w-0 flex-1 text-xs"
-                  placeholder={
-                    itemType === "skill"
-                      ? "Or type a custom skill, e.g. Guest Recovery"
-                      : itemType === "job_role"
-                        ? "Or type a custom role, e.g. Night Auditor"
-                        : itemType === "certification"
-                          ? "Or type a custom cert, e.g. Barista NC II"
-                          : itemType === "education"
-                            ? "Or type a custom education, e.g. BS HRM"
-                            : "Or type a custom experience, e.g. 2+ Years"
-                  }
-                  value={itemValue}
-                  onChange={(e) => setItemValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && itemValue.trim()) {
-                      e.preventDefault();
-                      addItem(itemType, itemValue);
-                      setItemValue("");
-                    }
-                  }}
-                />
-              </div>
+                  Pick from vocabulary instead
+                </button>
+              )}
 
               <p className="text-[0.7rem] text-muted-foreground">
-                {requirementEntityMeta(itemType).appliesTo} · education / experience values matching{" "}
-                {EDUCATION_LEVEL_OPTIONS.join(" / ")} or {EXPERIENCE_LEVEL_OPTIONS.join(" / ")} fill
-                the job post&apos;s structured levels; any other value is added as a qualification
-                line.
+                These fill the job post&apos;s screening requirements and qualifications.
               </p>
 
               {suggestions.length > 0 && (
@@ -2880,8 +3028,7 @@ export function RequirementTemplateManager({
 
               {form.items.length === 0 ? (
                 <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[0.7rem] text-muted-foreground">
-                  No entities yet — add the skills, certifications, education and experience this
-                  role requires.
+                  No entities yet — add what this role requires.
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -2930,9 +3077,9 @@ export function RequirementTemplateManager({
                 </div>
               )}
             </div>
-            <div
+            <details
               className={cn(
-                "space-y-2 rounded-md border border-dashed p-3 transition-colors",
+                "rounded-md border border-dashed px-3 py-2 transition-colors",
                 bulkDragActive ? "border-primary bg-primary/10" : "border-border bg-muted/30",
               )}
               onDragOver={(e) => {
@@ -2953,11 +3100,13 @@ export function RequirementTemplateManager({
                 void handleTemplateBulkUpload(e.dataTransfer.files?.[0]);
               }}
             >
-              <Label className="flex items-center gap-1.5 text-xs">
+              <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium">
                 <Upload className="h-3.5 w-3.5" /> Bulk upload entities
-                {bulkSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-              </Label>
-              <div className="flex flex-wrap items-center gap-2">
+                {bulkSaving && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                )}
+              </summary>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Input
                   ref={bulkInputRef}
                   type="file"
@@ -2983,14 +3132,15 @@ export function RequirementTemplateManager({
                   <Download className="mr-1.5 h-3.5 w-3.5" /> Download sample
                 </Button>
               </div>
-              <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
-                Drag &amp; drop a <code className="rounded bg-muted px-1">.csv / .txt</code> file here, or
-                pick one. Entity lines (<code className="rounded bg-muted px-1">entity_type,value</code>)
-                append to this template; template lines (
-                <code className="rounded bg-muted px-1">template_name,position,entity_type,value</code>)
-                create whole templates. Download the sample for the exact format.
+              <p className="mt-1.5 text-[0.7rem] leading-relaxed text-muted-foreground">
+                Drop a <code className="rounded bg-muted px-1">.csv / .txt</code> file here or pick
+                one. <code className="rounded bg-muted px-1">entity_type,value</code> adds entities;{" "}
+                <code className="rounded bg-muted px-1">
+                  template_name,position,entity_type,value
+                </code>{" "}
+                creates templates.
               </p>
-            </div>
+            </details>
           </div>
 
           <DialogFooter>
@@ -3091,7 +3241,9 @@ function PosterThumb({
         aria-label={alt}
       >
         <Briefcase className="h-6 w-6 text-gold" />
-        <span className="font-display text-sm font-semibold text-foreground">Oxford Suites Makati</span>
+        <span className="font-display text-sm font-semibold text-foreground">
+          Oxford Suites Makati
+        </span>
         <span className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
           {alt}
         </span>
@@ -3144,7 +3296,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [apiDepartments, setApiDepartments] = useState<Department[]>([]);
   const [apiPositions, setApiPositions] = useState<Position[]>([]);
   const [salaryGrades, setSalaryGrades] = useState<
-    { salary_grade_id: number; code: string; title: string; min_salary: number | null; max_salary: number | null }[]
+    {
+      salary_grade_id: number;
+      code: string;
+      title: string;
+      min_salary: number | null;
+      max_salary: number | null;
+    }[]
   >([]);
 
   useEffect(() => {
@@ -3168,14 +3326,19 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             })),
           );
         }
-        const gradeById = new Map<number, { code: string; title: string; min_salary: number | null; max_salary: number | null }>();
+        const gradeById = new Map<
+          number,
+          { code: string; title: string; min_salary: number | null; max_salary: number | null }
+        >();
         if (gradeRes.status === "fulfilled") {
           const grades = (gradeRes.value?.data ?? []).map((g) => ({
             salary_grade_id: g.salary_grade_id,
             code: g.code,
             title: g.title,
-            min_salary: g.min_salary !== null && g.min_salary !== undefined ? Number(g.min_salary) : null,
-            max_salary: g.max_salary !== null && g.max_salary !== undefined ? Number(g.max_salary) : null,
+            min_salary:
+              g.min_salary !== null && g.min_salary !== undefined ? Number(g.min_salary) : null,
+            max_salary:
+              g.max_salary !== null && g.max_salary !== undefined ? Number(g.max_salary) : null,
           }));
           setSalaryGrades(grades);
           grades.forEach((g) => gradeById.set(g.salary_grade_id, g));
@@ -3191,7 +3354,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 p.salary_grade ||
                 (grade
                   ? `${grade.code} (₱${Number(grade.min_salary ?? 0).toLocaleString()} – ₱${Number(grade.max_salary ?? 0).toLocaleString()})`
-                  : p.salary_grade_code && (p.salary_grade_min !== null || p.salary_grade_max !== null)
+                  : p.salary_grade_code &&
+                      (p.salary_grade_min !== null || p.salary_grade_max !== null)
                     ? `${p.salary_grade_code} (₱${Number(p.salary_grade_min ?? 0).toLocaleString()} – ₱${Number(p.salary_grade_max ?? 0).toLocaleString()})`
                     : (p.salary_grade_code ?? ""));
               return {
@@ -3203,7 +3367,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 filled: p.filled_count,
                 /* Open slots from Core HCM (headcount - filled). Kept so the
                    builder can align the posting's vacancies with the request. */
-                vacancies: Math.max(0, (p.vacancies ?? p.headcount - p.filled_count)),
+                vacancies: Math.max(0, p.vacancies ?? p.headcount - p.filled_count),
                 salaryBand: band,
                 dbId: p.position_id,
                 departmentId: p.department_id,
@@ -3264,6 +3428,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   const [addOpen, setAddOpen] = useState(false);
   const [addStep, setAddStep] = useState<1 | 2>(1);
+  /* Which pipeline stage the preview result opens on. */
+  const [addStageTab, setAddStageTab] = useState("extraction");
   /**
    * Single smart upload box (Step 1): resume + supporting docs in any order.
    * Every file is auto-recognized on upload (rule + filename + content
@@ -3331,6 +3497,22 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   } | null>(null);
   /** True while the screening configuration is being saved. */
   const [savingConfig, setSavingConfig] = useState(false);
+  /** Per-position scoring overrides keyed by position_id string — loaded from
+   *  the backend and used to populate the Scoring tab when a position is picked. */
+  const [positionOverrides, setPositionOverrides] = useState<
+    Record<string, ScreeningConfiguration>
+  >({});
+  /** Which position the Scoring tab is editing: "general" = the fallback config
+   *  applied when no per-position override exists; a numeric string = a specific
+   *  Core HR position whose criteria can differ from the general defaults. */
+  const [scoringPositionId, setScoringPositionId] = useState<string>("general");
+  /** Snapshot of the general (all-position) config so switching from a position
+   *  back to "General" restores without a fresh API call. */
+  const [generalConfig, setGeneralConfig] = useState<{
+    criteria: { name: string; weight: number; enabled: boolean }[];
+    passing: number;
+    coverageMin: number;
+  } | null>(null);
   /** Vocabulary (Reference Data) lookup so template chips can show which
    *  terms the model already recognizes — loaded when the dialog opens. */
   const [refValues, setRefValues] = useState<Set<string>>(new Set());
@@ -3382,13 +3564,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       .list()
       .then((res) => {
         const set = new Set<string>();
-        const grouped: Record<ScreeningRequirementEntityType, { value: string; label: string }[]> = {
-          skill: [],
-          certification: [],
-          job_role: [],
-          education: [],
-          experience: [],
-        };
+        const grouped: Record<ScreeningRequirementEntityType, { value: string; label: string }[]> =
+          {
+            skill: [],
+            certification: [],
+            job_role: [],
+            education: [],
+            experience: [],
+          };
         (res.data ?? []).forEach((r) => {
           (r.aliases_json ?? [])
             .concat(r.canonical_value)
@@ -3398,7 +3581,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           if (!r.active) return;
           const bucket = grouped[r.data_type as ScreeningRequirementEntityType];
           if (!bucket) return;
-          if (bucket.some((o) => o.value.toLowerCase() === r.canonical_value.trim().toLowerCase())) return;
+          if (bucket.some((o) => o.value.toLowerCase() === r.canonical_value.trim().toLowerCase()))
+            return;
           bucket.push({ value: r.canonical_value, label: r.canonical_value });
         });
         (Object.keys(grouped) as ScreeningRequirementEntityType[]).forEach((k) =>
@@ -3414,15 +3598,31 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         const data = res.data;
         setNlpStatus(data.nlp_service);
         const effective = data.saved ?? data.effective;
-        setCriteria(
-          Object.entries(effective.criteria).map(([name, entry]) => ({
-            name,
-            weight: entry.weight,
-            enabled: entry.enabled,
-          })),
-        );
-        setPassing(effective.passing_score);
-        setCoverageMin(Math.round((effective.required_skills_coverage_min ?? 0.6) * 100));
+        const loadedCriteria = Object.entries(effective.criteria).map(([name, entry]) => ({
+          name,
+          weight: entry.weight,
+          enabled: entry.enabled,
+        }));
+        const loadedPassing = effective.passing_score;
+        const loadedCoverage = Math.round((effective.required_skills_coverage_min ?? 0.6) * 100);
+        setCriteria(loadedCriteria);
+        setPassing(loadedPassing);
+        setCoverageMin(loadedCoverage);
+        setGeneralConfig({
+          criteria: loadedCriteria,
+          passing: loadedPassing,
+          coverageMin: loadedCoverage,
+        });
+        // Per-position overrides — the UI lets HR pick a position to customise.
+        setPositionOverrides(data.position_overrides ?? {});
+        setScoringPositionId("general");
+        // Keep the builder's cached status in sync so Entities Indicated and
+        // Screening Requirements panels show the right scoring on the next flip.
+        setCachedScreeningStatus({
+          saved: data.saved,
+          effective: data.effective,
+          position_overrides: data.position_overrides ?? {},
+        });
       })
       .catch((e) => console.warn("Could not load screening configuration status:", e));
   }, [loadRequirementTemplates]);
@@ -3431,29 +3631,152 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     if (screeningOpen) loadScreeningStatus();
   }, [screeningOpen, loadScreeningStatus]);
 
-  /** Persists the HR screening configuration — it applies to every new
-   *  screening run through the NLP service (weights + thresholds). */
+  /** Switches the Scoring tab to a different position scope. Saves the current
+   *  form into the local overrides cache so switching back restores edits. */
+  const handleScoringPositionChange = useCallback(
+    (value: string) => {
+      // Snapshot current form into the cache for the outgoing scope.
+      const currentConfig: ScreeningConfiguration = {
+        criteria: Object.fromEntries(
+          criteria.map((c) => [c.name, { weight: c.weight, enabled: c.enabled }]),
+        ),
+        passing_score: passing,
+        required_skills_coverage_min: coverageMin / 100,
+      };
+      if (scoringPositionId === "general") {
+        setGeneralConfig({
+          criteria: [...criteria],
+          passing,
+          coverageMin,
+        });
+      } else {
+        setPositionOverrides((prev) => ({ ...prev, [scoringPositionId]: currentConfig }));
+      }
+
+      setScoringPositionId(value);
+
+      // Load the incoming scope's data into the form.
+      if (value === "general") {
+        if (generalConfig) {
+          setCriteria(generalConfig.criteria);
+          setPassing(generalConfig.passing);
+          setCoverageMin(generalConfig.coverageMin);
+        }
+      } else {
+        const override = positionOverrides[value];
+        if (override) {
+          setCriteria(
+            Object.entries(override.criteria).map(([name, entry]) => ({
+              name,
+              weight: entry.weight,
+              enabled: entry.enabled,
+            })),
+          );
+          setPassing(override.passing_score);
+          setCoverageMin(Math.round((override.required_skills_coverage_min ?? 0.6) * 100));
+        } else if (generalConfig) {
+          // No override yet — start from the general config as a base.
+          setCriteria(generalConfig.criteria.map((c) => ({ ...c })));
+          setPassing(generalConfig.passing);
+          setCoverageMin(generalConfig.coverageMin);
+        }
+      }
+    },
+    [criteria, passing, coverageMin, scoringPositionId, generalConfig, positionOverrides],
+  );
+
+  /** True when the scoring form is editing a per-position override (not the
+   *  general config) and that position already has a saved override. */
+  const hasPositionOverride =
+    scoringPositionId !== "general" && scoringPositionId in positionOverrides;
+
+  /** Persists the HR screening configuration — general or per-position. */
   const saveScreeningConfiguration = async () => {
     if (totalWeight !== 100) {
       toast.error(`Enabled criteria weights must total 100% — currently ${totalWeight}%.`);
       return;
     }
-    const configuration = {
+    const configuration: ScreeningConfiguration = {
       criteria: Object.fromEntries(
         criteria.map((c) => [c.name, { weight: c.weight, enabled: c.enabled }]),
       ),
       passing_score: passing,
       required_skills_coverage_min: coverageMin / 100,
     };
+    const posId = scoringPositionId !== "general" ? Number(scoringPositionId) : undefined;
+    const posTitle =
+      posId !== undefined
+        ? (knownPositions.find((p) => p.dbId === posId)?.title ?? `#${posId}`)
+        : undefined;
     setSavingConfig(true);
     try {
-      await screeningApi.configuration.save(configuration);
-      toast.success("Screening configuration saved — it applies to every new resume screening.");
+      const res = await screeningApi.configuration.save(configuration, posId);
+      if (posId !== undefined) {
+        setPositionOverrides((prev) => ({ ...prev, [String(posId)]: configuration }));
+        // Sync to the builder's cached status so Entities Indicated / Requirements
+        // update without a page reload.
+        setCachedScreeningStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                position_overrides: { ...prev.position_overrides, [String(posId)]: configuration },
+              }
+            : prev,
+        );
+      } else {
+        setGeneralConfig({ criteria: [...criteria], passing, coverageMin });
+        // Sync general config to builder cache.
+        setCachedScreeningStatus((prev) =>
+          prev ? { ...prev, saved: configuration, effective: configuration } : prev,
+        );
+      }
+      toast.success(
+        posTitle
+          ? `Scoring saved for "${posTitle}" — it applies to every new screening for this role.`
+          : "Screening configuration saved — it applies to every new resume screening.",
+      );
     } catch (e) {
       toast.error(
         e instanceof Error && e.message
           ? e.message
           : "The screening configuration could not be saved.",
+      );
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  /** Removes a per-position override so the role falls back to the general
+   *  config. Only enabled when a saved override exists for the selected position. */
+  const resetPositionOverride = async () => {
+    if (scoringPositionId === "general") return;
+    const posId = Number(scoringPositionId);
+    const posTitle = knownPositions.find((p) => p.dbId === posId)?.title ?? `#${posId}`;
+    setSavingConfig(true);
+    try {
+      await screeningApi.configuration.reset(posId);
+      setPositionOverrides((prev) => {
+        const next = { ...prev };
+        delete next[String(posId)];
+        return next;
+      });
+      // Sync to builder cache.
+      setCachedScreeningStatus((prev) => {
+        if (!prev) return prev;
+        const overrides = { ...prev.position_overrides };
+        delete overrides[String(posId)];
+        return { ...prev, position_overrides: overrides };
+      });
+      // Restore the form to the general config.
+      if (generalConfig) {
+        setCriteria(generalConfig.criteria.map((c) => ({ ...c })));
+        setPassing(generalConfig.passing);
+        setCoverageMin(generalConfig.coverageMin);
+      }
+      toast.success(`"${posTitle}" reset — it now inherits the general screening configuration.`);
+    } catch (e) {
+      toast.error(
+        e instanceof Error && e.message ? e.message : "The position override could not be removed.",
       );
     } finally {
       setSavingConfig(false);
@@ -3588,10 +3911,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             ...(matchedPosition.salaryGradeId
               ? { salaryGradeId: String(matchedPosition.salaryGradeId) }
               : {}),
-            ...(matchedPosition.salaryGradeMin !== null && matchedPosition.salaryGradeMin !== undefined
+            ...(matchedPosition.salaryGradeMin !== null &&
+            matchedPosition.salaryGradeMin !== undefined
               ? { salaryMin: String(matchedPosition.salaryGradeMin) }
               : {}),
-            ...(matchedPosition.salaryGradeMax !== null && matchedPosition.salaryGradeMax !== undefined
+            ...(matchedPosition.salaryGradeMax !== null &&
+            matchedPosition.salaryGradeMax !== undefined
               ? { salaryMax: String(matchedPosition.salaryGradeMax) }
               : {}),
           }
@@ -3603,7 +3928,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }));
     setAppliedTemplate(template);
     // Make sure the seeded blocks sit on the builder canvas and are active.
+    // A bare canvas (Screening Setup → “Use in job post” on a fresh builder)
+    // opens with the full component set, exactly like Start a job post.
     setBlocks((b) => {
+      if (b.length === 0) return fullBlocks;
       const needed = (["skills", "qualifications"] as BlockId[]).filter((id) => !b.includes(id));
       return needed.length ? [...b, ...needed] : b;
     });
@@ -3664,9 +3992,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       template.position_id !== null && template.position_id !== undefined
         ? knownPositions.find((p) => p.dbId === template.position_id)
         : null;
-    const positionLabel = pos
-      ? `${pos.title} — ${pos.department}`
-      : template.name;
+    const positionLabel = pos ? `${pos.title} — ${pos.department}` : template.name;
 
     const hasExistingContent =
       draft.skills.trim() !== "" ||
@@ -3674,11 +4000,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         .split("\n")
         .map((l) => l.trim())
         .filter(Boolean)
-        .some((l) =>
-          CERTIFICATION_LINE_RE.test(l) ||
-          EXPERIENCE_ROLE_LINE_RE.test(l) ||
-          EDUCATION_NOTE_LINE_RE.test(l) ||
-          EXPERIENCE_NOTE_LINE_RE.test(l),
+        .some(
+          (l) =>
+            CERTIFICATION_LINE_RE.test(l) ||
+            EXPERIENCE_ROLE_LINE_RE.test(l) ||
+            EDUCATION_NOTE_LINE_RE.test(l) ||
+            EXPERIENCE_NOTE_LINE_RE.test(l),
         );
 
     setScreeningOpen(false);
@@ -3841,16 +4168,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       .map((p) => p[0]?.toUpperCase() ?? "")
       .join("") || "AP";
 
-  /** Positions of the department currently selected in the wizard — deduplicated by title. */
-  const addPositions = useMemo(() => {
-    const filtered = knownPositions.filter((p) => p.department === addDept);
-    const seen = new Map<string, (typeof filtered)[number]>();
-    for (const p of filtered) {
-      if (!seen.has(p.title)) seen.set(p.title, p);
-    }
-    return Array.from(seen.values());
-  }, [knownPositions, addDept]);
-
   /** A posting accepts applicants only while Open, active, and not fully filled. */
   const isPostAvailable = (j: Job) =>
     j.active &&
@@ -3894,6 +4211,23 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       ),
     [jobList],
   );
+
+  /* The wizard only offers what an applicant can actually apply to: a
+     department with at least one open, unfilled post, and the positions of
+     it that still accept applicants. */
+  const addDepartments = useMemo(
+    () => knownDepartments.filter((d) => postingIndicator(d.name)),
+    [knownDepartments, postingIndicator],
+  );
+
+  const addPositions = useMemo(() => {
+    const seen = new Map<string, (typeof knownPositions)[number]>();
+    for (const p of knownPositions) {
+      if (p.department !== addDept || seen.has(p.title)) continue;
+      if (postingIndicator(addDept, p.title)) seen.set(p.title, p);
+    }
+    return Array.from(seen.values());
+  }, [knownPositions, addDept, postingIndicator]);
 
   const resetAddWizard = () => {
     setAddStep(1);
@@ -3942,8 +4276,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /** Super admin flow — free choice of any department & position. */
   const openAddApplicantFree = () => {
     setAddPresetJob(null);
-    const firstDept = knownDepartments[0]?.name ?? departments[0]?.name ?? "";
-    const firstPos = knownPositions.find((p) => p.department === firstDept)?.title ?? "";
+    const firstDept = addDepartments[0]?.name ?? "";
+    const firstPos =
+      knownPositions.find(
+        (p) => p.department === firstDept && postingIndicator(p.department, p.title),
+      )?.title ?? "";
     setAddDept(firstDept);
     setAddForm({ name: "", email: "", phone: "", address: "", position: firstPos });
     setAddStep(1);
@@ -4048,6 +4385,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       toast.success(
         `Screening complete — ${result.match_score ?? 0}% (${statusMeta[toUiStatus(result.screening_status)].label})`,
       );
+      setAddStageTab("extraction");
       setAddStep(2);
     } catch (e) {
       console.warn("Resume screening failed:", e);
@@ -4182,8 +4520,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [builderStarted, setBuilderStarted] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
-  const [confirmTemplateOpen, setConfirmTemplateOpen] = useState(false);
-  const [pendingTemplateJob, setPendingTemplateJob] = useState<Job | null>(null);
   /** Styled confirm before AI generation overwrites filled builder blocks. */
   const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
   /** Block awaiting delete-confirmation (only set when it holds user content). */
@@ -4192,11 +4528,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [skipRemoveConfirm, setSkipRemoveConfirm] = useState(false);
   /** Checkbox state inside the remove-confirm dialog. */
   const [removeForAll, setRemoveForAll] = useState(false);
-  const [templateSearch, setTemplateSearch] = useState("");
-  /** Content Templates opens with the builder — the saved-post list is the
-   *  offline fallback when the AI usage limit is spent, so hiding it behind a
-   *  click hid the exact path HR needs. Collapsing is still available. */
-  const [templatesOpen, setTemplatesOpen] = useState(true);
   const [savedSnapshot, setSavedSnapshot] = useState<string>(snapshotOf(blankDraft, []));
   /** Template the screening requirements on this post actually came from (provenance for the panel banner). Null when hand-typed or carried over. */
   const [appliedTemplate, setAppliedTemplate] = useState<ApiRequirementTemplate | null>(null);
@@ -4244,12 +4575,16 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [entityError, setEntityError] = useState<string | null>(null);
   /** Live scoring weights for the scoring reference — same lazy load. */
   const [entityScoring, setEntityScoring] = useState<BuilderScoringRef>(DEFAULT_BUILDER_SCORING);
+  /** Cached screening status so scoring can be recalculated when draft position changes. */
+  const [cachedScreeningStatus, setCachedScreeningStatus] = useState<{
+    saved: ScreeningConfiguration | null;
+    effective: ScreeningConfiguration;
+    position_overrides: Record<string, ScreeningConfiguration>;
+  } | null>(null);
   /** AI usage/limit snapshot behind the Generate with AI indicator. */
   const [aiUsage, setAiUsage] = useState<JobAiUsage | null>(null);
   /** Live countdown (seconds) until the AI limit resets — 0 when not blocked. */
   const [aiBlockedSeconds, setAiBlockedSeconds] = useState(0);
-  /** Content Templates palette — the fallback target when AI usage is used up. */
-  const templatesCardRef = useRef<HTMLDivElement | null>(null);
 
   /** Loads the live screening vocabulary the first time the card flips. */
   const loadEntityMapping = useCallback(() => {
@@ -4266,11 +4601,34 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       .finally(() => setEntityLoading(false));
     screeningApi.configuration
       .status()
-      .then((res) =>
-        setEntityScoring(builderScoringFromConfig(res.data.saved ?? res.data.effective)),
-      )
-      .catch(() => setEntityScoring(DEFAULT_BUILDER_SCORING));
+      .then((res) => {
+        const statusData = {
+          saved: res.data.saved,
+          effective: res.data.effective,
+          position_overrides: res.data.position_overrides ?? {},
+        };
+        setCachedScreeningStatus(statusData);
+        // Scoring will be derived from the draft position in the effect below.
+      })
+      .catch(() => {
+        setCachedScreeningStatus(null);
+        setEntityScoring(DEFAULT_BUILDER_SCORING);
+      });
   }, []);
+
+  /** Recalculates the builder scoring reference when the draft's position or
+   *  the cached screening status changes — so points reflect position overrides. */
+  useEffect(() => {
+    if (!cachedScreeningStatus) return;
+    const posId = draft.positionDbId;
+    const overrides = cachedScreeningStatus.position_overrides;
+    const posConfig =
+      posId !== null && posId !== undefined && String(posId) in overrides
+        ? overrides[String(posId)]
+        : null;
+    const effective = posConfig ?? cachedScreeningStatus.saved ?? cachedScreeningStatus.effective;
+    setEntityScoring(builderScoringFromConfig(effective));
+  }, [draft.positionDbId, cachedScreeningStatus]);
 
   const toggleBuilderFlip = () => {
     const next = !builderFlipped;
@@ -4401,14 +4759,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       (t) => t.active && (t.position_id ?? null) === positionId,
     );
     const existing =
-      forPosition.find((t) => t.name.trim().toLowerCase() === name.toLowerCase()) ??
-      forPosition[0];
+      forPosition.find((t) => t.name.trim().toLowerCase() === name.toLowerCase()) ?? forPosition[0];
 
     setCreatingTemplate(true);
     try {
       let saved: ApiRequirementTemplate;
       if (existing) {
-        const known = new Set(existing.items.map((i) => `${i.entity_type}|${i.value.toLowerCase()}`));
+        const known = new Set(
+          existing.items.map((i) => `${i.entity_type}|${i.value.toLowerCase()}`),
+        );
         const fresh = items.filter((i) => !known.has(`${i.entity_type}|${i.value.toLowerCase()}`));
         if (fresh.length === 0) {
           // Nothing new to fold in — re-saving would only bump updated_at.
@@ -4437,9 +4796,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         });
         saved = res.data;
         setAppliedTemplate(saved);
-        toast.success(`Added ${fresh.length} requirement${fresh.length === 1 ? "" : "s"} to “${saved.name}”`, {
-          description: "The existing template for this position was extended, not replaced.",
-        });
+        toast.success(
+          `Added ${fresh.length} requirement${fresh.length === 1 ? "" : "s"} to “${saved.name}”`,
+          {
+            description: "The existing template for this position was extended, not replaced.",
+          },
+        );
       } else {
         const res = await screeningApi.requirementTemplates.create({
           name,
@@ -4585,9 +4947,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
        page. Publishing is the only thing that changes that, and it is what the
        primary button does. */
     const keepPublished = Boolean(existing?.dbId);
-    const liveStatus: JobStatus = keepPublished
-      ? (existing?.status ?? "Draft")
-      : "Draft";
+    const liveStatus: JobStatus = keepPublished ? (existing?.status ?? "Draft") : "Draft";
     const liveActive = keepPublished ? (existing?.active ?? false) : false;
     /* Website is the only channel, so a save records it either way — the
        status above is what decides draft vs live. */
@@ -4695,7 +5055,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           return draftMin >= lo && draftMin <= hi;
         });
         const gradePick =
-          grades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ?? inRange ?? byMin[0];
+          grades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ??
+          inRange ??
+          byMin[0];
         if (!gradePick) {
           throw new Error("No salary grade exists — create one in Core HCM → Salary Grades first.");
         }
@@ -4890,8 +5252,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       vacancies: Number(draft.vacancies) || 1,
       /* Level chips: the scalar is the bar the applicant must clear, the list
          says the post accepts any of them. */
-      experience_level: weakestAcceptedLevel(draft.experienceLevels, EXPERIENCE_LEVEL_OPTIONS) ?? undefined,
-      education_level: weakestAcceptedLevel(draft.educationLevels, EDUCATION_LEVEL_OPTIONS) ?? undefined,
+      experience_level:
+        weakestAcceptedLevel(draft.experienceLevels, EXPERIENCE_LEVEL_OPTIONS) ?? undefined,
+      education_level:
+        weakestAcceptedLevel(draft.educationLevels, EDUCATION_LEVEL_OPTIONS) ?? undefined,
       experience_levels: draft.experienceLevels,
       education_levels: draft.educationLevels,
       blocks: wanted,
@@ -4934,9 +5298,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           .filter(Boolean)
           .filter((l) => !have.has(aiLineKey(l)));
         return {
-          text: [...current.split("\n").map((l) => l.trim()).filter(Boolean), ...fresh].join(
-            "\n",
-          ),
+          text: [
+            ...current
+              .split("\n")
+              .map((l) => l.trim())
+              .filter(Boolean),
+            ...fresh,
+          ].join("\n"),
           added: fresh.length,
           total: incoming.filter(Boolean).length,
         };
@@ -4962,16 +5330,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         report.push({
           block: "description",
           label: "Job Description",
-          detail: replaced
-            ? "replaced (your previous paragraph was overwritten)"
-            : "written",
+          detail: replaced ? "replaced (your previous paragraph was overwritten)" : "written",
           reused: [],
         });
       }
-      if (
-        wanted.includes("responsibilities" as BlockId) &&
-        generated.responsibilities?.length
-      ) {
+      if (wanted.includes("responsibilities" as BlockId) && generated.responsibilities?.length) {
         const m = mergeLines(next.responsibilities, generated.responsibilities);
         next.responsibilities = m.text;
         report.push({
@@ -5061,7 +5424,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           proseNames(term, skillsMap[term] ?? []),
         );
         addedSkills = [
-          ...new Set([...matched.filter((t) => knownSkills.has(normalizeEntityText(t))), ...fromProse]),
+          ...new Set([
+            ...matched.filter((t) => knownSkills.has(normalizeEntityText(t))),
+            ...fromProse,
+          ]),
         ].slice(0, MAX_AI_SKILL_TERMS);
       }
       if (addedSkills.length > 0) {
@@ -5143,13 +5509,25 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       if (aiEducation && !hasEducation) {
         next.educationLevels = [aiEducation];
         levelChanges.push(`education → ${aiEducation}`);
-      } else if (aiEducation && hasEducation && !draft.educationLevels.some((l) => normalizeEntityText(l) === normalizeEntityText(aiEducation))) {
+      } else if (
+        aiEducation &&
+        hasEducation &&
+        !draft.educationLevels.some(
+          (l) => normalizeEntityText(l) === normalizeEntityText(aiEducation),
+        )
+      ) {
         levelSuggestions.push(`education ${aiEducation}`);
       }
       if (aiExperience && !hasExperience) {
         next.experienceLevels = [aiExperience];
         levelChanges.push(`experience → ${aiExperience}`);
-      } else if (aiExperience && hasExperience && !draft.experienceLevels.some((l) => normalizeEntityText(l) === normalizeEntityText(aiExperience))) {
+      } else if (
+        aiExperience &&
+        hasExperience &&
+        !draft.experienceLevels.some(
+          (l) => normalizeEntityText(l) === normalizeEntityText(aiExperience),
+        )
+      ) {
         levelSuggestions.push(`experience ${aiExperience}`);
       }
       if (levelChanges.length > 0) {
@@ -5189,13 +5567,16 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       if (addedSkills.length) adopted.push(`${addedSkills.length} skill(s)`);
       if (addedCerts.length) adopted.push(`${addedCerts.length} certificate(s)`);
       if (levelChanges.length) adopted.push(levelChanges.join(", "));
-      toast.success(`AI draft ready for “${draft.title}” — ${report.length} block(s) written${viaNote}`, {
-        description: adopted.length
-          ? `Screening requirements adopted from Reference Data: ${adopted.join(" · ")}.${usageNote}`
-          : matched.length > 0
-            ? `Reused ${matched.length} vocabulary term(s): ${matched.slice(0, 4).join(", ")}${matched.length > 4 ? "…" : ""}.${usageNote}`
-            : `Review each block, then Save draft or Publish.${usageNote}`,
-      });
+      toast.success(
+        `AI draft ready for “${draft.title}” — ${report.length} block(s) written${viaNote}`,
+        {
+          description: adopted.length
+            ? `Screening requirements adopted from Reference Data: ${adopted.join(" · ")}.${usageNote}`
+            : matched.length > 0
+              ? `Reused ${matched.length} vocabulary term(s): ${matched.slice(0, 4).join(", ")}${matched.length > 4 ? "…" : ""}.${usageNote}`
+              : `Review each block, then Save draft or Publish.${usageNote}`,
+        },
+      );
     } catch (e) {
       const err = e as Error & { status?: number; payload?: JobDraftErrorPayload };
       const payload = err.payload;
@@ -5214,11 +5595,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           description: `${payload.message ?? "The AI usage is used up."}${
             seconds ? ` Resets in ${aiCountdown(seconds)}.` : ""
           }`,
-          action: {
-            label: "Use a template",
-            onClick: () =>
-              templatesCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
-          },
         });
         void loadAiUsage();
         return;
@@ -5281,7 +5657,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     // real text (drafts may stay partial via "Save draft"). Additional Info is
     // optional and never blocks publishing / updating. Missing blocks
     // are added to the canvas and focused so HR can fill them immediately.
-    const missingIds = REQUIRED_PUBLISH_BLOCKS.filter((id) => lines(blockText(draft, id)).length === 0);
+    const missingIds = REQUIRED_PUBLISH_BLOCKS.filter(
+      (id) => lines(blockText(draft, id)).length === 0,
+    );
     const missingLabels = missingIds.map(
       (id) => blockLibrary.find((b) => b.id === id)?.label ?? id,
     );
@@ -5303,7 +5681,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       setBlocks((b) => (b.includes("skills") ? b : [...b, "skills"]));
       setActiveBlock("skills");
       toast.error(`Add at least one skill in Screening Requirements before ${verb}.`, {
-        description: "Skills come from the position's requirement template or the vocabulary picker.",
+        description:
+          "Skills come from the position's requirement template or the vocabulary picker.",
       });
       return;
     }
@@ -5320,7 +5699,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         return;
       }
     }
-    const editingFilled = editingJobId ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0) : 0;
+    const editingFilled = editingJobId
+      ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0)
+      : 0;
     const editingDbId = editingJobId ? jobList.find((j) => j.id === editingJobId)?.dbId : undefined;
     const jobPayload: Job = {
       id:
@@ -5610,9 +5991,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         : null) ??
       knownPositions.find(
         (p) =>
-          (((departmentId !== undefined && p.departmentId === departmentId) ||
+          ((departmentId !== undefined && p.departmentId === departmentId) ||
             (p.departmentId === undefined && p.department === department)) &&
-            p.title === title),
+          p.title === title,
       );
     if (!position) return base;
     const grade = position.salaryGradeId
@@ -5683,39 +6064,16 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     toast.message(`Editing template for “${job.title}”`);
   };
 
-  const copyAndUseTemplate = (job: Job) => {
-    const seeded = jobToDraft(job);
-    const order = blocksForJob(job.blocks);
-    setDraft(seeded);
-    setBlocks(order);
-    /* A copy becomes a brand-new posting, so it starts unpublished. */
-    setEditingJobId(null);
-    setSourceReqId(null);
-    setLinkedReqId(null);
-    setMode("template");
-    setBuilderStarted(true);
-    /* A copy starts from Core HCM truth: salary band + open slots re-apply. */
-    setSalaryLocked(false);
-    setVacanciesLocked(false);
-    setSavedSnapshot(snapshotOf(seeded, order));
-    setTab("builder");
-    toast.message(`Copied “${job.title}” — publish as a new posting`);
-  };
-
   const convertRequisition = (reqId: string) => {
     const req = requisitions.find((r) => r.id === reqId);
     if (!req) return;
-    const seeded: Draft = seedFromPosition(
-      req.department,
-      req.position,
-      {
-        ...blankDraft,
-        title: req.position,
-        department: req.department,
-        vacancies: String(req.count),
-        description: `We are looking for ${req.count} ${req.position}(s) to join our ${req.department} team.`,
-      },
-    );
+    const seeded: Draft = seedFromPosition(req.department, req.position, {
+      ...blankDraft,
+      title: req.position,
+      department: req.department,
+      vacancies: String(req.count),
+      description: `We are looking for ${req.count} ${req.position}(s) to join our ${req.department} team.`,
+    });
     setDraft(seeded);
     setBlocks(fullBlocks);
     setEditingJobId(null);
@@ -5732,6 +6090,53 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setActiveBlock(id);
   };
   const removeBlock = (id: BlockId) => setBlocks((b) => b.filter((x) => x !== id));
+
+  /** One-line summary under a collapsed block so the canvas reads at a glance. */
+  const blockPreview = (id: BlockId): string => {
+    const meta = blockLibrary.find((b) => b.id === id)!;
+    const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    switch (id) {
+      case "title":
+        return (
+          [draft.department, draft.title].filter(Boolean).join(" · ") ||
+          "Choose a department and position"
+        );
+      case "info": {
+        const bits = [
+          draft.employmentType,
+          draft.schedule,
+          draft.vacancies
+            ? `${draft.vacancies} ${draft.vacancies === "1" ? "vacancy" : "vacancies"}`
+            : "",
+          draft.salaryMin || draft.salaryMax
+            ? `₱${draft.salaryMin || "—"}–${draft.salaryMax || "—"}`
+            : "",
+        ].filter(Boolean);
+        return bits.join(" · ") || meta.hint;
+      }
+      case "picture":
+        return posterFile || customPosterUrl ? "Image attached" : "No image attached";
+      case "skills": {
+        const skills = lines(draft.skills).length;
+        const reqs = lines(draft.qualifications).length;
+        if (!skills && !reqs) return "No screening requirements yet";
+        return [
+          skills ? count(skills, "skill") : "",
+          draft.educationLevels.length
+            ? count(draft.educationLevels.length, "education level")
+            : "",
+          draft.experienceLevels.length
+            ? count(draft.experienceLevels.length, "experience level")
+            : "",
+          reqs ? count(reqs, "qualification line") : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      default:
+        return lines(blockText(draft, id)).map((l) => l.replace(/^[-•*]\s*/, ""))[0] ?? meta.hint;
+    }
+  };
 
   /** True when removing this block would discard text the user entered. */
   const blockHasContent = (id: BlockId): boolean => {
@@ -5755,8 +6160,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       }));
       return;
     }
-    if (id === "info")
-      setDraft((d) => ({ ...d, salaryGradeId: "", salaryMin: "", salaryMax: "" }));
+    if (id === "info") setDraft((d) => ({ ...d, salaryGradeId: "", salaryMin: "", salaryMax: "" }));
     if (id === "picture") handlePosterRemove();
   };
 
@@ -5881,8 +6285,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   /* Position / Status / Salary / Filled / Posted / Actions — the "Published to"
      column went away with the channel badges (Website is the only channel). */
-  const listGridCols =
-    "md:grid-cols-[minmax(220px,2fr)_90px_150px_180px_130px_minmax(240px,auto)]";
+  const listGridCols = "md:grid-cols-[minmax(220px,2fr)_90px_150px_180px_130px_minmax(240px,auto)]";
 
   // Metric cards jump to the postings list with the matching filter applied.
   const focusPostings = (status: "all" | "Open" | "Closed", sortBy?: "filled" | "applicants") => {
@@ -5911,10 +6314,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setReqDept("all");
     setReqPage(1);
   };
-  // Requisitions use the same aligned-column treatment as the postings list view.
-  const reqGridCols =
-    "md:grid-cols-[minmax(130px,1.1fr)_106px_62px_88px_80px_86px_112px_96px_104px]";
-
   function ListSortHead({
     sortKey,
     children,
@@ -6106,10 +6505,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       knownPositions.find((p) => p.title === title)?.department ?? fallback;
     const postRows = filteredJobs
       .map((job) => ({ ...job, department: deptOfJob(job.title, job.department) }))
-      .sort(
-        (a, b) =>
-          a.department.localeCompare(b.department) || a.title.localeCompare(b.title),
-      );
+      .sort((a, b) => a.department.localeCompare(b.department) || a.title.localeCompare(b.title));
     const deptCount = new Set(postRows.map((j) => j.department)).size;
     return {
       title: "Recruitment Management Report",
@@ -6247,39 +6643,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     title: option.title,
     description: option.description,
     build: () => buildRecruitmentReport(option.id),
-    recordCount:
-      option.id === "requisitions" ? filteredRequisitions.length : filteredJobs.length,
+    recordCount: option.id === "requisitions" ? filteredRequisitions.length : filteredJobs.length,
   }));
 
   const salaryLine =
     draft.salaryMin || draft.salaryMax
       ? `${peso(Number(draft.salaryMin) || 0)} — ${peso(Number(draft.salaryMax) || 0)} a month`
       : "Salary to be discussed";
-
-  const renderRequestedNote = () =>
-    sourceReq ? (
-      <div className="space-y-2 rounded-md border border-border bg-secondary/30 p-3 text-xs">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="font-display text-sm font-semibold">Requested Note — {sourceReq.id}</p>
-          <Badge variant="outline" className={urgencyBadge(sourceReq.urgency)}>
-            {sourceReq.urgency} urgency
-          </Badge>
-        </div>
-        <p className="text-[0.7rem] text-muted-foreground">
-          {sourceReq.position} · {sourceReq.department} · {sourceReq.count} opening(s) · Requested{" "}
-          {sourceReq.requestedAt}
-        </p>
-        {sourceReq.justification && (
-          <p className="rounded-md bg-card p-3 text-xs italic leading-relaxed text-muted-foreground">
-            “{sourceReq.justification}”
-          </p>
-        )}
-      </div>
-    ) : (
-      <div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-        This posting wasn't sourced from a staffing request — no requested note on file.
-      </div>
-    );
 
   const posterImageUrl =
     customPosterUrl ??
@@ -6327,17 +6697,16 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.department, draft.title, draft.positionDbId, knownPositions, knownDepartments]);
 
-  /** Salary grade object currently selected in Job Info ("") = position grade. */  const draftGrade = useMemo(() => {
-    if (draft.salaryGradeId) {
-      return salaryGrades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ?? null;
-    }
-    if (draftPosition?.salaryGradeId) {
-      return (
-        salaryGrades.find((g) => g.salary_grade_id === draftPosition.salaryGradeId) ?? null
-      );
-    }
-    return null;
-  }, [draft.salaryGradeId, draftPosition, salaryGrades]);
+  /** Salary grade object currently selected in Job Info ("") = position grade. */ const draftGrade =
+    useMemo(() => {
+      if (draft.salaryGradeId) {
+        return salaryGrades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ?? null;
+      }
+      if (draftPosition?.salaryGradeId) {
+        return salaryGrades.find((g) => g.salary_grade_id === draftPosition.salaryGradeId) ?? null;
+      }
+      return null;
+    }, [draft.salaryGradeId, draftPosition, salaryGrades]);
 
   /** Core HCM band the draft should follow — the selected grade, else the position's. */
   const draftBand = useMemo(() => {
@@ -6372,9 +6741,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   /* A different grade/position is a new source of truth — re-arm the auto-fill
      so a stale manual override does not stick. */
-  const bandSourceRef = useRef(
-    draftBand ? `${draftBand.min}-${draftBand.max}` : null,
-  );
+  const bandSourceRef = useRef(draftBand ? `${draftBand.min}-${draftBand.max}` : null);
   useEffect(() => {
     const source = draftBand ? `${draftBand.min}-${draftBand.max}` : null;
     if (source !== bandSourceRef.current) {
@@ -6398,13 +6765,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const coreHcmVacancies = useMemo(() => {
     const req = sourceReqId ? requisitions.find((r) => r.id === sourceReqId) : undefined;
     if (req) {
-      return { count: Math.max(1, Number(req.count) || 1), source: `requisition ${req.id}` as const };
+      return {
+        count: Math.max(1, Number(req.count) || 1),
+        source: `requisition ${req.id}` as const,
+      };
     }
     if (draftPosition) {
       const open = Math.max(0, draftPosition.vacancies ?? 0);
       return {
         count: Math.max(1, open),
-        source: `Core HCM position (${draftPosition.headcount} headcount − ${draftPosition.filled} filled)` as const,
+        source:
+          `Core HCM position (${draftPosition.headcount} headcount − ${draftPosition.filled} filled)` as const,
       };
     }
     return null;
@@ -6503,9 +6874,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
        auto-apply. */
     const tpl =
       position?.dbId !== undefined && position?.dbId !== null
-        ? requirementTemplates.find(
+        ? (requirementTemplates.find(
             (t) => t.active && t.position_id !== null && t.position_id === position!.dbId,
-          ) ?? null
+          ) ?? null)
         : null;
     if (!tpl) {
       setAppliedTemplate(null);
@@ -6660,11 +7031,30 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   return (
     <div>
       {confirmDialog}
-      <PageHeader
-        title="Recruitment Management"
-        description="Job post builder with website preview, vacancy status and posting list."
-        actions={
-          <div className="flex items-center gap-2">
+      <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              {/* Solid briefcase with the handle punched out, so it reads as a
+                  filled mark like the Applicant Management icon. */}
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11 fill-current">
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M5 8.5h14a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3Zm3 0V7a3 3 0 0 1 3-3h2a3 3 0 0 1 3 3v1.5h-1.8V7a1.2 1.2 0 0 0-1.2-1.2h-2A1.2 1.2 0 0 0 9.8 7v1.5H8Z"
+                />
+              </svg>
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                Recruitment Management
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Post vacancies, review requisitions and build job posts.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start">
             <ReportMenu reports={recruitmentMenuOptions} />
             <Button
               size="icon"
@@ -6676,118 +7066,106 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               <Settings2 className="h-4 w-4" />
             </Button>
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {jobsLoading ? (
-        <StatCardsSkeleton count={4} />
+        <div
+          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          aria-busy="true"
+          aria-label="Loading recruitment metrics"
+        >
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={`skeleton-metric-${i}`}
+              className="flex items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5"
+            >
+              <Skeleton className="h-12 w-12 rounded-xl" />
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="h-full [&>*]:h-full">
-            <StatCard
-              label="Active Postings"
-              value={openCount}
-              hint="Currently accepting applications"
-              icon={Send}
-              tone="primary"
-              onClick={() => focusPostings("Open")}
-            />
-          </div>
-          <div className="h-full [&>*]:h-full">
-            <StatCard
-              label="Total Vacancies"
-              value={totalVacancies}
-              hint="Open headcount across roles"
-              icon={Briefcase}
-              tone="gold"
-              onClick={() => focusPostings("all")}
-            />
-          </div>
-          <div className="h-full [&>*]:h-full">
-            <StatCard
-              label="Pending Requisitions"
-              value={pendingRequisitions.length}
-              hint="Awaiting HR review & approval"
-              icon={FileText}
-              tone="success"
-              onClick={() => focusRequisitions({ status: "Pending" })}
-            />
-          </div>
-          <div className="h-full [&>*]:h-full">
-            <StatCard
-              label="High Urgency"
-              value={highUrgencyCount}
-              hint="Positions needing fast-track hiring"
-              icon={AlertTriangle}
-              tone="caution"
-              onClick={() => focusRequisitions({ urgency: "High" })}
-            />
-          </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              label: "Active Postings",
+              value: openCount,
+              hint: "Currently accepting applications",
+              icon: Send,
+              onClick: () => focusPostings("Open"),
+            },
+            {
+              label: "Total Vacancies",
+              value: totalVacancies,
+              hint: "Open headcount across roles",
+              icon: Briefcase,
+              onClick: () => focusPostings("all"),
+            },
+            {
+              label: "Pending Requisitions",
+              value: pendingRequisitions.length,
+              hint: "Awaiting HR review & approval",
+              icon: FileText,
+              onClick: () => focusRequisitions({ status: "Pending" }),
+            },
+            {
+              label: "High Urgency",
+              value: highUrgencyCount,
+              hint: "Positions needing fast-track hiring",
+              icon: AlertTriangle,
+              onClick: () => focusRequisitions({ urgency: "High" }),
+            },
+          ].map((m) => (
+            <button
+              key={m.label}
+              type="button"
+              onClick={m.onClick}
+              title={m.hint}
+              className="group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <m.icon className="h-6 w-6" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-muted-foreground">
+                  {m.label}
+                </span>
+                <span className="mt-1 block font-display text-[1.45rem] font-bold leading-none tabular-nums text-foreground">
+                  {m.value.toLocaleString()}
+                </span>
+              </span>
+            </button>
+          ))}
         </div>
       )}
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-6">
-        <WorkflowTabs
-          tabs={[
-            { value: "postings", label: "Vacancies & postings", icon: Briefcase },
-            { value: "builder", label: "Job post builder", icon: FilePlus2 },
-            {
-              value: "requisitions",
-              label: "Requisitions",
-              icon: Send,
-              count: pendingRequisitions.length,
-            },
-          ]}
-        />
+        <TabsList>
+          <TabsTrigger value="postings">
+            <Briefcase className="mr-1.5 h-3.5 w-3.5" /> Vacancies &amp; postings
+          </TabsTrigger>
+          <TabsTrigger value="builder">
+            <FilePlus2 className="mr-1.5 h-3.5 w-3.5" /> Job post builder
+          </TabsTrigger>
+          <TabsTrigger value="requisitions">
+            <Send className="mr-1.5 h-3.5 w-3.5" /> Requisitions
+            {pendingRequisitions.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[0.65rem] font-semibold tabular-nums text-muted-foreground">
+                {pendingRequisitions.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-        <TabsContent id="recruitment-postings" value="postings" className="mt-4 space-y-4">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                  <Briefcase className="h-5 w-5 text-primary" /> Vacancies &amp; Postings
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {jobsLoading
-                    ? "Loading job posts…"
-                    : `${pagedJobs.length} of ${listSort.sorted.length} job post${listSort.sorted.length === 1 ? "" : "s"} shown.`}
-                </p>
-              </div>
-              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-                <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant={viewMode === "list" ? "secondary" : "ghost"}
-                    className="h-7 w-7"
-                    onClick={() => setViewMode("list")}
-                    aria-label="List view"
-                  >
-                    <List className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant={viewMode === "grid" ? "secondary" : "ghost"}
-                    className="h-7 w-7"
-                    onClick={() => setViewMode("grid")}
-                    aria-label="Grid view"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </Button>
-                </div>
-                <Button onClick={() => setNewOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" /> New job post
-                </Button>
-                {role === "superadmin" && (
-                  <Button onClick={openAddApplicantFree}>
-                    <UserPlus className="mr-2 h-4 w-4" /> Add applicant
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-muted/20 p-2">
+        <TabsContent id="recruitment-postings" value="postings" className="mt-4">
+          <div className="rounded-xl border border-border/70 bg-card">
+            {/* One control bar: filters, view toggle and the posting actions.
+                The posting list lives inside the same bordered surface. */}
+            <div className="flex flex-wrap items-center gap-2 rounded-t-xl border-b border-border/70 bg-muted/20 p-2.5">
               <div className="relative w-full min-w-0 sm:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -6833,7 +7211,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <SelectItem value="year">This year</SelectItem>
                 </SelectContent>
               </Select>
-              {(search || statusFilter !== "all" || deptFilter !== "all" || dateFilter !== "all") && (
+              {(search ||
+                statusFilter !== "all" ||
+                deptFilter !== "all" ||
+                dateFilter !== "all") && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -6848,56 +7229,192 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   Clear filters
                 </Button>
               )}
-            </div>
-          </div>
-
-          <ListBody
-            className={cn(
-              viewMode === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2",
-            )}
-          >
-            {jobsLoading ? (
-              viewMode === "grid" ? (
-                <>
-                  {[0, 1, 2, 3, 4, 5].map((i) => (
-                    <Card key={i} className="border-border/70">
-                      <CardContent className="p-5">
-                        <CardSkeleton rows={5} />
-                      </CardContent>
-                    </Card>
-                  ))}
-                </>
-              ) : (
-                <div className="space-y-2">
-                  {[0, 1, 2, 3].map((i) => (
-                    <Card key={i} className="border-border/70">
-                      <CardContent className="p-5">
-                        <CardSkeleton rows={2} />
-                      </CardContent>
-                    </Card>
-                  ))}
+              <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+                <div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={viewMode === "list" ? "secondary" : "ghost"}
+                    className="h-7 w-7"
+                    onClick={() => setViewMode("list")}
+                    aria-label="List view"
+                    title="List view"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={viewMode === "grid" ? "secondary" : "ghost"}
+                    className="h-7 w-7"
+                    onClick={() => setViewMode("grid")}
+                    aria-label="Grid view"
+                    title="Grid view"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
                 </div>
-              )
-            ) : (
-              <>
-                {viewMode === "list" && (
-                  <div className="space-y-2 overflow-x-auto pb-1">
-                    <div
-                      className={cn(
-                        "hidden min-w-[1240px] items-center gap-3 rounded-md border border-transparent px-3 py-1.5 md:grid",
-                        listGridCols,
-                      )}
-                    >
-                      <ListSortHead sortKey="title">Position</ListSortHead>
-                      <ListSortHead sortKey="status">Status</ListSortHead>
-                      <ListSortHead sortKey="salary">Salary</ListSortHead>
-                      <ListSortHead sortKey="filled">Filled</ListSortHead>
-                      <ListSortHead sortKey="posted">Posted</ListSortHead>
-                      <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Actions
-                      </span>
+                <Button size="sm" className="h-9" onClick={() => setNewOpen(true)}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> New job post
+                </Button>
+                {role === "superadmin" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    onClick={openAddApplicantFree}
+                  >
+                    <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <ListBody
+              className={cn(
+                "p-3",
+                viewMode === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2",
+              )}
+            >
+              {jobsLoading ? (
+                viewMode === "grid" ? (
+                  <>
+                    {[0, 1, 2, 3, 4, 5].map((i) => (
+                      <Card key={i} className="border-border/70">
+                        <CardContent className="p-5">
+                          <CardSkeleton rows={5} />
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    {[0, 1, 2, 3].map((i) => (
+                      <Card key={i} className="border-border/70">
+                        <CardContent className="p-5">
+                          <CardSkeleton rows={2} />
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <>
+                  {viewMode === "list" && (
+                    <div className="space-y-2 overflow-x-auto pb-1">
+                      <div
+                        className={cn(
+                          "hidden min-w-[1240px] items-center gap-3 rounded-md border border-transparent px-3 py-1.5 md:grid",
+                          listGridCols,
+                        )}
+                      >
+                        <ListSortHead sortKey="title">Position</ListSortHead>
+                        <ListSortHead sortKey="status">Status</ListSortHead>
+                        <ListSortHead sortKey="salary">Salary</ListSortHead>
+                        <ListSortHead sortKey="filled">Filled</ListSortHead>
+                        <ListSortHead sortKey="posted">Posted</ListSortHead>
+                        <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Actions
+                        </span>
+                      </div>
+                      {pagedJobs.map((j) => {
+                        const pct = Math.min(
+                          100,
+                          Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
+                        );
+                        return (
+                          <Card
+                            key={j.id}
+                            className={cn(
+                              "md:min-w-[1240px]",
+                              j.active ? "border-success/40" : "border-border/70 opacity-80",
+                            )}
+                          >
+                            <CardContent
+                              className={cn("grid items-center gap-3 p-3 md:grid", listGridCols)}
+                            >
+                              <div className="min-w-0">
+                                <p className="eyebrow truncate">{j.department}</p>
+                                <h3 className="truncate font-display text-base font-semibold leading-tight">
+                                  {j.title}
+                                </h3>
+                                <p className="truncate text-[0.7rem] text-muted-foreground">
+                                  {j.employmentType} · {j.schedule}
+                                </p>
+                              </div>
+                              <div>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    j.status === "Open"
+                                      ? "border-success/30 bg-success/15 text-success"
+                                      : "border-border"
+                                  }
+                                >
+                                  {j.status}
+                                </Badge>
+                              </div>
+                              <p className="truncate text-xs font-medium">
+                                {peso(j.salaryMin)} — {peso(j.salaryMax)}
+                              </p>
+                              <div>
+                                <div className="flex justify-between text-[0.65rem] text-muted-foreground">
+                                  <span>
+                                    {j.filled}/{j.vacancies} filled
+                                  </span>
+                                  <span>{j.applicants} applicants</span>
+                                </div>
+                                <Progress value={pct} className="mt-1 h-1.5" />
+                              </div>
+                              <span
+                                className="whitespace-nowrap text-[0.7rem] text-muted-foreground"
+                                title={`Posted ${j.posted}`}
+                              >
+                                Posted {j.posted}
+                              </span>
+                              <div className="flex items-center justify-end gap-2">
+                                {role === "admin" && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => openAddApplicantForJob(j)}
+                                    disabled={!isPostAvailable(j)}
+                                    title={
+                                      isPostAvailable(j)
+                                        ? `Add applicant for ${j.title}`
+                                        : `Cannot add applicant — this posting is ${j.status === "Open" ? "full" : j.status}`
+                                    }
+                                  >
+                                    <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
+                                  Edit
+                                </Button>
+                                <Switch
+                                  checked={j.active}
+                                  onCheckedChange={() => toggleActive(j.id)}
+                                  aria-label={`Toggle posting for ${j.title}`}
+                                />
+                                {role === "superadmin" && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 border border-destructive/40 text-destructive hover:text-destructive"
+                                    onClick={() => deleteJob(j)}
+                                    aria-label={`Delete posting for ${j.title}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                     </div>
-                    {pagedJobs.map((j) => {
+                  )}
+                  {viewMode === "grid" &&
+                    pagedJobs.map((j) => {
                       const pct = Math.min(
                         100,
                         Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
@@ -6906,227 +7423,147 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         <Card
                           key={j.id}
                           className={cn(
-                            "md:min-w-[1240px]",
-                            j.active ? "border-success/40" : "border-border/70 opacity-80",
+                            "group flex h-full flex-col overflow-hidden border-border/70 transition-shadow hover:shadow-md",
+                            !j.active && "opacity-80",
                           )}
                         >
-                          <CardContent
-                            className={cn("grid items-center gap-3 p-3 md:grid", listGridCols)}
-                          >
-                            <div className="min-w-0">
-                              <p className="eyebrow truncate">{j.department}</p>
-                              <h3 className="truncate font-display text-base font-semibold leading-tight">
-                                {j.title}
-                              </h3>
-                              <p className="truncate text-[0.7rem] text-muted-foreground">
-                                {j.employmentType} · {j.schedule}
-                              </p>
-                            </div>
-                            <div>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  j.status === "Open"
-                                    ? "border-success/30 bg-success/15 text-success"
-                                    : "border-border"
-                                }
-                              >
-                                {j.status}
-                              </Badge>
-                            </div>
-                            <p className="truncate text-xs font-medium">
-                              {peso(j.salaryMin)} — {peso(j.salaryMax)}
-                            </p>
-                            <div>
-                              <div className="flex justify-between text-[0.65rem] text-muted-foreground">
-                                <span>
-                                  {j.filled}/{j.vacancies} filled
-                                </span>
-                                <span>{j.applicants} applicants</span>
-                              </div>
-                              <Progress value={pct} className="mt-1 h-1.5" />
-                            </div>
-                            <span
-                              className="whitespace-nowrap text-[0.7rem] text-muted-foreground"
-                              title={`Posted ${j.posted}`}
+                          <div className="border-b border-border/70 bg-secondary/30">
+                            {/* Fixed band framed on the poster's message: the
+                                window starts at the "We are hiring" headline and
+                                reaches the position printed under POSITION. */}
+                            <PosterThumb
+                              src={j.picture ?? null}
+                              fallbackSrc={`${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`}
+                              alt={`${j.title} hiring poster`}
+                              className="block h-64 w-full object-cover object-[center_30%]"
+                            />
+                          </div>
+
+                          <CardContent className="flex flex-1 flex-col p-4">
+                            <p className="eyebrow truncate">{j.department}</p>
+                            <h3
+                              className="mt-0.5 truncate font-display text-lg font-semibold leading-snug"
+                              title={j.title}
                             >
-                              Posted {j.posted}
-                            </span>
-                            <div className="flex items-center justify-end gap-2">
-                              {role === "admin" && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => openAddApplicantForJob(j)}
-                                  disabled={!isPostAvailable(j)}
-                                  title={
-                                    isPostAvailable(j)
-                                      ? `Add applicant for ${j.title}`
-                                      : `Cannot add applicant — this posting is ${j.status === "Open" ? "full" : j.status}`
-                                  }
+                              {j.title}
+                            </h3>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.7rem] text-muted-foreground">
+                              <span className="rounded-full border border-border/70 px-2 py-0.5">
+                                {j.employmentType}
+                              </span>
+                              <span className="rounded-full border border-border/70 px-2 py-0.5">
+                                {j.schedule}
+                              </span>
+                            </div>
+
+                            <p className="mt-3 text-sm font-medium tabular-nums">
+                              {peso(j.salaryMin)} <span className="text-muted-foreground">—</span>{" "}
+                              {peso(j.salaryMax)}
+                            </p>
+
+                            <div className="mt-3">
+                              <div className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
+                                <span>
+                                  <span className="font-semibold tabular-nums text-foreground">
+                                    {j.filled}
+                                  </span>{" "}
+                                  of {j.vacancies} filled
+                                </span>
+                                <span className="tabular-nums">{j.applicants} applicants</span>
+                              </div>
+                              <Progress value={pct} className="mt-1.5 h-1.5" />
+                            </div>
+
+                            <div className="mt-auto space-y-2 pt-4">
+                              <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-3">
+                                <span className="text-[0.7rem] text-muted-foreground">
+                                  Posted {j.posted}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                  <span className="text-[0.7rem] font-medium text-muted-foreground">
+                                    {j.active ? "Live" : "Paused"}
+                                  </span>
+                                  <Switch
+                                    checked={j.active}
+                                    onCheckedChange={() => toggleActive(j.id)}
+                                    aria-label={`Toggle posting for ${j.title}`}
+                                  />
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {role === "admin" && (
+                                  <Button
+                                    size="sm"
+                                    className="min-w-0 flex-1"
+                                    onClick={() => openAddApplicantForJob(j)}
+                                    disabled={!isPostAvailable(j)}
+                                    title={
+                                      isPostAvailable(j)
+                                        ? `Add applicant for ${j.title}`
+                                        : `Cannot add applicant — this posting is ${j.status === "Open" ? "full" : j.status}`
+                                    }
+                                  >
+                                    <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+                                    <span className="truncate">Add applicant</span>
+                                  </Button>
+                                )}
+                                {/* Edit and Delete stay one group, so the card
+                                    has one obvious place for row actions. */}
+                                <div
+                                  className={cn(
+                                    "flex items-center gap-1.5",
+                                    role === "admin" && "ml-auto",
+                                  )}
                                 >
-                                  <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
-                                </Button>
-                              )}
-                              <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
-                                Edit
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => copyAndUseTemplate(j)}
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </Button>
-                              <Switch
-                                checked={j.active}
-                                onCheckedChange={() => toggleActive(j.id)}
-                                aria-label={`Toggle posting for ${j.title}`}
-                              />
-                              {role === "superadmin" && (
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 border border-destructive/40 text-destructive hover:text-destructive"
-                                  onClick={() => deleteJob(j)}
-                                  aria-label={`Delete posting for ${j.title}`}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className={role === "admin" ? "" : "flex-1"}
+                                    onClick={() => editTemplate(j)}
+                                  >
+                                    Edit
+                                  </Button>
+                                  {role === "superadmin" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      onClick={() => deleteJob(j)}
+                                      aria-label={`Delete posting for ${j.title}`}
+                                      title={`Delete posting for ${j.title}`}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
                       );
                     })}
-                  </div>
-                )}
-                {viewMode === "grid" &&
-                  pagedJobs.map((j) => {
-                    const pct = Math.min(
-                      100,
-                      Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
-                    );
-                    return (
-                      <Card
-                        key={j.id}
-                        className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
-                      >
-                        <CardContent className="flex h-full flex-col p-5">
-                          <div className="min-h-0 flex-1">
-                            <PosterThumb
-                              src={j.picture}
-                              fallbackSrc={`${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`}
-                              alt={`${j.title} hiring poster`}
-                              className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
-                            />
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="eyebrow">{j.department}</p>
-                                <h3 className="font-display text-xl font-semibold">{j.title}</h3>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {j.employmentType} · {j.schedule}
-                                </p>
-                              </div>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  j.status === "Open"
-                                    ? "border-success/30 bg-success/15 text-success"
-                                    : "border-border"
-                                }
-                              >
-                                {j.status}
-                              </Badge>
-                            </div>
+                  {filteredJobs.length === 0 && (
+                    <div className="md:col-span-2 xl:col-span-3">
+                      <ListEmptyState placeholder="Search posted positions…" />
+                    </div>
+                  )}
+                </>
+              )}
+            </ListBody>
 
-                            <p className="mt-3 text-sm font-medium">
-                              {peso(j.salaryMin)} — {peso(j.salaryMax)}
-                            </p>
-
-                            <div className="mt-3 flex justify-between text-xs text-muted-foreground">
-                              <span>
-                                {j.filled} filled of {j.vacancies}
-                              </span>
-                              <span>{j.applicants} applicants</span>
-                            </div>
-                            <Progress value={pct} className="mt-2 h-2" />
-                          </div>
-                          {/* No reserved height here: it parked the buttons at
-                              the bottom of an over-tall band and left a long
-                              empty gap under the divider on every card. */}
-                          <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
-                            {role === "admin" && (
-                              <Button
-                                size="sm"
-                                onClick={() => openAddApplicantForJob(j)}
-                                disabled={!isPostAvailable(j)}
-                                title={
-                                  isPostAvailable(j)
-                                    ? `Add applicant for ${j.title}`
-                                    : `Cannot add applicant — this posting is ${j.status === "Open" ? "full" : j.status}`
-                                }
-                              >
-                                <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
-                              </Button>
-                            )}
-                            <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
-                              Edit Template
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => copyAndUseTemplate(j)}
-                            >
-                              <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy & Use Template
-                            </Button>
-                            {role === "superadmin" && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="border border-destructive/40 text-destructive hover:text-destructive"
-                                onClick={() => deleteJob(j)}
-                              >
-                                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                              </Button>
-                            )}
-                          </div>
-
-                          <div className="mt-3 flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">Posted {j.posted}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium">
-                                {j.active ? "Open" : "Closed"}
-                              </span>
-                              <Switch
-                                checked={j.active}
-                                onCheckedChange={() => toggleActive(j.id)}
-                                aria-label={`Toggle posting for ${j.title}`}
-                              />
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                {filteredJobs.length === 0 && (
-                  <div className="md:col-span-2 xl:col-span-3">
-                    <ListEmptyState placeholder="Search posted positions…" />
-                  </div>
-                )}
-              </>
-            )}
-          </ListBody>
-
-          <TablePagination
-            page={safePage}
-            pageCount={pageCount}
-            from={filteredJobs.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}
-            to={Math.min(safePage * PAGE_SIZE, filteredJobs.length)}
-            total={filteredJobs.length}
-            label="postings"
-            showRangeLabel={false}
-            onPageChange={setPage}
-          />
+            <div className="border-t border-border/70 px-3 py-2">
+              <TablePagination
+                page={safePage}
+                pageCount={pageCount}
+                from={filteredJobs.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}
+                to={Math.min(safePage * PAGE_SIZE, filteredJobs.length)}
+                total={filteredJobs.length}
+                label="postings"
+                showRangeLabel={false}
+                onPageChange={setPage}
+              />
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="requisitions" className="mt-4">
@@ -7205,278 +7642,228 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       ))}
                     </SelectContent>
                   </Select>
-                  <ReportMenu
-                    report={() => buildRequisitionsReport()}
-                    recordCount={filteredRequisitions.length}
-                    buttonClassName="h-9 w-full whitespace-nowrap md:w-auto"
-                  />
+                  {(reqSearch ||
+                    reqStatus !== "all" ||
+                    reqDept !== "all" ||
+                    reqUrgency !== "all") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="col-span-2 h-9 px-2 text-xs text-muted-foreground md:col-span-1"
+                      onClick={() => {
+                        setReqSearch("");
+                        setReqStatus("all");
+                        setReqDept("all");
+                        setReqUrgency("all");
+                        setReqPage(1);
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
                 </div>
               </div>
-              <ListBody className="mt-4 space-y-2 overflow-x-auto">
-                {reqsLoading && requisitions.length === 0 ? (
-                  <Card className="border-border/70">
-                    <CardContent className="p-5">
-                      <CardSkeleton rows={5} />
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <>
-                    <div
-                      className={cn(
-                        "hidden items-center gap-2 px-3 py-1.5 md:grid md:min-w-[960px]",
-                        reqGridCols,
-                      )}
-                    >
-                      <RequisitionSortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle}>
-                        Ref Number
-                      </RequisitionSortHead>
-                      <RequisitionSortHead
-                        sortKey="department"
-                        sort={reqSort.sort}
-                        onSort={reqSort.toggle}
-                      >
-                        Department
-                      </RequisitionSortHead>
-                      <RequisitionSortHead
-                        sortKey="count"
-                        sort={reqSort.sort}
-                        onSort={reqSort.toggle}
-                      >
-                        Openings
-                      </RequisitionSortHead>
-                      <RequisitionSortHead
-                        sortKey="requestedAt"
-                        sort={reqSort.sort}
-                        onSort={reqSort.toggle}
-                      >
-                        Requested
-                      </RequisitionSortHead>
-                      <RequisitionSortHead
-                        sortKey="urgency"
-                        sort={reqSort.sort}
-                        onSort={reqSort.toggle}
-                      >
-                        Urgency
-                      </RequisitionSortHead>
-                      <RequisitionSortHead
-                        sortKey="status"
-                        sort={reqSort.sort}
-                        onSort={reqSort.toggle}
-                      >
-                        Status
-                      </RequisitionSortHead>
-                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Set status
-                      </span>
-                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Note
-                      </span>
-                      <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Job post
-                      </span>
-                    </div>
-                    {visibleRequisitions.map((r) => (
-                      <Card key={r.id} className="border-border/70">
-                        <CardContent
-                          className={cn(
-                            "grid grid-cols-2 items-center gap-2 px-3 py-2 md:min-w-[960px]",
-                            reqGridCols,
-                          )}
-                        >
-                          <div className="col-span-2 flex min-w-0 items-center gap-2 md:col-span-1">
-                            <span className="eyebrow shrink-0">{r.id}</span>
-                            <span className="truncate text-sm font-semibold leading-tight">
-                              {r.position}
-                            </span>
-                          </div>
-                          <p className="truncate text-sm text-muted-foreground">{r.department}</p>
-                          <p className="text-xs font-medium">
-                            <span className="text-muted-foreground md:hidden">Openings: </span>
-                            {r.count}
-                          </p>
-                          <p className="truncate text-[0.7rem] text-muted-foreground">
-                            {r.requestedAt}
-                          </p>
-                          <div>
-                            <Badge variant="outline" className={urgencyBadge(r.urgency)}>
-                              {r.urgency}
-                            </Badge>
-                          </div>
-                          <div>
-                            <Badge
-                              variant="outline"
-                              className={
-                                r.status === "Done"
-                                  ? "border-success/30 bg-success/15 text-success"
-                                  : r.status === "Converted"
-                                    ? "border-border bg-muted text-muted-foreground"
-                                    : "border-caution/40 bg-caution/15 text-caution"
-                              }
-                            >
-                              {r.status}
-                            </Badge>
-                          </div>
-                          <div>
-                            {r.status === "Converted" ? (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            ) : (
-                              <Select
-                                value={r.status}
-                                onValueChange={(v) =>
-                                  requisitionStore.update(r.id, {
-                                    status: v as Requisition["status"],
-                                  })
+              <div className="mt-4">
+                <ListBody>
+                  <Table className="min-w-[880px] text-xs">
+                    <TableHeader>
+                      <TableRow className="border-border/50 hover:bg-transparent">
+                        <TableHead className="w-[22%]">
+                          <RequisitionSortHead
+                            sortKey="position"
+                            sort={reqSort.sort}
+                            onSort={reqSort.toggle}
+                          >
+                            Requisition
+                          </RequisitionSortHead>
+                        </TableHead>
+                        <TableHead className="w-[15%]">
+                          <RequisitionSortHead
+                            sortKey="department"
+                            sort={reqSort.sort}
+                            onSort={reqSort.toggle}
+                          >
+                            Department
+                          </RequisitionSortHead>
+                        </TableHead>
+                        <TableHead className="w-[9%]">
+                          <RequisitionSortHead
+                            sortKey="count"
+                            sort={reqSort.sort}
+                            onSort={reqSort.toggle}
+                          >
+                            Openings
+                          </RequisitionSortHead>
+                        </TableHead>
+                        <TableHead className="w-[12%]">
+                          <RequisitionSortHead
+                            sortKey="requestedAt"
+                            sort={reqSort.sort}
+                            onSort={reqSort.toggle}
+                          >
+                            Requested
+                          </RequisitionSortHead>
+                        </TableHead>
+                        <TableHead className="w-[10%]">
+                          <RequisitionSortHead
+                            sortKey="urgency"
+                            sort={reqSort.sort}
+                            onSort={reqSort.toggle}
+                          >
+                            Urgency
+                          </RequisitionSortHead>
+                        </TableHead>
+                        <TableHead className="w-[10%]">
+                          <RequisitionSortHead
+                            sortKey="status"
+                            sort={reqSort.sort}
+                            onSort={reqSort.toggle}
+                          >
+                            Status
+                          </RequisitionSortHead>
+                        </TableHead>
+                        <TableHead className="w-[22%] text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reqsLoading && requisitions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="py-6">
+                            <CardSkeleton rows={5} />
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredRequisitions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="py-10 text-center">
+                            <ListEmptyState subject="requisitions" />
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        visibleRequisitions.map((r) => (
+                          <TableRow key={r.id}>
+                            <TableCell className="max-w-0">
+                              <p
+                                className="truncate text-sm font-semibold leading-tight text-foreground"
+                                title={r.position}
+                              >
+                                {r.position}
+                              </p>
+                              <p className="eyebrow mt-0.5">{r.id}</p>
+                            </TableCell>
+                            <TableCell className="max-w-0">
+                              <p className="truncate text-muted-foreground" title={r.department}>
+                                {r.department}
+                              </p>
+                            </TableCell>
+                            <TableCell className="tabular-nums">{r.count}</TableCell>
+                            <TableCell className="whitespace-nowrap text-muted-foreground">
+                              {r.requestedAt}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={urgencyBadge(r.urgency)}>
+                                {r.urgency}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  r.status === "Done"
+                                    ? "border-success/30 bg-success/15 text-success"
+                                    : r.status === "Converted"
+                                      ? "border-border bg-muted text-muted-foreground"
+                                      : "border-caution/40 bg-caution/15 text-caution"
                                 }
                               >
-                                <SelectTrigger className="h-8 w-full text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Pending">Pending</SelectItem>
-                                  <SelectItem value="Done">Mark as Done</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            )}
-                          </div>
-                          <div className="col-span-2 flex min-w-0 items-center md:col-span-1">
-                            <RequisitionNote req={r} />
-                          </div>
-                          <div className="col-span-2 flex items-center justify-end md:col-span-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 gap-1.5 px-2 text-xs"
-                              title="Convert to job post"
-                              onClick={() => convertRequisition(r.id)}
-                            >
-                              <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-                              Convert
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-
-                    {filteredRequisitions.length === 0 && <ListEmptyState subject="requisitions" />}
-                  </>
-                )}
-              </ListBody>
-              <TablePagination
-                page={reqPageSafe}
-                pageCount={reqPageCount}
-                from={filteredRequisitions.length === 0 ? 0 : (reqPageSafe - 1) * REQ_PER_PAGE + 1}
-                to={Math.min(reqPageSafe * REQ_PER_PAGE, filteredRequisitions.length)}
-                total={filteredRequisitions.length}
-                label="requisitions"
-                showRangeLabel={false}
-                onPageChange={setReqPage}
-              />
+                                {r.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                <RequisitionNote req={r} />
+                                {r.status === "Converted" ? (
+                                  <span className="text-[0.68rem] text-muted-foreground">
+                                    Job post created
+                                  </span>
+                                ) : (
+                                  <Select
+                                    value={r.status}
+                                    onValueChange={(v) =>
+                                      requisitionStore.update(r.id, {
+                                        status: v as Requisition["status"],
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger
+                                      className="h-7 w-[108px] rounded-full border-border/80 bg-card px-2.5 text-[0.65rem]"
+                                      title="Set requisition status"
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Pending">Pending</SelectItem>
+                                      <SelectItem value="Done">Mark as Done</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 cursor-pointer gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-2.5 text-[0.65rem]"
+                                  title="Convert to job post"
+                                  onClick={() => convertRequisition(r.id)}
+                                >
+                                  <SquareArrowOutUpRight className="h-3 w-3" />
+                                  Convert
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </ListBody>
+                <TablePagination
+                  page={reqPageSafe}
+                  pageCount={reqPageCount}
+                  from={
+                    filteredRequisitions.length === 0 ? 0 : (reqPageSafe - 1) * REQ_PER_PAGE + 1
+                  }
+                  to={Math.min(reqPageSafe * REQ_PER_PAGE, filteredRequisitions.length)}
+                  total={filteredRequisitions.length}
+                  label="requisitions"
+                  showRangeLabel={false}
+                  onPageChange={setReqPage}
+                />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="builder" className="mt-4">
           {!builderStarted ? (
-            <div className="flex min-h-[500px] w-full flex-col items-center justify-center rounded-2xl border border-border/80 bg-card p-8 sm:p-12 text-center shadow-xs">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
-                <FilePlus2 className="h-8 w-8" />
-              </div>
-              <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">
-                Job Post Builder
+            <div className="flex min-h-[420px] w-full flex-col items-center justify-center rounded-xl border border-border/70 bg-card p-8 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <FilePlus2 className="h-6 w-6" />
+              </span>
+              <h2 className="mt-4 font-display text-2xl font-semibold tracking-tight">
+                Job post builder
               </h2>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Compose, preview, and publish hotel job postings with modular content blocks,
-                Gemini-powered drafting, and real-time candidate view parity.
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                Pick a department and position, then write the post beside a live website preview.
               </p>
-
-              <div className="mt-8 grid w-full max-w-2xl gap-4 sm:grid-cols-2 text-left">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
-                    setPendingPosition("");
-                    setPendingPositionDbId(null);
-                    setDeptDialogOpen(true);
-                  }}
-                  className="group flex flex-col justify-between rounded-xl border border-border/80 bg-background/60 p-5 transition-all hover:border-primary hover:bg-primary/5 hover:shadow-sm cursor-pointer"
-                >
-                  <div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground mb-3 group-hover:scale-105 transition-transform">
-                      <Plus className="h-5 w-5" />
-                    </div>
-                    <h3 className="font-display text-base font-semibold text-foreground">
-                      Start from scratch
-                    </h3>
-                    <p className="mt-1 text-xs text-muted-foreground leading-normal">
-                      Select a department and position from the hotel structure to create a fresh posting.
-                    </p>
-                  </div>
-                  <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
-                    Select role & build <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
-                  </span>
-                </button>
-
-                <div className="flex flex-col justify-between rounded-xl border border-border/80 bg-background/60 p-5">
-                  <div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gold/20 text-gold mb-3">
-                      <Copy className="h-5 w-5" />
-                    </div>
-                    <h3 className="font-display text-base font-semibold text-foreground">
-                      Use existing template
-                    </h3>
-                    <p className="mt-1 text-xs text-muted-foreground leading-normal">
-                      Clone an existing job posting's responsibilities, requirements, and benefits.
-                    </p>
-                  </div>
-                  <div className="mt-4">
-                    {jobList.length > 0 ? (
-                      <Select
-                        onValueChange={(id) => {
-                          const found = jobList.find((j) => String(j.id) === id);
-                          if (found) copyAndUseTemplate(found);
-                        }}
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Choose a posting..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {jobList.map((j) => (
-                            <SelectItem key={j.id} value={String(j.id)}>
-                              {j.title} ({j.department})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">No postings created yet.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-8 grid w-full max-w-2xl grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border/70 pt-6 text-left">
-                <div className="flex items-start gap-2.5">
-                  <Sparkles className="h-4 w-4 shrink-0 text-gold mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">AI Drafting</p>
-                    <p className="text-[0.68rem] text-muted-foreground">Auto-generates 6 sections in seconds</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">Screening Sync</p>
-                    <p className="text-[0.68rem] text-muted-foreground">Grounded in ATS skills & credentials</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <Eye className="h-4 w-4 shrink-0 text-primary mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">Live Careers Preview</p>
-                    <p className="text-[0.68rem] text-muted-foreground">Instant side-by-side candidate view</p>
-                  </div>
-                </div>
-              </div>
+              <Button
+                className="mt-6"
+                onClick={() => {
+                  setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
+                  setPendingPosition("");
+                  setPendingPositionDbId(null);
+                  setDeptDialogOpen(true);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" /> Start a job post
+              </Button>
             </div>
           ) : (
             <div className="space-y-3">
@@ -7520,156 +7907,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </button>
               </div>
 
-              {/* All three columns stretch to the tallest one so the palette,
-                  canvas and preview share a top and bottom edge. */}
-              <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_minmax(340px,420px)] 2xl:grid-cols-[240px_minmax(0,1fr)_480px]">
-                {/* Component palette */}
-                <Card
-                  ref={templatesCardRef}
-                  /* xl:h-0 + xl:min-h-full: contributes nothing to the row height,
-                     so the palette is capped at the canvas card's height and the
-                     template list scrolls inside it instead of stretching the page
-                     past "Edit Your Job Post". */
-                  className="flex flex-col border-border/70 xl:h-0 xl:min-h-full"
-                >
-                  <CardContent className="flex h-full flex-col p-3">
-                    <p className="eyebrow mb-2 font-bold">Add Components</p>
-                    {/* shrink-0: when the canvas card is short these stay whole and
-                        the template list below absorbs the shortfall instead. */}
-                    <div className="shrink-0 space-y-1.5">
-                      {blockLibrary.map((b) => (
-                        <div
-                          key={b.id}
-                          draggable
-                          onDragStart={() => setDragging(b.id)}
-                          onDragEnd={() => setDragging(null)}
-                          onClick={() => addBlock(b.id)}
-                          className={`flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-[0.7rem] transition ${
-                            has(b.id)
-                              ? "border-success/30 bg-success/5 opacity-60"
-                              : "border-border hover:border-primary/40"
-                          }`}
-                        >
-                          {has(b.id) ? (
-                            <Check
-                              className="h-3 w-3 shrink-0 text-success"
-                              aria-label="Already on the canvas"
-                            />
-                          ) : (
-                            <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
-                          )}
-                          <span className="font-semibold">{b.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="mt-3 text-[0.65rem] text-muted-foreground">
-                      Drag onto the canvas to reorder — the arrangement is saved with the post. Click
-                      to add a block you removed.
-                    </p>
-
-                    <div className="mt-4 flex min-h-0 flex-1 flex-col border-t border-border pt-3">
-                      <button
-                        type="button"
-                        onClick={() => setTemplatesOpen((v) => !v)}
-                        className="flex w-full items-center justify-between gap-2 text-left"
-                        aria-expanded={templatesOpen}
-                      >
-                        <span className="eyebrow font-bold">Content Templates</span>
-                        <span className="flex items-center gap-1 text-[0.65rem] text-muted-foreground">
-                          {jobList.length} saved
-                          <ChevronDown
-                            className={`h-3.5 w-3.5 transition-transform ${templatesOpen ? "rotate-180" : ""}`}
-                          />
-                        </span>
-                      </button>
-                      {templatesOpen && (
-                    <div className="mt-3 flex min-h-0 flex-1 flex-col space-y-3">
-                      <div className="relative">
-                        <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          placeholder="Search templates..."
-                          value={templateSearch}
-                          onChange={(e) => setTemplateSearch(e.target.value)}
-                          className="h-7 pl-7 text-xs"
-                        />
-                      </div>
-                      {/* No height cap: the palette card stretches with the
-                          canvas, so expanding a long component made the card
-                          tall while the list stopped at max-h-64 and left dead
-                          space under the last template. flex-1 + overflow-y-auto
-                          fills the card to its bottom edge and still scrolls
-                          when the card itself is short. */}
-                      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-                        {(() => {
-                          const q = templateSearch.trim().toLowerCase();
-                          const filtered = q
-                            ? jobList.filter((j) =>
-                                `${j.title} ${j.department}`.toLowerCase().includes(q),
-                              )
-                            : jobList;
-                          const grouped: Record<string, Job[]> = {
-                            Draft: [],
-                            Open: [],
-                            Closed: [],
-                          };
-                          for (const j of filtered) {
-                            const s = j.status as string;
-                            if (grouped[s]) grouped[s].push(j);
-                            else grouped[j.status]?.push(j);
-                          }
-                          const order: (keyof typeof grouped)[] = ["Draft", "Open", "Closed"];
-                          const hasAny = order.some((k) => (grouped[k]?.length ?? 0) > 0);
-                          if (!hasAny) {
-                            return (
-                              <p className="py-2 text-xs text-muted-foreground">
-                                {q
-                                  ? `No templates match "${templateSearch}"`
-                                  : "No templates yet — create a draft, open or closed post."}
-                              </p>
-                            );
-                          }
-                          return order.map((status) => {
-                            const list = grouped[status];
-                            if (!list || list.length === 0) return null;
-                            return (
-                              <div key={status}>
-                                <p className="text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                                  {status} ({list.length})
-                                </p>
-                                <div className="mt-1 space-y-1.5">
-                                  {list.map((j) => (
-                                    <button
-                                      key={j.id}
-                                      type="button"
-                                      onClick={() => {
-                                        setPendingTemplateJob(j);
-                                        setConfirmTemplateOpen(true);
-                                      }}
-                                      className="w-full rounded-md border border-border px-2 py-1.5 text-left text-[0.68rem] hover:border-primary/40"
-                                      title={`${j.title} — ${j.department}`}
-                                    >
-                                      <span className="block truncate font-medium">{j.title}</span>
-                                      <span className="block truncate text-[0.62rem] text-muted-foreground">
-                                        {j.department}
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
+              {/* One fixed band, two columns: the composer scrolls its blocks
+                  and the preview scrolls the posting, so the cards always end
+                  level whatever the draft length. */}
+              <div className="grid items-stretch gap-4 xl:h-[clamp(560px,calc(100vh-15rem),860px)] xl:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
                 {/* Canvas / composer — toggles to Entities Indicated via the header button */}
-                <Card className="flex h-full flex-col border-border/70">
+                <Card className="flex h-full min-h-0 flex-col border-border/70">
                   {builderFlipped ? (
-                    <CardContent className="space-y-3 p-4">
+                    <CardContent className="min-h-0 flex-1 overflow-y-auto p-4">
                       <BuilderEntitiesCard
                         draft={draft}
                         mapping={entityMapping}
@@ -7683,12 +7928,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       />
                     </CardContent>
                   ) : (
-                    <CardContent className="space-y-3 p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
-                          <FilePlus2 className="h-4 w-4 text-primary" />
-                          {editingJobId ? "Edit Your Job Post" : "Edit Your Job Post"}
-                        </h2>
+                    <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                            <FilePlus2 className="h-4 w-4 text-primary" />
+                            {editingJobId ? "Edit job post" : "New job post"}
+                          </h2>
+                          <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
+                            {blocks.filter((id) => hasContentFor(id, draft)).length} of{" "}
+                            {blocks.length} blocks filled · click a block to edit, drag to reorder
+                          </p>
+                        </div>
                         <div className="flex items-center gap-1.5">
                           <Button
                             type="button"
@@ -7754,15 +8005,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 <Info className="h-4 w-4" />
                               </button>
                             </PopoverTrigger>
-                            <PopoverContent align="end" className="w-80 space-y-3 p-4 text-left">
-                              <div>
-                                <p className="font-display text-sm font-semibold">
-                                  What Generate with AI fills
-                                </p>
-                                <p className="text-[0.7rem] text-muted-foreground">
-                                  One click fills these 6 components on the canvas:
-                                </p>
-                              </div>
+                            <PopoverContent align="end" className="w-72 space-y-3 p-4 text-left">
+                              <p className="font-display text-sm font-semibold">
+                                Writes these 6 blocks
+                              </p>
                               <ul className="space-y-1">
                                 {AI_CONTENT_BLOCKS.map((id) => (
                                   <li
@@ -7774,31 +8020,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                   </li>
                                 ))}
                               </ul>
-                              <div className="space-y-1.5 rounded-md bg-secondary/40 p-3">
-                                <p className="text-[0.7rem] font-semibold">How it is built</p>
-                                <ol className="list-decimal space-y-1 pl-4 text-[0.7rem] leading-relaxed text-muted-foreground">
-                                  <li>
-                                    <span className="font-medium text-foreground">Job input</span> —
-                                    position, department, type, schedule & vacancies from this
-                                    builder.
-                                  </li>
-                                  <li>
-                                    <span className="font-medium text-foreground">
-                                      + Screening vocabulary
-                                    </span>{" "}
-                                    — recognized skills & certifications, so applicant matching
-                                    keeps working. New terms (max 2) are flagged for your review.
-                                  </li>
-                                  <li>
-                                    <span className="font-medium text-foreground">
-                                      + Gemini 3.5 Flash-Lite
-                                    </span>{" "}
-                                    — server default model; writes the 6 components from the job +
-                                    vocabulary. If it is slow or unavailable, the server falls over to
-                                    Groq, then OpenRouter.
-                                  </li>
-                                </ol>
-                              </div>
                               {/* Usage & limits — the indicator's detail view */}
                               <div className="space-y-1.5 rounded-md bg-secondary/40 p-3">
                                 <div className="flex items-center justify-between gap-2">
@@ -7857,7 +8078,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     </ul>
                                     {aiUsage.blocked_until && aiBlockedSeconds > 0 && (
                                       <p className="text-[0.68rem] font-medium text-amber-600 dark:text-amber-400">
-                                        {aiUsage.blocked_code && AI_LIMIT_CODES.has(aiUsage.blocked_code)
+                                        {aiUsage.blocked_code &&
+                                        AI_LIMIT_CODES.has(aiUsage.blocked_code)
                                           ? `Limit reached — ready again in ${aiCountdown(aiBlockedSeconds)}.`
                                           : `Service cooling down — ready again in ${aiCountdown(aiBlockedSeconds)}.`}
                                       </p>
@@ -7885,7 +8107,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         </div>
                       </div>
 
-                      <div className="space-y-2" ref={composerRef}>
+                      <div
+                        className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1"
+                        ref={composerRef}
+                      >
                         {blocks.map((id) => {
                           const meta = blockLibrary.find((b) => b.id === id)!;
                           return (
@@ -7897,125 +8122,146 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                               onDragOver={(e) => e.preventDefault()}
                               onDrop={() => dropOn(id)}
                               onClick={(e) => selectBlock(id, e)}
-                              className={`rounded-md border px-3 py-2 transition ${
+                              className={cn(
+                                "group cursor-pointer rounded-lg border bg-card transition-colors",
                                 activeBlock === id
                                   ? "border-primary bg-secondary/40"
-                                  : "border-border hover:border-primary/40"
-                              }`}
+                                  : "border-border hover:border-primary/40 hover:bg-secondary/20",
+                              )}
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="flex items-center gap-2 text-xs font-medium">
-                                  <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />
-                                  {meta.label}
-                                  <span className="hidden text-[0.65rem] font-normal text-muted-foreground sm:inline">
-                                    {meta.hint}
+                              <div className="flex items-start justify-between gap-2 px-3 py-2.5">
+                                <div className="min-w-0">
+                                  <span className="flex items-center gap-2 text-xs font-semibold">
+                                    <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" />
+                                    {meta.label}
                                   </span>
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    requestRemoveBlock(id);
-                                  }}
-                                  aria-label={`Remove ${meta.label}`}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                                </button>
+                                  {activeBlock !== id && (
+                                    <p className="mt-0.5 truncate pl-5 text-[0.68rem] text-muted-foreground">
+                                      {blockPreview(id)}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  {activeBlock !== id && (
+                                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      requestRemoveBlock(id);
+                                    }}
+                                    aria-label={`Remove ${meta.label}`}
+                                    title={`Remove ${meta.label}`}
+                                    className="rounded p-1 text-muted-foreground opacity-60 transition-colors hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               </div>
 
                               {activeBlock === id && (
-                                <div className="mt-2 space-y-2">
+                                <div className="space-y-2 border-t border-border/60 px-3 py-2.5">
                                   {id === "title" && (
                                     <div className="space-y-2">
-                                    <div className="grid gap-2 sm:grid-cols-2">
-                                      <div className="space-y-1">
-                                        <Label className="text-[0.7rem]">Department</Label>
-                                        <Select
-                                          value={draft.department}
-                                          onValueChange={(department) => {
-                                            const firstPosition =
-                                              positionsForDepartment(department)[0];
-                                            if (firstPosition) {
-                                              applyPositionToDraft(department, firstPosition.title, {
-                                                forceSalary: true,
-                                                positionDbId: firstPosition.dbId,
-                                              });
-                                            } else {
-                                              setDraft({
-                                                ...draft,
-                                                department,
-                                                title: "",
-                                                positionDbId: null,
-                                              });
+                                      <div className="grid gap-2 sm:grid-cols-2">
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Department</Label>
+                                          <Select
+                                            value={draft.department}
+                                            onValueChange={(department) => {
+                                              const firstPosition =
+                                                positionsForDepartment(department)[0];
+                                              if (firstPosition) {
+                                                applyPositionToDraft(
+                                                  department,
+                                                  firstPosition.title,
+                                                  {
+                                                    forceSalary: true,
+                                                    positionDbId: firstPosition.dbId,
+                                                  },
+                                                );
+                                              } else {
+                                                setDraft({
+                                                  ...draft,
+                                                  department,
+                                                  title: "",
+                                                  positionDbId: null,
+                                                });
+                                              }
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="Select a department" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {knownDepartments.map((d) => (
+                                                <SelectItem key={d.code} value={d.name}>
+                                                  {d.name}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Job title</Label>
+                                          <Select
+                                            value={
+                                              draft.positionDbId != null
+                                                ? titleBlockKey({ dbId: draft.positionDbId })
+                                                : draft.title
+                                                  ? titleBlockKey({
+                                                      dbId: null,
+                                                      title: draft.title,
+                                                    })
+                                                  : ""
                                             }
-                                          }}
-                                        >
-                                          <SelectTrigger className="h-8 text-xs">
-                                            <SelectValue placeholder="Select a department" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {knownDepartments.map((d) => (
-                                              <SelectItem key={d.code} value={d.name}>
-                                                {d.name}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div className="space-y-1">
-                                        <Label className="text-[0.7rem]">Job title</Label>
-                                        <Select
-                                          value={
-                                            draft.positionDbId != null
-                                              ? titleBlockKey({ dbId: draft.positionDbId })
-                                              : draft.title
-                                                ? titleBlockKey({ dbId: null, title: draft.title })
-                                                : ""
-                                          }
-                                          onValueChange={(v) => {
-                                            const picked = deptPositions.find(
-                                              (p) => titleBlockKey(p) === v,
-                                            );
-                                            if (picked) {
-                                              applyPositionToDraft(
-                                                draft.department,
-                                                picked.title,
-                                                {
-                                                  forceSalary: true,
-                                                  positionDbId: picked.dbId,
-                                                },
+                                            onValueChange={(v) => {
+                                              const picked = deptPositions.find(
+                                                (p) => titleBlockKey(p) === v,
                                               );
-                                            }
-                                          }}
-                                        >
-                                          <SelectTrigger className="h-8 text-xs">
-                                            <SelectValue placeholder="Select a position from Core HR" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {deptPositions.map((p) => (
-                                              <SelectItem
-                                                key={titleBlockKey(p)}
-                                                value={titleBlockKey(p)}
-                                              >
-                                                {titleBlockDuplicates ? `${p.title} · ${p.level}` : p.title}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
+                                              if (picked) {
+                                                applyPositionToDraft(
+                                                  draft.department,
+                                                  picked.title,
+                                                  {
+                                                    forceSalary: true,
+                                                    positionDbId: picked.dbId,
+                                                  },
+                                                );
+                                              }
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="Select a position from Core HR" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {deptPositions.map((p) => (
+                                                <SelectItem
+                                                  key={titleBlockKey(p)}
+                                                  value={titleBlockKey(p)}
+                                                >
+                                                  {titleBlockDuplicates
+                                                    ? `${p.title} · ${p.level}`
+                                                    : p.title}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
                                       </div>
-                                    </div>
-                                    {draftPosition?.salaryBand && (
-                                      <p className="rounded-md bg-secondary/40 px-2.5 py-1.5 text-[0.65rem] leading-relaxed text-muted-foreground">
-                                        Core HCM salary band — {draftPosition.salaryBand}
-                                      </p>
-                                    )}
+                                      {draftPosition?.salaryBand && (
+                                        <p className="rounded-md bg-secondary/40 px-2.5 py-1.5 text-[0.65rem] leading-relaxed text-muted-foreground">
+                                          Core HCM salary band — {draftPosition.salaryBand}
+                                        </p>
+                                      )}
                                     </div>
                                   )}
                                   {id === "info" && (
                                     <div className="space-y-2">
-                                     <div className="grid gap-2 sm:grid-cols-3">
-                                         <div className="space-y-1">
-                                           <Label className="text-[0.7rem]">Type</Label>
+                                      <div className="grid gap-2 sm:grid-cols-3">
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Type</Label>
                                           <Select
                                             value={draft.employmentType}
                                             onValueChange={(v) =>
@@ -8086,7 +8332,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                                 setDraft((d) => ({
                                                   ...d,
                                                   vacancies: String(
-                                                    Math.max(coreHcmVacancies.count, editingFilledRef.current),
+                                                    Math.max(
+                                                      coreHcmVacancies.count,
+                                                      editingFilledRef.current,
+                                                    ),
                                                   ),
                                                 }));
                                               }}
@@ -8145,43 +8394,40 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                           the linked position's flags decide the applicant
                                           pipeline (edit them in Core HCM → Departments &
                                           Positions). */}
-                                      <div className="space-y-2 pt-2 border-t border-border/50">
-                                        <div className="flex items-center gap-2 text-xs">
-                                          <span
-                                            className={
-                                              draftPosition?.requires_assessment
-                                                ? "inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
-                                                : "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-muted-foreground"
-                                            }
-                                          >
-                                            {draftPosition?.requires_assessment ? "●" : "○"} Assessment Test{" "}
-                                            {draftPosition?.requires_assessment ? "required" : "not required"}
-                                          </span>
-                                          <span className="text-[0.65rem] text-muted-foreground">
-                                            {draftPosition
-                                              ? `From position “${draftPosition.title}” in Core HCM`
-                                              : "Select a position to see its Core HCM test requirements"}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-xs">
-                                          <span
-                                            className={
-                                              draftPosition?.requires_practical
-                                                ? "inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
-                                                : "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-muted-foreground"
-                                            }
-                                          >
-                                            {draftPosition?.requires_practical ? "●" : "○"} Practical Test{" "}
-                                            {draftPosition?.requires_practical ? "required" : "not required"}
-                                          </span>
-                                          <span className="text-[0.65rem] text-muted-foreground">
-                                            Every applicant for this position must undergo the required stages
-                                          </span>
-                                        </div>
+                                      <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-2 text-xs">
+                                        <span
+                                          className={
+                                            draftPosition?.requires_assessment
+                                              ? "inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                                              : "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-muted-foreground"
+                                          }
+                                        >
+                                          Assessment Test{" "}
+                                          {draftPosition?.requires_assessment
+                                            ? "required"
+                                            : "not required"}
+                                        </span>
+                                        <span
+                                          className={
+                                            draftPosition?.requires_practical
+                                              ? "inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                                              : "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-muted-foreground"
+                                          }
+                                        >
+                                          Practical Test{" "}
+                                          {draftPosition?.requires_practical
+                                            ? "required"
+                                            : "not required"}
+                                        </span>
+                                        <span className="text-[0.65rem] text-muted-foreground">
+                                          {draftPosition
+                                            ? `From ${draftPosition.title}`
+                                            : "Select a position to load its test requirements"}
+                                        </span>
                                       </div>
                                     </div>
-                                     )}
-                                   {id === "description" && (
+                                  )}
+                                  {id === "description" && (
                                     <Textarea
                                       autoFocus
                                       rows={2}
@@ -8333,85 +8579,97 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         <div
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={() => dragging && addBlock(dragging)}
-                          className="rounded-md border border-dashed border-border py-3 text-center text-[0.7rem] text-muted-foreground"
+                          title="Drop a dragged block here to move it to the end"
+                          className="rounded-lg border border-dashed border-border/80 bg-muted/20 p-3"
                         >
-                          Drop a component here
+                          {blocks.length < fullBlocks.length ? (
+                            <>
+                              <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                                Add a block
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {blockLibrary
+                                  .filter((b) => !blocks.includes(b.id))
+                                  .map((b) => (
+                                    <button
+                                      key={b.id}
+                                      type="button"
+                                      title={b.hint}
+                                      onClick={() => addBlock(b.id)}
+                                      className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-[0.7rem] font-medium transition-colors hover:border-primary/50 hover:bg-secondary/60 hover:text-primary"
+                                    >
+                                      <Plus className="h-3 w-3" /> {b.label}
+                                    </button>
+                                  ))}
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-center text-[0.7rem] text-muted-foreground">
+                              All blocks are on the canvas — drag one here to move it to the end.
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!canSaveDraft}
-                          onClick={saveDraftAction}
+                      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
+                        <span
+                          className={cn(
+                            "flex items-center gap-1.5 text-[0.7rem]",
+                            isDirty ? "font-medium text-caution" : "text-muted-foreground",
+                          )}
                         >
-                          {/* Save never unpublishes: new posts save as Draft,
-                              edits keep their live status — only Publish /
-                              Update template changes what is live. */}
-                          {editingJobId ? "Save changes as draft" : "Save draft"}
-                        </Button>
-                        <Button size="sm" onClick={publish}>
-                          <Send className="mr-2 h-4 w-4" />
-                          {editingJobId ? "Update template" : "Publish job post"}
-                        </Button>
+                          {isDirty ? (
+                            <>
+                              <span className="h-1.5 w-1.5 rounded-full bg-caution" /> Unsaved
+                              changes
+                            </>
+                          ) : canSaveDraft ? (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5 text-success" /> Saved
+                            </>
+                          ) : (
+                            "Nothing to save yet"
+                          )}
+                        </span>
+                        <div className="ml-auto flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!canSaveDraft}
+                            onClick={saveDraftAction}
+                          >
+                            {/* Save never unpublishes: new posts save as Draft,
+                                edits keep their live status — only Publish /
+                                Update template changes what is live. */}
+                            {editingJobId ? "Save changes as draft" : "Save draft"}
+                          </Button>
+                          <Button size="sm" onClick={publish}>
+                            <Send className="mr-2 h-4 w-4" />
+                            {editingJobId ? "Update template" : "Publish job post"}
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   )}
                 </Card>
 
-                {/* Requested note + the live website preview, stacked in the
-                    third column so both stay visible while editing. Capped at
-                    the canvas card's height (xl:h-0 xl:min-h-full) with the
-                    preview scrolling inside — same limit as the palette. */}
-                <div className="flex flex-col gap-4 overflow-hidden xl:h-0 xl:min-h-full">
-                  <Card className="shrink-0 overflow-y-auto border-border/70 xl:max-h-[50%]">
-                    <CardContent className="p-4">
-                      <h2 className="font-display text-lg font-semibold">Requested Note</h2>
-                      {!sourceReqId && (
-                        <div className="mt-2 space-y-1.5">
-                          <Label className="text-xs">Link a pending staffing request</Label>
-                          <Select
-                            value={linkedReqId ?? "none"}
-                            onValueChange={(v) => setLinkedReqId(v === "none" ? null : v)}
-                          >
-                            <SelectTrigger className="h-9 text-xs">
-                              <SelectValue placeholder="No staffing request" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">No staffing request</SelectItem>
-                              {requisitions
-                                .filter((r) => r.status === "Pending")
-                                .map((r) => (
-                                  <SelectItem key={r.id} value={r.id}>
-                                    {r.id} — {r.position} ({r.department})
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                      <div className="mt-2">{renderRequestedNote()}</div>
-                    </CardContent>
-                  </Card>
-
+                {/* Live website preview — shares the composer's height and
+                    scrolls the posting inside. */}
+                <div className="flex h-full min-h-0 flex-col gap-3">
                   {/* Website is the only publishing channel, so the preview needs
                       no channel tabs — and it is rendered here instead of behind
                       a "Preview post" click, so the recruiter always sees the
                       posting as applicants will. */}
                   {previewOpen ? (
-                    <Card className="flex min-h-0 flex-1 flex-col border-border/70">
+                    <Card className="flex h-full min-h-0 flex-col border-border/70">
                       <CardContent className="flex min-h-0 flex-1 flex-col p-4">
                         <div className="flex shrink-0 items-start justify-between gap-2">
-                          <div>
-                            <h2 className="font-display text-lg font-semibold">
-                              {draft.title || "Untitled position"} — Website preview
-                            </h2>
-                            <p className="mt-0.5 text-[0.7rem] leading-relaxed text-muted-foreground">
-                              Full-size preview of how this posting will appear on the company
-                              website.
-                            </p>
-                          </div>
+                          <h2 className="min-w-0 truncate font-display text-base font-semibold">
+                            {draft.title || "Untitled position"}
+                            <span className="ml-1.5 font-sans text-xs font-normal text-muted-foreground">
+                              Website preview
+                            </span>
+                          </h2>
                           <Button
                             type="button"
                             size="icon"
@@ -8423,8 +8681,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
-                        {/* Scrolls inside the card instead of growing it, so the
-                            column never gets taller than the canvas card. */}
+                        {/* Scrolls inside the card, so both columns end level
+                            whatever the draft length. */}
                         <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1 text-sm">
                           {renderWebsitePreview()}
                         </div>
@@ -8511,9 +8769,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <SelectContent>
                   {positionsForDepartment(pendingDept).map((p) => (
                     <SelectItem key={titleBlockKey(p)} value={titleBlockKey(p)}>
-                      {pendingDeptTitleCount(p.title) > 1
-                        ? `${p.title} · ${p.level}`
-                        : p.title}
+                      {pendingDeptTitleCount(p.title) > 1 ? `${p.title} · ${p.level}` : p.title}
                     </SelectItem>
                   ))}
                   {positionsForDepartment(pendingDept).length === 0 && (
@@ -8648,101 +8904,89 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[95vw] w-[95vw] lg:max-w-[1500px]">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Add Applicant</DialogTitle>
-            <DialogDescription>
-              {addPresetJob
-                ? `${addPresetJob.department} · Step ${addStep} of 2 — `
-                : `Step ${addStep} of 2 — `}
-              {addStep === 1
-                ? "upload documents and enter applicant details"
-                : "review the screening result"}
-            </DialogDescription>
           </DialogHeader>
 
           {addStep === 1 && (
             <div className="space-y-4">
               {/* Department — locked to the clicked job post for admins,
                   free choice of every department for the super admin. */}
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Select
-                  value={addDept}
-                  disabled={Boolean(addPresetJob)}
-                  onValueChange={(v) => {
-                    setAddDept(v);
-                    const first = knownPositions.find((p) => p.department === v);
-                    setAddForm((f) => ({ ...f, position: first?.title ?? "" }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {knownDepartments.map((d) => (
-                      <SelectItem key={d.code} value={d.name}>
-                        <span className="flex items-center gap-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Department</Label>
+                  <Select
+                    value={addDept}
+                    disabled={Boolean(addPresetJob)}
+                    onValueChange={(v) => {
+                      setAddDept(v);
+                      const first = knownPositions.find(
+                        (p) => p.department === v && postingIndicator(v, p.title),
+                      );
+                      setAddForm((f) => ({ ...f, position: first?.title ?? "" }));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {addDepartments.map((d) => (
+                        <SelectItem key={d.code} value={d.name}>
                           {d.name}
-                          {postingIndicator(d.name) && (
-                            <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                              Posting
-                            </span>
-                          )}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                        </SelectItem>
+                      ))}
+                      {addDepartments.length === 0 && (
+                        <div className="px-2 py-3 text-xs text-muted-foreground">
+                          No open job post — publish one first.
+                        </div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Applying for — locked to the clicked job post for admins. */}
+                <div className="space-y-2">
+                  <Label>Applying for</Label>
+                  <Select
+                    value={addForm.position}
+                    disabled={Boolean(addPresetJob) || addPositions.length === 0}
+                    onValueChange={(v) => setAddForm({ ...addForm, position: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          addPositions.length === 0
+                            ? "No open job post for this department"
+                            : "Select a position"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {addPositions.map((p) => (
+                        <SelectItem key={p.id} value={p.title}>
+                          {p.title}
+                        </SelectItem>
+                      ))}
+                      {addPositions.length === 0 && (
+                        <div className="px-2 py-3 text-xs text-muted-foreground">
+                          No open job post for this department.
+                        </div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              {/* Applying for — locked to the clicked job post for admins. */}
-              <div className="space-y-2">
-                <Label>Applying for</Label>
-                <Select
-                  value={addForm.position}
-                  disabled={Boolean(addPresetJob) || addPositions.length === 0}
-                  onValueChange={(v) => setAddForm({ ...addForm, position: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue
-                      placeholder={
-                        addPositions.length === 0
-                          ? "No positions defined for this department"
-                          : "Select a position"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {addPositions.map((p) => (
-                      <SelectItem key={p.id} value={p.title}>
-                        <span className="flex items-center gap-2">
-                          {p.title}
-                          {postingIndicator(addDept, p.title) && (
-                            <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                              Posting
-                            </span>
-                          )}
-                        </span>
-                      </SelectItem>
-                    ))}
-                    {addPositions.length === 0 && (
-                      <div className="px-2 py-3 text-xs text-muted-foreground">
-                        No positions defined for this department.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
-                {!addPresetJob &&
-                  addForm.position !== "" &&
-                  addDept !== "" &&
-                  !postingIndicator(addDept, addForm.position) && (
-                    <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span>
-                        No available job post for {addForm.position} in {addDept} — the posting is
-                        closed, in draft, or full. Reopen or publish it before adding applicants.
-                      </span>
-                    </p>
-                  )}
-              </div>
+              {!addPresetJob &&
+                addForm.position !== "" &&
+                addDept !== "" &&
+                !postingIndicator(addDept, addForm.position) && (
+                  <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      No available job post for {addForm.position} in {addDept} — the posting is
+                      closed, in draft, or full. Reopen or publish it before adding applicants.
+                    </span>
+                  </p>
+                )}
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -8807,7 +9051,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 hint="Drop the resume + COE + certificates in any order — every file is auto-recognized. Details are filled from the first recognized resume, then you can run resume screening."
               />
               {resumeAutofilling && (
-                <p className="text-xs text-muted-foreground">Reading resume — filling contact fields…</p>
+                <p className="text-xs text-muted-foreground">
+                  Reading resume — filling contact fields…
+                </p>
               )}
               {/* OLD_RESUME_DROPZONE_REMOVED */}
               {/* Supporting docs auto-split inside the unified box above — no
@@ -8960,7 +9206,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   {(() => {
                     const detail = screenResult.detail;
                     const breakdown = detail?.score_breakdown;
-                    const passed = screenResult.score >= passing;
+                    // Use position-specific passing score when the job has one.
+                    const addPosId = addPresetJob?.positionId;
+                    const addPosOverride =
+                      addPosId != null ? positionOverrides[String(addPosId)] : undefined;
+                    const effectivePassing = addPosOverride?.passing_score ?? passing;
+                    const passed = screenResult.score >= effectivePassing;
                     const matched =
                       breakdown?.["skills"]?.matched_required ??
                       screenResult.entities.filter((e) => e.label === "SKILL").map((e) => e.value);
@@ -9081,29 +9332,46 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       );
                     }
                     const alt = detail?.alternative_job;
-                    const addVm = {
-                      score: screenResult.score,
-                      detail,
-                      /* Preview screening has no stored documents yet, so the
-                         ranking score equals the resume score here. */
-                      resumeScore: detail?.resume_match_score ?? screenResult.score,
-                      verification: detail?.document_verification ?? null,
-                      matched,
-                      missing,
-                      rows,
-                      skills: panelSkills,
-                      skillsRecognized: profileSkills.length > 0,
-                      recognizedRoles,
-                      unrecognizedRoles,
-                      workExperience,
-                      education,
-                      certifications,
-                      unrecognizedCertifications: unrecognizedCerts,
-                      personalInfo,
-                      yearsExperience,
-                      experienceMinYears: expMinYears,
-                      educationLabel,
-                    };
+                    const verification = detail?.document_verification ?? null;
+                    const docsChecked =
+                      (verification?.verified_count ?? 0) +
+                      (verification?.discrepancy_count ?? 0) +
+                      (verification?.unable_count ?? 0);
+                    /* The four pipeline stages HR reads in the applicant review:
+                       what was parsed, what was recognized, what matched, and
+                       which proofs were checked. */
+                    const stages = [
+                      {
+                        value: "extraction",
+                        label: "Extraction",
+                        result: detail ? "Parsed" : "Not run",
+                        ok: Boolean(detail),
+                      },
+                      {
+                        value: "recognition",
+                        label: "Recognition",
+                        result: `${panelSkills.length} skills · ${recognizedRoles.length} roles`,
+                        ok:
+                          panelSkills.length > 0 &&
+                          unrecognizedRoles.length === 0 &&
+                          unrecognizedCerts.length === 0,
+                      },
+                      {
+                        value: "matching",
+                        label: "Matching",
+                        result: `${matched.length}/${rows.length}`,
+                        ok: rows.length > 0 && missing.length === 0,
+                      },
+                      {
+                        value: "documents",
+                        label: "Documents",
+                        result:
+                          docsChecked > 0
+                            ? `${verification?.verified_count ?? 0}/${docsChecked}`
+                            : "None",
+                        ok: docsChecked > 0 && (verification?.discrepancy_count ?? 0) === 0,
+                      },
+                    ];
 
                     return (
                       <>
@@ -9116,184 +9384,242 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           educationLabel={educationLabel}
                         />
 
-                        <div className="grid items-stretch gap-4 lg:grid-cols-3">
-                          <ResumeInfoPanel
-                            title="Key Information Extracted"
-                            variant="modal"
-                            skills={panelSkills}
-                            recognizedRoles={recognizedRoles}
-                            unrecognizedRoles={unrecognizedRoles}
-                            workExperience={workExperience}
-                            education={education}
-                            experienceYears={yearsExperience}
-                            certifications={certifications}
-                            personalInfo={personalInfo}
-                            skillsRecognized={profileSkills.length > 0}
-                            unrecognizedCertifications={unrecognizedCerts}
-                          />
-                          <RequirementMatchPanel rows={rows} experienceMinYears={expMinYears} />
-                          <ScreeningResumeDocsMatchDetail
-                            docs={detail?.preview_documents ?? []}
-                            loading={screeningLoading}
-                            resumeName={personalInfo.name ?? addForm.name}
-                            resumeEducation={education}
-                            resumeCertifications={certifications}
-                          />
-                        </div>
-
-                        {/* Supporting documents staged in this application */}
-                        <div className="rounded-xl border border-border bg-card p-5">
-                          <div className="flex items-center justify-between gap-2">
-                            <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-                              <FileCheck className="h-4.5 w-4.5 text-primary" /> Supporting Document
-                              Verification
-                            </h3>
-                            <Badge
-                              variant="outline"
-                              className="border-border bg-secondary text-secondary-foreground"
-                            >
-                              {verificationDocs.length} document
-                              {verificationDocs.length === 1 ? "" : "s"}
-                            </Badge>
-                          </div>
-                          <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-                            {detail?.preview_documents && detail.preview_documents.length > 0
-                              ? `Checked against the resume in this preview — the ${screenResult.score}% score already includes this evidence. They will be re-verified after the applicant is saved.`
-                              : "Proofs staged with this application — they will be verified against the resume after the applicant is saved."}
-                          </p>
-                          {verificationDocs.length === 0 ? (
-                            <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
-                              <Info className="h-4 w-4 shrink-0" /> No verification papers staged.
-                              Upload a COE, certificate or credential in Step 2 (optional).
-                            </p>
-                          ) : (
-                            <div className="mt-3 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
-                              {verificationDocs.map((d, i) => {
-                                const preview =
-                                  detail?.preview_documents?.[i] ?? null;
-                                const status = preview?.verification_status
-                                  ? String(preview.verification_status)
-                                  : null;
-                                const badgeLabel =
-                                  status === "VERIFIED"
-                                    ? "Verified"
-                                    : status === "DISCREPANCY_FOUND"
-                                      ? "Discrepancy"
-                                      : status === "PENDING" || status === "PROCESSING"
-                                        ? status === "PENDING"
-                                          ? "Pending"
-                                          : "Checking"
-                                        : status === "UNABLE_TO_VERIFY"
-                                          ? "Unable to verify"
-                                          : "Staged";
-                                const badgeClass =
-                                  status === "VERIFIED"
-                                    ? "border-success/25 bg-success/10 text-success"
-                                    : status === "DISCREPANCY_FOUND"
-                                      ? "border-warning/30 bg-warning/10 text-warning-foreground"
-                                      : "border-border bg-secondary text-muted-foreground";
-                                return (
-                                <div
-                                  key={`${d.docType}-${d.file.name}-${i}`}
-                                  className="rounded-lg border border-border/70 p-3"
-                                >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive">
-                                      <FileText className="h-4 w-4" />
-                                    </span>
-                                    <Badge
-                                      variant="outline"
-                                      className={`text-[0.65rem] ${badgeClass}`}
-                                      title={
-                                        preview?.verification_result?.summary ??
-                                        "Staged with this application"
-                                      }
-                                    >
-                                      {badgeLabel}
-                                    </Badge>
-                                  </div>
-                                  <p
-                                    className="mt-2 truncate text-xs font-semibold"
-                                    title={d.title}
+                        <Tabs
+                          value={addStageTab}
+                          onValueChange={setAddStageTab}
+                          className="w-full space-y-4"
+                        >
+                          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-4">
+                            {stages.map((stage, i) => (
+                              <TabsTrigger
+                                key={stage.value}
+                                value={stage.value}
+                                className="flex h-auto w-full cursor-pointer flex-col items-start justify-start gap-1 whitespace-normal rounded-lg border border-border bg-card px-2.5 py-2 text-left shadow-none data-[state=active]:border-primary/40 data-[state=active]:bg-primary/5 data-[state=active]:shadow-none"
+                              >
+                                <span className="flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                                  <span
+                                    className={cn(
+                                      "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[0.6rem] font-bold tabular-nums",
+                                      stage.ok
+                                        ? "bg-success text-success-foreground"
+                                        : "bg-muted-foreground/20 text-muted-foreground",
+                                    )}
                                   >
-                                    {d.title}
-                                  </p>
-                                  <p className="truncate text-[0.7rem] text-muted-foreground">
-                                    {d.docType} · {d.originalCopy ? "Original" : "Copy"}
-                                  </p>
-                                  <div className="mt-2 flex gap-1.5">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 flex-1 px-2 text-[0.7rem]"
-                                      onClick={() => openLocalFile(d.file)}
-                                    >
-                                      <Eye className="mr-1 h-3 w-3" /> View
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 flex-1 px-2 text-[0.7rem]"
-                                      onClick={() => downloadLocalFile(d.file)}
-                                    >
-                                      <Download className="mr-1 h-3 w-3" /> Download
-                                    </Button>
-                                  </div>
+                                    {i + 1}
+                                  </span>
+                                  {stage.label}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "w-full truncate text-xs font-semibold",
+                                    stage.ok ? "text-success" : "text-foreground",
+                                  )}
+                                  title={stage.result}
+                                >
+                                  {stage.result}
+                                </span>
+                              </TabsTrigger>
+                            ))}
+                          </TabsList>
+
+                          <TabsContent value="extraction" className="mt-0">
+                            <ResumeInfoPanel
+                              title="Extracted Information"
+                              variant="modal"
+                              focus="profile"
+                              skills={panelSkills}
+                              recognizedRoles={recognizedRoles}
+                              unrecognizedRoles={unrecognizedRoles}
+                              workExperience={workExperience}
+                              education={education}
+                              experienceYears={yearsExperience}
+                              certifications={certifications}
+                              personalInfo={personalInfo}
+                              skillsRecognized={profileSkills.length > 0}
+                              unrecognizedCertifications={unrecognizedCerts}
+                            />
+                          </TabsContent>
+
+                          <TabsContent value="recognition" className="mt-0">
+                            <ResumeInfoPanel
+                              title="Recognized Entities"
+                              variant="modal"
+                              focus="entities"
+                              skills={panelSkills}
+                              recognizedRoles={recognizedRoles}
+                              unrecognizedRoles={unrecognizedRoles}
+                              workExperience={workExperience}
+                              education={education}
+                              experienceYears={yearsExperience}
+                              certifications={certifications}
+                              personalInfo={personalInfo}
+                              skillsRecognized={profileSkills.length > 0}
+                              unrecognizedCertifications={unrecognizedCerts}
+                            />
+                          </TabsContent>
+
+                          <TabsContent value="matching" className="mt-0">
+                            <RequirementMatchPanel rows={rows} experienceMinYears={expMinYears} />
+                          </TabsContent>
+
+                          <TabsContent value="documents" className="mt-0 space-y-4">
+                            {/* Supporting documents staged in this application */}
+                            <div className="rounded-xl border border-border bg-card p-5">
+                              <div className="flex items-center justify-between gap-2">
+                                <h3 className="flex items-center gap-2 font-display text-base font-semibold">
+                                  <FileCheck className="h-4.5 w-4.5 text-primary" /> Supporting
+                                  Document Verification
+                                </h3>
+                                <Badge
+                                  variant="outline"
+                                  className="border-border bg-secondary text-secondary-foreground"
+                                >
+                                  {verificationDocs.length} document
+                                  {verificationDocs.length === 1 ? "" : "s"}
+                                </Badge>
+                              </div>
+                              <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
+                                {detail?.preview_documents && detail.preview_documents.length > 0
+                                  ? `Checked against the resume in this preview — the ${screenResult.score}% score already includes this evidence. They will be re-verified after the applicant is saved.`
+                                  : "Proofs staged with this application — they will be verified against the resume after the applicant is saved."}
+                              </p>
+                              {verificationDocs.length === 0 ? (
+                                <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+                                  <Info className="h-4 w-4 shrink-0" /> No verification papers
+                                  staged. Add a COE, certificate or credential with the resume
+                                  (optional).
+                                </p>
+                              ) : (
+                                <div className="mt-3 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
+                                  {verificationDocs.map((d, i) => {
+                                    const preview = detail?.preview_documents?.[i] ?? null;
+                                    const status = preview?.verification_status
+                                      ? String(preview.verification_status)
+                                      : null;
+                                    const badgeLabel =
+                                      status === "VERIFIED"
+                                        ? "Verified"
+                                        : status === "DISCREPANCY_FOUND"
+                                          ? "Discrepancy"
+                                          : status === "PENDING" || status === "PROCESSING"
+                                            ? status === "PENDING"
+                                              ? "Pending"
+                                              : "Checking"
+                                            : status === "UNABLE_TO_VERIFY"
+                                              ? "Unable to verify"
+                                              : "Staged";
+                                    const badgeClass =
+                                      status === "VERIFIED"
+                                        ? "border-success/25 bg-success/10 text-success"
+                                        : status === "DISCREPANCY_FOUND"
+                                          ? "border-warning/30 bg-warning/10 text-warning-foreground"
+                                          : "border-border bg-secondary text-muted-foreground";
+                                    return (
+                                      <div
+                                        key={`${d.docType}-${d.file.name}-${i}`}
+                                        className="rounded-lg border border-border/70 p-3"
+                                      >
+                                        <div className="flex items-start justify-between gap-2">
+                                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive">
+                                            <FileText className="h-4 w-4" />
+                                          </span>
+                                          <Badge
+                                            variant="outline"
+                                            className={`text-[0.65rem] ${badgeClass}`}
+                                            title={
+                                              preview?.verification_result?.summary ??
+                                              "Staged with this application"
+                                            }
+                                          >
+                                            {badgeLabel}
+                                          </Badge>
+                                        </div>
+                                        <p
+                                          className="mt-2 truncate text-xs font-semibold"
+                                          title={d.title}
+                                        >
+                                          {d.title}
+                                        </p>
+                                        <p className="truncate text-[0.7rem] text-muted-foreground">
+                                          {d.docType} · {d.originalCopy ? "Original" : "Copy"}
+                                        </p>
+                                        <div className="mt-2 flex gap-1.5">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 flex-1 px-2 text-[0.7rem]"
+                                            onClick={() => openLocalFile(d.file)}
+                                          >
+                                            <Eye className="mr-1 h-3 w-3" /> View
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 flex-1 px-2 text-[0.7rem]"
+                                            onClick={() => downloadLocalFile(d.file)}
+                                          >
+                                            <Download className="mr-1 h-3 w-3" /> Download
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                                );
-                              })}
+                              )}
                             </div>
-                          )}
-                        </div>
 
-                        <ScreeningDetailsAccordion
-                          detail={detail}
-                          variant="modal"
-                          position={addForm.position || "Position"}
-                          score={screenResult.score}
-                          vm={addVm}
-                        />
+                            <ScreeningResumeDocsMatchDetail
+                              docs={detail?.preview_documents ?? []}
+                              loading={screeningLoading}
+                              resumeName={personalInfo.name ?? addForm.name}
+                              resumeEducation={education}
+                              resumeCertifications={certifications}
+                            />
 
-                        {/* Alternative job recommendation */}
-                        {alt && (
-                          <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
-                            <p className="font-medium text-warning">
-                              Recommended alternative: {alt.title} (
-                              {Math.round(alt.alternative_match_score ?? 0)}%)
-                            </p>
-                            {alt.reason && (
-                              <p className="mt-1 text-xs text-muted-foreground">{alt.reason}</p>
+                            {/* Alternative job recommendation */}
+                            {alt && (
+                              <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
+                                <p className="font-medium text-warning-foreground">
+                                  Recommended alternative: {alt.title} (
+                                  {Math.round(alt.alternative_match_score ?? 0)}%)
+                                </p>
+                                {alt.reason && (
+                                  <p className="mt-1 text-xs text-muted-foreground">{alt.reason}</p>
+                                )}
+                              </div>
                             )}
-                          </div>
-                        )}
+                          </TabsContent>
+                        </Tabs>
 
                         {/* Recommendation */}
-                        <div
-                          className={cn(
-                            "rounded-md border p-3 text-sm",
-                            passed
-                              ? "border-success/30 bg-success/10 text-success"
-                              : "border-destructive/30 bg-destructive/10 text-destructive",
-                          )}
-                        >
-                          <p className="font-medium">
-                            {passed
-                              ? "Recommendation: Move forward — the applicant is saved to the applicant list for interview scheduling."
-                              : "Recommendation: Save for review or refer to a better-matching role in Applicant Management."}
-                          </p>
-                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div
+                            className={cn(
+                              "min-w-0 flex-1 rounded-md border p-3 text-sm",
+                              passed
+                                ? "border-success/30 bg-success/10 text-success"
+                                : "border-destructive/30 bg-destructive/10 text-destructive",
+                            )}
+                          >
+                            <p className="font-medium">
+                              {passed
+                                ? "Recommendation: Move forward — the applicant is saved to the applicant list for interview scheduling."
+                                : "Recommendation: Save for review or refer to a better-matching role in Applicant Management."}
+                            </p>
+                          </div>
 
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="cursor-pointer"
-                          onClick={() => {
-                            toast("Re-running resume analysis…");
-                            runScreening();
-                          }}
-                        >
-                          <ScanLine className="mr-2 h-4 w-4" /> Retry analysis
-                        </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="cursor-pointer"
+                            onClick={() => {
+                              toast("Re-running resume analysis…");
+                              runScreening();
+                            }}
+                          >
+                            <ScanLine className="mr-2 h-4 w-4" /> Retry analysis
+                          </Button>
+                        </div>
                       </>
                     );
                   })()}
@@ -9308,46 +9634,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               </DialogFooter>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* CONTENT TEMPLATE CONFIRMATION — fill all components */}
-      <Dialog open={confirmTemplateOpen} onOpenChange={setConfirmTemplateOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Use this template?</DialogTitle>
-            <DialogDescription>
-              This will fill all components in the builder with &quot;{pendingTemplateJob?.title}
-              &quot;
-              {pendingTemplateJob ? ` — ${pendingTemplateJob.department}` : ""} data. Missing
-              components will be automatically created. Continue?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setConfirmTemplateOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!pendingTemplateJob) return;
-                const seeded = jobToDraft(pendingTemplateJob);
-                setDraft(seeded);
-                setBlocks(fullBlocks);
-                setEditingJobId(pendingTemplateJob.id);
-                setSourceReqId(null);
-                setLinkedReqId(null);
-                setMode("template");
-                setBuilderStarted(true);
-                setSavedSnapshot(snapshotOf(seeded, fullBlocks));
-                setConfirmTemplateOpen(false);
-                toast.success(
-                  `Template "${pendingTemplateJob.title}" applied — all components filled`,
-                );
-              }}
-            >
-              Fill all components
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -9405,9 +9691,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <DialogTitle>Replace the requirements already on this post?</DialogTitle>
             <DialogDescription>
               This draft already has screening requirements. Applying “
-              {pendingTemplate?.template.name}” for {pendingTemplate?.positionLabel} will
-              replace its skills, certifications and education / experience levels with the
-              template's.
+              {pendingTemplate?.template.name}” for {pendingTemplate?.positionLabel} will replace
+              its skills, certifications and education / experience levels with the template's.
             </DialogDescription>
           </DialogHeader>
           {pendingTemplate && (
@@ -9474,12 +9759,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   incoming: readonly string[],
                 ): string => {
                   if (incoming.length === 0) return "";
-                  const added = incoming.filter(
-                    (l) => !current.some((c) => key(c) === key(l)),
-                  );
-                  const removed = current.filter(
-                    (c) => !incoming.some((l) => key(c) === key(l)),
-                  );
+                  const added = incoming.filter((l) => !current.some((c) => key(c) === key(l)));
+                  const removed = current.filter((c) => !incoming.some((l) => key(c) === key(l)));
                   if (added.length === 0 && removed.length === 0) return "";
                   return [
                     added.length ? `+ ${added.join(", ")}` : "",
@@ -9533,11 +9814,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         unchanged — this template defines none.
                       </p>
                     )}
-                    {rows.length === 0 &&
-                      levelChanges.length === 0 &&
-                      levelsKept.length === 0 && (
-                        <p>Nothing on this draft changes — it already matches the template.</p>
-                      )}
+                    {rows.length === 0 && levelChanges.length === 0 && levelsKept.length === 0 && (
+                      <p>Nothing on this draft changes — it already matches the template.</p>
+                    )}
                   </>
                 );
               })()}
@@ -9590,9 +9869,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           <DialogHeader>
             <DialogTitle>Generate with AI</DialogTitle>
             <DialogDescription>
-              Tick only what you want written. The values below are always sent as
-              context — the AI never writes them, it only writes the prose, grounded on
-              them.
+              Tick only what you want written. The values below are always sent as context — the AI
+              never writes them, it only writes the prose, grounded on them.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border border-border/60 bg-secondary/30 p-3">
@@ -9611,9 +9889,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     {sourceReq.justification ? (
                       <span className="italic">“{sourceReq.justification}”</span>
                     ) : (
-                      <span className="italic text-muted-foreground">
-                        none on {sourceReq.id}
-                      </span>
+                      <span className="italic text-muted-foreground">none on {sourceReq.id}</span>
                     )}
                   </span>
                 </>
@@ -9698,10 +9974,26 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             {(
               [
                 ["description", "Job Description", "e.g. warm and service-led, not corporate"],
-                ["responsibilities", "Key Responsibilities", "e.g. keep duties to guest-facing work, 6 lines"],
-                ["qualifications", "Qualifications", "e.g. repeat the required certificates verbatim"],
-                ["additional", "Additional Info", "e.g. list perks and shift details, skip anything we cannot promise"],
-                ["instructions", "Application Instruction", "e.g. mention walk-in at the HR Office"],
+                [
+                  "responsibilities",
+                  "Key Responsibilities",
+                  "e.g. keep duties to guest-facing work, 6 lines",
+                ],
+                [
+                  "qualifications",
+                  "Qualifications",
+                  "e.g. repeat the required certificates verbatim",
+                ],
+                [
+                  "additional",
+                  "Additional Info",
+                  "e.g. list perks and shift details, skip anything we cannot promise",
+                ],
+                [
+                  "instructions",
+                  "Application Instruction",
+                  "e.g. mention walk-in at the HR Office",
+                ],
                 ["about", "About Company", "e.g. two sentences, no history lecture"],
               ] as const
             ).map(([key, label, ph]) => (
@@ -9768,9 +10060,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               Close
             </Button>
             <Button
-              disabled={
-                generatingDraft || !AI_CONTENT_BLOCKS.some((b) => aiChecked[b])
-              }
+              disabled={generatingDraft || !AI_CONTENT_BLOCKS.some((b) => aiChecked[b])}
               onClick={() => void runGenerateDraft()}
             >
               {generatingDraft ? (
@@ -9897,24 +10187,20 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
       {/* SCREENING SETUP DIALOG — moved from Applicant Management header */}
       <Dialog open={screeningOpen} onOpenChange={setScreeningOpen}>
-        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-4xl">
+        <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden p-0 sm:max-w-4xl">
           <Tabs
             value={screeningTab}
             onValueChange={setScreeningTab}
             className="flex min-h-0 w-full flex-1 flex-col"
           >
             {/* Header + live NLP service status */}
-            <div className="border-b border-border px-6 pb-4 pt-6">
-              <DialogHeader className="space-y-0 text-left">
-                <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
-                  <div className="min-w-0">
-                    <DialogTitle className="flex items-center gap-2 font-display text-2xl">
-                      <ScanLine className="h-5 w-5 text-primary" /> Screening Setup
-                    </DialogTitle>
-                    <DialogDescription className="mt-1">
-                      Requirements, scoring and vocabulary used by every screening run.
-                    </DialogDescription>
-                  </div>
+            <div className="border-b border-border px-5 pb-3 pt-5 sm:px-6">
+              <DialogHeader className="space-y-0 pr-8 text-left">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <DialogTitle className="font-display text-xl">Screening Setup</DialogTitle>
+                  <DialogDescription className="sr-only">
+                    Templates, scoring and vocabulary used by every screening run.
+                  </DialogDescription>
                   <span
                     title={
                       nlpStatus === null
@@ -9924,7 +10210,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           : "Resume screening fails until the NLP service is running on port 8001."
                     }
                     className={cn(
-                      "mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.7rem] font-medium",
+                      "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.68rem] font-medium",
                       nlpStatus && !nlpStatus.online
                         ? "border-destructive/40 bg-destructive/10 text-destructive"
                         : "border-border bg-muted/40 text-muted-foreground",
@@ -9949,17 +10235,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </div>
               </DialogHeader>
 
-              <TabsList className="mt-4">
+              <TabsList className="mt-3">
                 {[
-                  { value: "templates", label: "Requirement Templates", icon: ClipboardList },
+                  { value: "templates", label: "Templates", icon: ClipboardList },
                   { value: "scoring", label: "Scoring", icon: Sliders },
                   { value: "reference", label: "Reference Data", icon: Database },
-                  { value: "reported", label: "Reported Entities", icon: Flag },
+                  { value: "reported", label: "Reported", icon: Flag },
                 ].map((t) => (
                   <TabsTrigger
                     key={t.value}
                     value={t.value}
-                    className="flex flex-1 items-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+                    className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 text-xs font-medium"
                   >
                     <t.icon className="h-3.5 w-3.5" /> {t.label}
                   </TabsTrigger>
@@ -9968,16 +10254,65 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             </div>
 
             {/* Scrollable tab content */}
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
               <TabsContent value="scoring" className="mt-0">
-                <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+                {/* Position scope selector — lets HR customise weights per role */}
+                <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3">
+                  <div className="mr-auto space-y-0.5">
+                    <p className="text-xs font-semibold text-foreground">Configuration scope</p>
+                    <p className="text-[0.7rem] leading-snug text-muted-foreground">
+                      {scoringPositionId === "general"
+                        ? "Applies to every position without a specific override."
+                        : "Override for this position only — others use the general config."}
+                    </p>
+                  </div>
+                  <Select value={scoringPositionId} onValueChange={handleScoringPositionChange}>
+                    <SelectTrigger className="h-8 w-56 text-xs">
+                      <SelectValue placeholder="Select scope" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general" className="text-xs">
+                        General (all positions)
+                      </SelectItem>
+                      {knownPositions
+                        .filter((p) => p.dbId != null)
+                        .map((p) => (
+                          <SelectItem key={p.dbId} value={String(p.dbId)} className="text-xs">
+                            <span className="flex items-center gap-1.5">
+                              {p.title}
+                              {String(p.dbId) in positionOverrides && (
+                                <Badge
+                                  variant="secondary"
+                                  className="ml-1 px-1 py-0 text-[0.6rem] leading-tight"
+                                >
+                                  Custom
+                                </Badge>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {hasPositionOverride && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 cursor-pointer gap-1.5 text-xs text-muted-foreground hover:text-destructive"
+                      disabled={savingConfig}
+                      onClick={resetPositionOverride}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" /> Reset to general
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid gap-5 lg:grid-cols-2">
                   {/* Criteria weights */}
                   <div className="space-y-3">
                     <div>
                       <h3 className="text-sm font-semibold">Criteria weights</h3>
-                      <p className="text-xs text-muted-foreground">
-                        How much each criterion contributes to the match score. Enabled weights must
-                        total 100%.
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        How much each part of the resume counts. Enabled weights should total 100%.
                       </p>
                     </div>
                     {criteria.map((c, idx) => (
@@ -10045,16 +10380,16 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     </div>
                   </div>
 
-                  {/* Thresholds + preview */}
-                  <div className="space-y-4">
+                  {/* Thresholds */}
+                  <div className="space-y-3">
                     <div>
-                      <h3 className="text-sm font-semibold">Passing thresholds</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Cut-offs that decide how a screened resume is classified.
+                      <h3 className="text-sm font-semibold">Thresholds</h3>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        When a resume counts as a pass.
                       </p>
                     </div>
 
-                    <div className="space-y-2 rounded-md border border-border p-3">
+                    <div className="space-y-2 rounded-lg border border-border px-3 py-2.5">
                       <div className="flex items-baseline justify-between">
                         <Label className="text-xs">Passing score</Label>
                         <span className="font-display text-sm font-semibold text-primary tabular-nums">
@@ -10068,12 +10403,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         onValueChange={(v) => setPassing(v[0] ?? passing)}
                       />
                       <p className="text-[0.7rem] text-muted-foreground">
-                        At or above this score, a resume is “Perfect for the Job” when mandatory
-                        requirements are met.
+                        Resumes scoring below this are flagged for review.
                       </p>
                     </div>
 
-                    <div className="space-y-2 rounded-md border border-border p-3">
+                    <div className="space-y-2 rounded-lg border border-border px-3 py-2.5">
                       <div className="flex items-baseline justify-between">
                         <Label className="text-xs">Required-skills coverage</Label>
                         <span className="font-display text-sm font-semibold text-primary tabular-nums">
@@ -10087,25 +10421,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         onValueChange={(v) => setCoverageMin(v[0] ?? coverageMin)}
                       />
                       <p className="text-[0.7rem] text-muted-foreground">
-                        Minimum share of the job post&apos;s required skills needed to pass.
+                        Share of required skills a resume must match.
                       </p>
-                    </div>
-
-                    {/* How scoring works — quick reference */}
-                    <div className="space-y-2 rounded-md border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
-                      <p className="font-medium text-foreground">How a resume is scored</p>
-                      <ol className="list-decimal space-y-1 pl-4">
-                        <li>Text is extracted (PDF/DOCX/OCR) and entities are tagged.</li>
-                        <li>Entities are matched against the job post&apos;s requirements.</li>
-                        <li>Weighted criteria add up to the match score.</li>
-                        <li>
-                          Thresholds decide the result:{" "}
-                          <span className="font-medium text-foreground">Perfect for the Job</span>,{" "}
-                          <span className="font-medium text-foreground">Fit for other Job</span>,{" "}
-                          <span className="font-medium text-foreground">Invalid credential</span> or{" "}
-                          <span className="font-medium text-foreground">Not fitted to Job</span>.
-                        </li>
-                      </ol>
                     </div>
                   </div>
                 </div>
@@ -10138,11 +10455,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
             {/* Footer — sticky save bar, only where there is something to save */}
             {screeningTab === "scoring" && (
-              <div className="border-t border-border bg-muted/30 px-6 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[0.7rem] text-muted-foreground">
-                    Applies to every new screening after saving.
-                  </p>
+              <div className="border-t border-border bg-muted/30 px-5 py-3 sm:px-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  {scoringPositionId !== "general" && (
+                    <span className="mr-auto text-xs text-muted-foreground">
+                      Editing:{" "}
+                      <span className="font-medium text-foreground">
+                        {knownPositions.find((p) => p.dbId === Number(scoringPositionId))?.title ??
+                          `Position #${scoringPositionId}`}
+                      </span>
+                    </span>
+                  )}
+                  {scoringPositionId === "general" && <span className="mr-auto" />}
                   <Button
                     className="cursor-pointer"
                     disabled={savingConfig || totalWeight !== 100}
@@ -10164,7 +10488,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           </Tabs>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }
