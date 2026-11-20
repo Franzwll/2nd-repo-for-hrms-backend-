@@ -6,12 +6,12 @@ export const Route = createFileRoute("/superadmin/_settings/settings")({
       { title: "Settings — Oxford Suites Makati HRMS" },
       {
         name: "description",
-        content: "Account security, default password and notification preferences.",
+        content: "System-wide security policy, account preferences, and database backups.",
       },
       { property: "og:title", content: "Settings — Oxford Suites Makati HRMS" },
       {
         property: "og:description",
-        content: "Account security, default password and notification preferences.",
+        content: "System-wide security policy, account preferences, and database backups.",
       },
     ],
   }),

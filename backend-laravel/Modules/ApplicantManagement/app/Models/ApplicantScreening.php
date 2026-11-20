@@ -29,6 +29,12 @@ class ApplicantScreening extends Model
         'model_info_json',
         'error_message',
         'processed_at',
+        'true_screening_result',
+        'true_qualification_score',
+        'true_missing_information_json',
+        'true_unrecognized_skills_json',
+        'ground_truth_notes',
+        'ground_truth_recorded_at',
     ];
 
     protected $casts = [
@@ -44,7 +50,21 @@ class ApplicantScreening extends Model
         'match_score' => 'decimal:2',
         'resume_match_score' => 'decimal:2',
         'processed_at' => 'datetime',
+        'true_qualification_score' => 'decimal:2',
+        'true_missing_information_json' => 'array',
+        'true_unrecognized_skills_json' => 'array',
+        'ground_truth_recorded_at' => 'datetime',
     ];
+
+    public function getNotesAttribute(): ?string
+    {
+        return $this->ground_truth_notes;
+    }
+
+    public function setNotesAttribute(?string $value): void
+    {
+        $this->ground_truth_notes = $value;
+    }
 
     public function applicant(): BelongsTo
     {

@@ -85,22 +85,29 @@ class ChatbotFaqController extends Controller
 
                 return [
                     'date' => $day->format('Y-m-d'),
-                    'conversations' => ChatbotMessage::whereDate('created_at', $day)
+                    'conversations' => ChatbotMessage::realConversations()
+                        ->whereDate('created_at', $day)
                         ->distinct('session_id')->count('session_id'),
                 ];
             })->values();
 
             return response()->json([
                 'data' => [
-                    'conversations_today' => ChatbotMessage::whereDate('created_at', Carbon::today())
+                    'conversations_today' => ChatbotMessage::realConversations()
+                        ->whereDate('created_at', Carbon::today())
                         ->distinct('session_id')->count('session_id'),
-                    'messages_today' => ChatbotMessage::whereDate('created_at', Carbon::today())->count(),
-                    'gemini_messages_30d' => ChatbotMessage::where('source', 'gemini')
+                    'messages_today' => ChatbotMessage::realConversations()
+                        ->whereDate('created_at', Carbon::today())->count(),
+                    'gemini_messages_30d' => ChatbotMessage::realConversations()
+                        ->where('source', 'gemini')
                         ->where('created_at', '>=', $since30)->count(),
-                    'fallback_messages_30d' => ChatbotMessage::where('source', 'fallback')
+                    'fallback_messages_30d' => ChatbotMessage::realConversations()
+                        ->where('source', 'fallback')
                         ->where('created_at', '>=', $since30)->count(),
-                    'feedback_up' => ChatbotMessage::where('feedback', 1)->count(),
-                    'feedback_down' => ChatbotMessage::where('feedback', -1)->count(),
+                    'feedback_up' => ChatbotMessage::realConversations()
+                        ->where('feedback', 1)->count(),
+                    'feedback_down' => ChatbotMessage::realConversations()
+                        ->where('feedback', -1)->count(),
                     'gemini_tokens_month' => (int) Cache::get('gemini_tokens_' . now()->format('Ym'), 0),
                     'trend_14d' => $trend,
                 ],

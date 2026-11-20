@@ -1,0 +1,18 @@
+Understand deeply the @ApplicantManagement.tsx and 02-applicant-management.zip
+
+I like the interview of image_85dac0.png
+I like the hired of image_85da9e.png
+I like the assessment of image_85d71b.png
+
+into the image_85e1be.jpg
+
+it should gonne be like all this:
+all of their top it always stick the labeled (applicant management with icon in the left), metric card, recruitment pipeline track
+Application: middle: Upcoming interviews, Top 5 candidate bottom: applicants table
+Screening: middle: donut pie chart + screening creteria match bottom: screening table
+Interview: middle: calendar with daily scredule + book applicant bottom: interview scheduled table (including the ready applicant ready to schedule)
+Assessment:  refer it from here image_85d71b.png. The table merge of assessment and practical of applicant but it must have different scoring in the assessment test and practical test, there are also a different action button practical test and assessment test
+final evaluation: middle: make a catch ui bottom: only 1 table but give the overall score for all process, there are an action button for hr decision and applicant decision 
+offer: middle and bottom: image_85da9e.png
+
+please give me a catch ui for assessment and final evaluation I want to have a middle of them and their bottom is the table

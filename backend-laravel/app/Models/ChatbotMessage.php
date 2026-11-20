@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -11,6 +12,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 class ChatbotMessage extends Model
 {
+    /** Pseudo-exchange rows logged for the "suggested new FAQ" queue. */
+    public const SOURCE_UNANSWERED = 'unanswered';
+
     protected $fillable = [
         'session_id',
         'user_id',
@@ -18,6 +22,7 @@ class ChatbotMessage extends Model
         'message',
         'reply',
         'source',
+        'intent',
         'faq_ids',
         'had_faq_context',
         'feedback',
@@ -32,4 +37,13 @@ class ChatbotMessage extends Model
         'prompt_tokens' => 'integer',
         'completion_tokens' => 'integer',
     ];
+
+    /**
+     * Real exchanges only — excludes rows logged for the unanswered queue so
+     * analytics and transcripts keep their original counts and shape.
+     */
+    public function scopeRealConversations(Builder $query): Builder
+    {
+        return $query->where('source', '!=', self::SOURCE_UNANSWERED);
+    }
 }

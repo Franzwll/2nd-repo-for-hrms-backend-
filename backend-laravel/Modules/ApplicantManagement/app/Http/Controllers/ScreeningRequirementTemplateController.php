@@ -32,7 +32,7 @@ class ScreeningRequirementTemplateController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = ScreeningRequirementTemplate::query()
-            ->with(['items', 'position'])
+            ->with('position')
             ->orderBy('name');
 
         if ($request->filled('position_id')) {
@@ -66,12 +66,14 @@ class ScreeningRequirementTemplateController extends Controller
                 'active' => $data['active'] ?? true,
             ]);
 
-            $template->items()->createMany($data['items']);
+            // Phase 3h: requirement entities are inlined in items_json.
+            $template->items_json = $this->buildItemsArray($data['items'], $template->template_id);
+            $template->save();
 
             return $template;
         });
 
-        $template->load(['items', 'position']);
+        $template->load('position');
 
         AuditLogger::log(
             action: 'Requirement Template Created',
@@ -109,11 +111,12 @@ class ScreeningRequirementTemplateController extends Controller
                 'active' => array_key_exists('active', $data) ? (bool) $data['active'] : $template->active,
             ]);
 
-            $template->items()->delete();
-            $template->items()->createMany($data['items']);
+            // Phase 3h: replacing the entities means replacing items_json.
+            $template->items_json = $this->buildItemsArray($data['items'], $template->template_id);
+            $template->save();
         });
 
-        $template->load(['items', 'position']);
+        $template->load('position');
 
         AuditLogger::log(
             action: 'Requirement Template Updated',
@@ -142,7 +145,7 @@ class ScreeningRequirementTemplateController extends Controller
         $template = ScreeningRequirementTemplate::findOrFail($id);
 
         $template->update(['active' => ! $template->active]);
-        $template->load(['items', 'position']);
+        $template->load('position');
 
         AuditLogger::log(
             action: $template->active ? 'Requirement Template Activated' : 'Requirement Template Deactivated',
@@ -251,6 +254,28 @@ class ScreeningRequirementTemplateController extends Controller
         $data['items'] = $items;
 
         return $data;
+    }
+
+    /**
+     * Build the items array for a template from validated items.
+     * Each item keeps its entity_type/value/required, and a stable item_id is
+     * assigned so the payload keeps the same shape as the old child table.
+     * (The model's `items_json => array` cast serializes this on save.)
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildItemsArray(array $items, int $templateId): array
+    {
+        return array_values(array_map(function (array $item, int $idx) use ($templateId) {
+            return [
+                'item_id'     => ($idx + 1),
+                'template_id' => $templateId,
+                'entity_type' => $item['entity_type'],
+                'value'       => $item['value'],
+                'required'    => (bool) ($item['required'] ?? true),
+                'created_at'  => now()->toDateTimeString(),
+            ];
+        }, $items, array_keys($items)));
     }
 
     /** API shape consumed by the Screening Setup manager and builder picker. */

@@ -2,6 +2,7 @@
 
 namespace Modules\Auth\Http\Controllers;
 
+use App\Exceptions\OtpDeliveryException;
 use App\Http\Controllers\Controller;
 use App\Models\SystemUser;
 use App\Models\UserLoginActivity;
@@ -140,7 +141,23 @@ class AuthController extends Controller
             ]);
         }
 
-        $issued = $this->otpService->issue($user);
+        try {
+            $issued = $this->otpService->issue($user);
+        } catch (OtpDeliveryException $e) {
+            AuditLogger::log(
+                'OTP delivery failed',
+                'Authentication',
+                'Error',
+                'user',
+                $user->username,
+                'One-time password could not be emailed to ' . $this->maskEmail($user->email),
+                $user
+            );
+
+            return response()->json([
+                'message' => 'We could not send your verification code right now. Please try again in a moment.',
+            ], 503);
+        }
 
         AuditLogger::log(
             'OTP sent',
@@ -261,6 +278,12 @@ class AuthController extends Controller
         $result = $this->otpService->resend($request->string('login_token'));
 
         if (!$result['ok']) {
+            if ($result['mail_failed'] ?? false) {
+                return response()->json([
+                    'message' => 'We could not resend your verification code right now. Please try again in a moment.',
+                ], 503);
+            }
+
             return response()->json(['message' => 'Login token is invalid or expired.'], 422);
         }
 

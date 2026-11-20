@@ -92,8 +92,7 @@ class NewHire extends Model
     protected static function activeTemplates(): \Illuminate\Support\Collection
     {
         if (static::$activeTemplatesCache === null) {
-            static::$activeTemplatesCache = OnboardingChecklistTemplate::with('items')
-                ->where('status', 'Active')
+            static::$activeTemplatesCache = OnboardingChecklistTemplate::where('status', 'Active')
                 ->get();
         }
 
@@ -121,7 +120,7 @@ class NewHire extends Model
     {
         $rows = $this->relationLoaded('onboardingItems')
             ? $this->getRelation('onboardingItems')
-            : $this->onboardingItems()->with('templateItem.template')->get();
+            : $this->onboardingItems()->get();
 
         $placedItemIds = [];
         $placedTexts = [];

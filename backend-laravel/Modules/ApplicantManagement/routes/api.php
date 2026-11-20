@@ -104,6 +104,10 @@ Route::prefix('v1')
                 ->name('screening.status');
            Route::put('screening/configuration', [ScreeningReferenceController::class, 'saveConfiguration'])
                 ->name('screening.configuration.save');
+           // Drop a per-position override so the role inherits the general config.
+           Route::delete('screening/configuration/{positionId}', [ScreeningReferenceController::class, 'resetConfiguration'])
+                ->whereNumber('positionId')
+                ->name('screening.configuration.reset');
 
            Route::post('screening/reference-data', [ScreeningReferenceController::class, 'store'])
                 ->name('screening.reference-data.store');

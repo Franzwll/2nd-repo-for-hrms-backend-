@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Modules\ApplicantManagement\Models\ScreeningReferenceData;
 use Modules\ApplicantManagement\Models\ScreeningRequirementTemplate;
-use Modules\ApplicantManagement\Models\ScreeningRequirementTemplateItem;
 
 class ScreeningDemoSeeder extends Seeder
 {
@@ -338,16 +337,18 @@ class ScreeningDemoSeeder extends Seeder
                 ]
             );
 
-            // Re-seed chips cleanly
-            $template->items()->delete();
-            foreach ($t['items'] as [$entityType, $val, $req]) {
-                ScreeningRequirementTemplateItem::create([
+            // Re-seed chips cleanly (Phase 3h: entities live in items_json)
+            $template->items_json = array_map(function (array $tuple, int $idx) use ($template) {
+                return [
+                    'item_id'     => ($idx + 1),
                     'template_id' => $template->template_id,
-                    'entity_type' => $entityType,
-                    'value' => $val,
-                    'required' => (bool) $req,
-                ]);
-            }
+                    'entity_type' => $tuple[0],
+                    'value'       => $tuple[1],
+                    'required'    => (bool) $tuple[2],
+                    'created_at'  => now()->toDateTimeString(),
+                ];
+            }, $t['items'], array_keys($t['items']));
+            $template->save();
         }
         $this->command?->info('[4/4] Synced ' . count($requirementTemplates) . ' requirement templates with active chips.');
 

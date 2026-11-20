@@ -7,7 +7,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\NewHireOnboarding\Http\Requests\StoreChecklistTemplateRequest;
 use Modules\NewHireOnboarding\Http\Resources\ChecklistTemplateResource;
-use Modules\NewHireOnboarding\Models\OnboardingChecklistItem;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
 use App\Services\AuditLogger;
 
@@ -19,8 +18,7 @@ class ChecklistTemplateController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = OnboardingChecklistTemplate::with('items')
-            ->orderBy('phase')
+        $query = OnboardingChecklistTemplate::orderBy('phase')
             ->orderBy('title');
 
         if ($phase = $request->query('phase')) {
@@ -67,15 +65,13 @@ class ChecklistTemplateController extends Controller
             details: "Created onboarding checklist template '{$template->title}' (status: {$template->status}).",
         );
 
-        // Persist nested items
-        foreach ($items as $item) {
-            $template->items()->create($item);
-        }
+        // Persist nested items (Phase 4a: inlined in templates.items_json)
+        $template->syncItems($items);
 
         // Templates are read-time only: activating a template does NOT insert
         // rows into each new hire's checklist — matching hires simply start
         // seeing its items (see EmployeeOnboardingItemController@index).
-        $payload = (new ChecklistTemplateResource($template->load('items')))->resolve();
+        $payload = (new ChecklistTemplateResource($template->refresh()))->resolve();
 
         return response()->json($payload, 201);
     }
@@ -86,7 +82,7 @@ class ChecklistTemplateController extends Controller
 
     public function show(int $template): JsonResponse
     {
-        $model = OnboardingChecklistTemplate::with('items')->findOrFail($template);
+        $model = OnboardingChecklistTemplate::findOrFail($template);
         return response()->json(new ChecklistTemplateResource($model));
     }
 
@@ -133,36 +129,14 @@ class ChecklistTemplateController extends Controller
         );
 
         if ($items !== null) {
-            $existingItems = $model->items()->get();
-            $existingById  = $existingItems->keyBy('template_item_id');
-
-            $updatedIds = [];
-            foreach ($items as $index => $item) {
-                $existing = $existingItems->values()->get($index);
-                $itemPayload = [
-                    'item_text'          => $item['item_text'],
-                    'instructions'       => $item['instructions'] ?? null,
-                    'requires_upload'    => (bool) ($item['requires_upload'] ?? false),
-                    'upload_placeholder' => $item['upload_placeholder'] ?? null,
-                    'sort_order'         => $item['sort_order'] ?? $index,
-                ];
-
-                if ($existing) {
-                    $existing->update($itemPayload);
-                    $updatedIds[] = $existing->template_item_id;
-                } else {
-                    $created = $model->items()->create($itemPayload);
-                    $updatedIds[] = $created->template_item_id;
-                }
-            }
-
-            // Drop template items that were removed from the checklist — their
-            // copied new-hire rows become orphans and are hidden at read time.
-            $existingItems->whereNotIn('template_item_id', $updatedIds)
-                ->each->delete();
+            // Phase 4a: reconcile the inlined items_json in place. Existing
+            // template items keep their template_item_id (so already-applied
+            // new-hire rows stay linked and never duplicate); removed items
+            // become orphaned and are hidden at read time.
+            $model->syncItems($items);
         }
 
-        $payload = (new ChecklistTemplateResource($model->load('items')))->resolve();
+        $payload = (new ChecklistTemplateResource($model->refresh()))->resolve();
 
         return response()->json($payload);
     }
@@ -174,6 +148,8 @@ class ChecklistTemplateController extends Controller
     public function destroy(int $template): JsonResponse
     {
         OnboardingChecklistTemplate::findOrFail($template)->delete();
+        OnboardingChecklistTemplate::flushItemCache();
+
         return response()->json(['message' => 'Template deleted.']);
     }
 
@@ -191,7 +167,7 @@ class ChecklistTemplateController extends Controller
             'sort_order' => ['required', 'integer', 'min:0'],
         ]);
 
-        $item = $model->items()->create($data);
+        $item = $model->appendItem($data);
 
         return response()->json([
             'template_item_id' => $item->template_item_id,
@@ -206,14 +182,15 @@ class ChecklistTemplateController extends Controller
 
     public function updateItem(Request $request, int $item): JsonResponse
     {
-        $model = OnboardingChecklistItem::findOrFail($item);
+        $templateItem = OnboardingChecklistTemplate::findItem($item);
+        abort_if($templateItem === null, 404);
 
         $data = $request->validate([
             'item_text'  => ['sometimes', 'string'],
             'sort_order' => ['sometimes', 'integer', 'min:0'],
         ]);
 
-        $model->update($data);
+        $model = $templateItem->template->updateItemById($item, $data);
 
         AuditLogger::log(
             action: 'Checklist Template Item Updated',
@@ -236,7 +213,11 @@ class ChecklistTemplateController extends Controller
 
     public function destroyItem(int $item): JsonResponse
     {
-        OnboardingChecklistItem::findOrFail($item)->delete();
+        $templateItem = OnboardingChecklistTemplate::findItem($item);
+        abort_if($templateItem === null, 404);
+
+        $templateItem->template->removeItemById($item);
+
         return response()->json(['message' => 'Item removed.']);
     }
 }

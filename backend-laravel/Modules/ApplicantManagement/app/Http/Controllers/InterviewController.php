@@ -28,7 +28,7 @@ class InterviewController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Interview::with(['applicant.jobPost.department', 'facility'])
+        $query = Interview::with(['applicant.jobPost.department'])
             ->orderByDesc('scheduled_date');
 
         if ($applicantId = $request->query('applicant_id')) {
@@ -158,7 +158,7 @@ class InterviewController extends Controller
             }
         }
 
-        return response()->json(new InterviewResource($interview->load(['applicant.jobPost.department', 'facility'])), 201);
+        return response()->json(new InterviewResource($interview->load(['applicant.jobPost.department'])), 201);
     }
 
     /* ------------------------------------------------------------------ */
@@ -169,7 +169,7 @@ class InterviewController extends Controller
 
     public function facilityApprove(int $interview): JsonResponse
     {
-        $model = Interview::with(['applicant.jobPost.department', 'facility'])->findOrFail($interview);
+        $model = Interview::with(['applicant.jobPost.department'])->findOrFail($interview);
         $applicant = $model->applicant;
 
         if (! $model->facility_id || ! $model->facility) {
@@ -341,6 +341,23 @@ class InterviewController extends Controller
 
         $data = $request->validated();
 
+        // A completed interview is final: the assessment test comes next, so
+        // the slot can no longer be moved or reopened by a reschedule.
+        $requestedScheduleChanged = (array_key_exists('scheduled_date', $data)
+                && (string) $data['scheduled_date'] !== (string) $previousDate)
+            || (array_key_exists('scheduled_time', $data)
+                && (string) $data['scheduled_time'] !== (string) $previousTime)
+            || (array_key_exists('scheduled_end_time', $data)
+                && (string) ($data['scheduled_end_time'] ?? '') !== (string) ($previousEndTime ?? ''))
+            || (array_key_exists('mode', $data) && $data['mode'] !== $previousMode);
+
+        if ($previousStatus === 'Completed'
+            && ($requestedScheduleChanged || ($data['status'] ?? null) === 'Scheduled')) {
+            return response()->json([
+                'message' => 'This interview is already completed and can no longer be rescheduled. Send the applicant an assessment test instead.',
+            ], 422);
+        }
+
         // Virtual interviews are hosted on Zoom — moving an interview to
         // Virtual drops any room reservation and its approval state.
         if (array_key_exists('mode', $data) && $data['mode'] === 'Virtual') {
@@ -415,6 +432,24 @@ class InterviewController extends Controller
             if ($applicant && in_array($applicant->stage, ['Screened', 'Accepted'])) {
                 $applicant->update(['stage' => 'Interview Scheduled']);
             }
+        }
+
+        /* An active interview always means the applicant is at least at the
+           interview stage. Correct a stale Screened/Accepted row so the
+           pipeline and the Move to Stage dialog show the true current stage. */
+        if ($scheduleChanged && $model->status !== 'Cancelled' && $applicant
+            && in_array($applicant->stage, ['Screened', 'Accepted'], true)) {
+            $applicant->update(['stage' => 'Interview Scheduled']);
+        }
+
+        /* When an interview is marked Completed the applicant has at minimum
+           gone through their interview — advance any stale Screened/Accepted
+           row so the pipeline reflects that the interview happened. */
+        if ($model->status === 'Completed'
+            && $previousStatus !== 'Completed'
+            && $applicant
+            && in_array($applicant->stage, ['Screened', 'Accepted'], true)) {
+            $applicant->update(['stage' => 'Interview Scheduled']);
         }
 
         /* Fresh Zoom link on reschedule                                   */

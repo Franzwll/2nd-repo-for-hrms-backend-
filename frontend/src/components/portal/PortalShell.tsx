@@ -394,11 +394,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
   const searchStr = location.searchStr || "";
 
-  const [expanded, setExpanded] = useState<string[]>(() =>
-
-    nav.filter((i) => i.children?.length).map((i) => i.label),
-
-  );
+  const [expanded, setExpanded] = useState<string[]>([]);
 
   const [announceOpen, setAnnounceOpen] = useState(false);
 
@@ -994,48 +990,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
             <GlobalSearch base={meta.base} />
 
-            {/* Live Digital Clock & Date â€” minimal, no border */}
-
-            <div className="hidden items-center gap-2.5 min-[500px]:flex">
-
-              <div className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-
-                <Clock3 className="h-4 w-4 text-primary" />
-
-              </div>
-
-              <div className="flex flex-col items-end leading-none sm:items-start">
-
-                <span
-
-                  className="font-mono text-sm font-semibold tabular-nums tracking-tight"
-
-                  suppressHydrationWarning
-
-                >
-
-                  {timeString}
-
-                </span>
-
-                <span
-
-                  className="text-[10px] font-medium tracking-wider text-muted-foreground sm:text-[11px] mt-1"
-
-                  suppressHydrationWarning
-
-                >
-
-                  {dateString}
-
-                </span>
-
-              </div>
-
-            </div>
-
-
-
             <div className="flex items-center gap-2">
 
             <Popover>
@@ -1528,11 +1482,19 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               <DropdownMenuContent align="end" className="w-56">
 
                 <DropdownMenuLabel>
-
                   <p className="text-sm font-medium truncate">{displayName}</p>
-
                   <p className="text-xs font-normal text-muted-foreground truncate">{displayDept}</p>
-
+                  <div className="mt-2.5 flex items-center gap-2 rounded-md bg-muted/50 p-2 font-normal border border-border/40">
+                    <Clock3 className="h-4 w-4 text-primary shrink-0" />
+                    <div className="flex flex-col leading-tight">
+                      <span className="font-mono text-xs font-semibold tabular-nums text-foreground" suppressHydrationWarning>
+                        {timeString}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground mt-0.5" suppressHydrationWarning>
+                        {dateString}
+                      </span>
+                    </div>
+                  </div>
                 </DropdownMenuLabel>
 
                 <DropdownMenuSeparator />

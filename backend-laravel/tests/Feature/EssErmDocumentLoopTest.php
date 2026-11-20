@@ -76,8 +76,9 @@ class EssErmDocumentLoopTest extends TestCase
 
         $code = $created['request_code'];
         $this->assertSame('Pending', $created['status']);
-        $this->assertDatabaseHas('ess_request_status_histories', [
+        $this->assertDatabaseHas('ess_request_events', [
             'ess_request_id' => EssRequest::where('request_code', $code)->value('ess_request_id'),
+            'event_type' => 'status',
             'status' => 'Pending',
         ]);
 
@@ -133,8 +134,9 @@ class EssErmDocumentLoopTest extends TestCase
             'direction' => 'hr',
             'source_module' => 'erm',
         ]);
-        $this->assertDatabaseMissing('ess_request_status_histories', [
+        $this->assertDatabaseMissing('ess_request_events', [
             'ess_request_id' => $essRequestId,
+            'event_type' => 'status',
             'status' => 'Completed',
         ]);
 
@@ -157,8 +159,9 @@ class EssErmDocumentLoopTest extends TestCase
             'request_code' => $code,
             'status' => 'Completed',
         ]);
-        $this->assertDatabaseHas('ess_request_status_histories', [
+        $this->assertDatabaseHas('ess_request_events', [
             'ess_request_id' => $essRequestId,
+            'event_type' => 'status',
             'status' => 'Completed',
         ]);
 

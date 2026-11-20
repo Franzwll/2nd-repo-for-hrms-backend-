@@ -57,7 +57,7 @@ class EmployeeDossierResource extends JsonResource
             'pii_masked' => ! $showPii,
 
             // ---- Relations ----
-            'emergency_contacts' => $this->whenLoaded('emergencyContacts', fn () => EmergencyContactResource::collection($this->emergencyContacts)->resolve()),
+            'emergency_contacts' => EmergencyContactResource::collection($this->emergencyContacts)->resolve(),
             'documents' => $this->whenLoaded('documents', fn () => EmployeeDocumentResource::collection($this->documents)->resolve()),
             'position_history' => $this->whenLoaded('positionHistory', fn () => $this->positionHistory->map(fn ($h) => [
                 'position_history_id' => $h->position_history_id,

@@ -30,15 +30,15 @@ class MockPayrollProvider implements PayrollProvider
 
     public function benefitsFor(int $employeeId): array
     {
-        return DB::table('employee_benefits')
-            ->where('employee_id', $employeeId)
-            ->get()
-            ->map(fn ($r) => [
-                'benefit_name' => $r->benefit_name,
-                'reference_value' => $r->reference_value,
-                'status' => $r->status,
-                'effective_date' => $r->effective_date,
-                'end_date' => $r->end_date,
-            ])->all();
+        $raw = DB::table('employees')->where('employee_id', $employeeId)->value('benefits_json');
+        $rows = json_decode((string) $raw, true) ?: [];
+
+        return array_map(fn ($r) => [
+            'benefit_name' => $r['benefit_name'] ?? null,
+            'reference_value' => $r['reference_value'] ?? null,
+            'status' => $r['status'] ?? null,
+            'effective_date' => $r['effective_date'] ?? null,
+            'end_date' => $r['end_date'] ?? null,
+        ], $rows);
     }
 }

@@ -24,7 +24,7 @@ class AssessmentInviteController extends Controller
     /* GET /api/v1/assessment-invites?applicant_id= — staff view of links. */
     public function index(Request $request): JsonResponse
     {
-        $query = AssessmentInvite::with('applicant.jobPost')->orderByDesc('assessment_invite_id');
+        $query = AssessmentInvite::with('applicant.jobPost')->orderByDesc('evaluation_id');
 
         if ($applicantId = $request->query('applicant_id')) {
             $query->where('applicant_id', $applicantId);

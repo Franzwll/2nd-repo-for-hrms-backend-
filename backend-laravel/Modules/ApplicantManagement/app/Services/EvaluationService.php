@@ -3,6 +3,7 @@
 namespace Modules\ApplicantManagement\Services;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Modules\ApplicantManagement\Models\ApplicantScreening;
 use Modules\ApplicantManagement\Models\ScreeningGroundTruth;
 
@@ -202,18 +203,29 @@ class EvaluationService
 
     public function sop5ScoreAlignment(): array
     {
-        $pairs = ApplicantScreening::query()
-            ->join('screening_ground_truths', function ($join) {
-                $join->on('applicant_screenings.applicant_id', '=', 'screening_ground_truths.applicant_id')
-                     ->on('applicant_screenings.job_post_id', '=', 'screening_ground_truths.job_post_id');
-            })
-            ->whereNotNull('applicant_screenings.match_score')
-            ->whereNotNull('screening_ground_truths.true_qualification_score')
-            ->get([
-                'applicant_screenings.applicant_id',
-                'applicant_screenings.match_score',
-                'screening_ground_truths.true_qualification_score',
-            ]);
+        if (Schema::hasTable('screening_ground_truths')) {
+            $pairs = ApplicantScreening::query()
+                ->join('screening_ground_truths', function ($join) {
+                    $join->on('applicant_screenings.applicant_id', '=', 'screening_ground_truths.applicant_id')
+                         ->on('applicant_screenings.job_post_id', '=', 'screening_ground_truths.job_post_id');
+                })
+                ->whereNotNull('applicant_screenings.match_score')
+                ->whereNotNull('screening_ground_truths.true_qualification_score')
+                ->get([
+                    'applicant_screenings.applicant_id',
+                    'applicant_screenings.match_score',
+                    'screening_ground_truths.true_qualification_score',
+                ]);
+        } else {
+            $pairs = ApplicantScreening::query()
+                ->whereNotNull('match_score')
+                ->whereNotNull('true_qualification_score')
+                ->get([
+                    'applicant_id',
+                    'match_score',
+                    'true_qualification_score',
+                ]);
+        }
 
         $n = $pairs->count();
         if ($n < 2) {
@@ -257,18 +269,30 @@ class EvaluationService
     /* Helpers                                                             */
     /* ------------------------------------------------------------------ */
 
-    /** @return Collection<int, array{0: ApplicantScreening, 1: ScreeningGroundTruth}> */
+    /** @return Collection<int, array{0: ApplicantScreening, 1: object}> */
     protected function pairedRecords(): Collection
     {
-        $truths = ScreeningGroundTruth::all()->keyBy('applicant_id');
-        $screenings = ApplicantScreening::whereIn('applicant_id', $truths->keys())
+        if (Schema::hasTable('screening_ground_truths')) {
+            $truths = ScreeningGroundTruth::all()->keyBy('applicant_id');
+            $screenings = ApplicantScreening::whereIn('applicant_id', $truths->keys())
+                ->orderByDesc('screening_id')
+                ->get()
+                ->unique('applicant_id');
+
+            return $screenings
+                ->map(fn ($screening) => [$screening, $truths->get($screening->applicant_id)])
+                ->filter(fn ($pair) => $pair[1] !== null)
+                ->values();
+        }
+
+        $screenings = ApplicantScreening::query()
+            ->whereNotNull('true_screening_result')
             ->orderByDesc('screening_id')
             ->get()
             ->unique('applicant_id');
 
         return $screenings
-            ->map(fn ($screening) => [$screening, $truths->get($screening->applicant_id)])
-            ->filter(fn ($pair) => $pair[1] !== null)
+            ->map(fn ($screening) => [$screening, $screening])
             ->values();
     }
 

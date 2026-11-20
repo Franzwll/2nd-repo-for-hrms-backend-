@@ -21,6 +21,7 @@ import {
   Save,
   Search,
   Send,
+  Settings2,
   ShieldCheck,
   Trash2,
   Upload,
@@ -31,9 +32,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/portal/PageHeader";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
-import { StatCard } from "@/components/portal/StatCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -159,7 +158,9 @@ function DocumentPreviewModal({
   }
 
   const safeNameOrUrl = fileName || fileUrl || "";
-  const ext = safeNameOrUrl.includes(".") ? safeNameOrUrl.split(".").pop()?.toLowerCase() ?? "" : "";
+  const ext = safeNameOrUrl.includes(".")
+    ? (safeNameOrUrl.split(".").pop()?.toLowerCase() ?? "")
+    : "";
   const kind: "image" | "pdf" | "other" = ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext)
     ? "image"
     : ext === "pdf"
@@ -486,7 +487,9 @@ function EmployeeSubmissionDetails({
                 : hrDragActive
                   ? "Drop the file to attach it"
                   : `${
-                      submission.fileName ? "Replace file (HR attach)" : "Attach file on hire's behalf"
+                      submission.fileName
+                        ? "Replace file (HR attach)"
+                        : "Attach file on hire's behalf"
                     } — click or drag & drop (PDF, DOCX, PNG, JPG, up to 10MB)`}
             </span>
           </div>
@@ -619,9 +622,9 @@ function AdminChecklistRow({
         {!done && returned && (
           <Badge
             variant="outline"
-            className="shrink-0 border-orange-500/40 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-400 dark:border-orange-400/25 dark:bg-orange-400/10"
+            className="shrink-0 border-orange-500/40 bg-orange-500/10 text-[10px] text-orange-600 dark:border-orange-400/25 dark:bg-orange-400/10 dark:text-orange-400"
           >
-            Returned for correction
+            Returned
           </Badge>
         )}
         {!done && !returned && submitted && (
@@ -629,34 +632,25 @@ function AdminChecklistRow({
             variant="outline"
             className="shrink-0 border-destructive/40 bg-destructive/10 text-[10px] text-destructive"
           >
-            Submitted · pending review
-          </Badge>
-        )}
-        {!done && !submitted && (
-          <Badge
-            variant="outline"
-            className="shrink-0 border-caution/40 bg-caution/10 text-[10px] text-caution"
-          >
-            Pending
+            Submitted
           </Badge>
         )}
         {hasSubmission && (
           <CollapsibleTrigger
             title="View employee submission"
-            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="View employee submission"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            View employee submission
-            <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
+            <Eye className="h-3.5 w-3.5" />
           </CollapsibleTrigger>
         )}
         {!hasSubmission && showAttachExpander && (
           <CollapsibleTrigger
             title="Attach a document on the hire's behalf"
-            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Attach a document on the hire's behalf"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            <Upload className="h-3 w-3" />
-            Attach file
-            <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
+            <Upload className="h-3.5 w-3.5" />
           </CollapsibleTrigger>
         )}
       </div>
@@ -887,8 +881,13 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       upload_placeholder?: string;
     }[]
   >([]);
-  /** Collapsible create-checklist form in the Checklist Builder. */
+  /** Create-checklist dialog in the Checklist Builder. */
   const [showCreateChecklist, setShowCreateChecklist] = useState(false);
+  const [showAddRequest, setShowAddRequest] = useState(false);
+  const [checklistSearch, setChecklistSearch] = useState("");
+  const [checklistPhaseFilter, setChecklistPhaseFilter] = useState("all");
+  const [requestSearch, setRequestSearch] = useState("");
+  const [requestPositionFilter, setRequestPositionFilter] = useState("all");
   /** Master checklist currently being edited inline (title + items + stage + positions). */
   const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null);
   const [editChecklistTitle, setEditChecklistTitle] = useState("");
@@ -1269,6 +1268,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     ]);
     setReqItemDraft("");
     setReqPositionDraft("all");
+    setShowAddRequest(false);
     toast.success("Requested checklist item added");
 
     try {
@@ -1723,15 +1723,36 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   );
 
   const hirePage = usePagination(visible);
-  const reqPage = usePagination(requestedItems, 6);
-  const checklistPage = usePagination(masterChecklists, 3);
+  // Search + filters for the two management lists, computed before paging so
+  // the counts and empty states stay truthful.
+  const filteredMasterChecklists = useMemo(() => {
+    const q = checklistSearch.trim().toLowerCase();
+    return masterChecklists.filter((c) => {
+      if (checklistPhaseFilter !== "all" && (c.phase ?? "Probationary") !== checklistPhaseFilter)
+        return false;
+      if (!q) return true;
+      return `${c.title} ${c.items.join(" ")}`.toLowerCase().includes(q);
+    });
+  }, [masterChecklists, checklistSearch, checklistPhaseFilter]);
+
+  const filteredRequestedItems = useMemo(() => {
+    const q = requestSearch.trim().toLowerCase();
+    return requestedItems.filter((r) => {
+      if (requestPositionFilter !== "all" && r.position !== requestPositionFilter) return false;
+      if (!q) return true;
+      return `${r.item} ${r.position} ${r.requestedBy}`.toLowerCase().includes(q);
+    });
+  }, [requestedItems, requestSearch, requestPositionFilter]);
+
+  const reqPage = usePagination(filteredRequestedItems, 6);
+  const checklistPage = usePagination(filteredMasterChecklists, 3);
 
   const selectStage = (s: Stage) => {
     setStage(s);
     setShowAllStages(false);
     setAwaitingOnly(false);
-    const firstInStage = hires.find((h) => h.stage === s);
-    setSelectedId(firstInStage?.id ?? null);
+    // Keep the checklist panel closed until the user opens a hire with View.
+    setSelectedId(null);
   };
 
   const resetHireForm = () => {
@@ -1856,15 +1877,45 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
   return (
     <div>
-      <PageHeader
-        title="New Hire Onboarding"
-        description="Track pre-employment requirements, contracts, and onboarding progress for incoming hires."
-        actions={
-          <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
-            <Download className="h-4 w-4" /> Generate Report
-          </Button>
-        }
-      />
+      <div className="-mx-1 mb-4 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              <UserPlus className="h-11 w-11 fill-current" strokeWidth={1.25} />
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                New Hire Onboarding
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Track pre-employment requirements, contracts, and onboarding progress.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => setReportsOpen(true)}
+            >
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              aria-label="Auto-regularization settings"
+              title="Auto-regularization settings"
+              onClick={() => {
+                setAutoRegDraft(autoRegularizeDays);
+                setAutoRegOpen(true);
+              }}
+            >
+              <Settings2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* PREDEFINED REPORTS DIALOG */}
       <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
@@ -1872,23 +1923,22 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
             <DialogDescription>
-              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
-              will be asked for a file password on every export).
+              Every export is sealed in a password-protected ZIP (AES-256).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {onboardingReportOptions.map((r) => (
               <div
                 key={r.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3 sm:flex-nowrap"
               >
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{r.title}</p>
                   <p className="text-xs text-muted-foreground">{r.description}</p>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="outline" className="shrink-0 cursor-pointer">
                       <Download className="mr-2 h-4 w-4" /> Generate
                     </Button>
                   </DropdownMenuTrigger>
@@ -1921,9 +1971,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
                       </span>
                     </DropdownMenuItem>
-                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                      Password-protected ZIP — password asked on every export.
-                    </p>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -1961,48 +2008,71 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         onConfirm={confirmOnboardingCsv}
       />
 
-      <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total New Hires"
-          value={onboardingHires.length}
-          icon={Users}
-          tone="primary"
-          onClick={() => {
-            setShowAllStages(true);
-            setAwaitingOnly(false);
-          }}
-        />
-        <StatCard
-          label="Pre-onboarding"
-          value={onboardingHires.filter((h) => h.stage === "Pre-onboarding").length}
-          icon={ClipboardList}
-          onClick={() => selectStage("Pre-onboarding")}
-        />
-        <StatCard
-          label="Probationary"
-          value={onboardingHires.filter((h) => h.stage === "Probationary").length}
-          icon={ClipboardCheck}
-          tone="gold"
-          onClick={() => selectStage("Probationary")}
-        />
-        <StatCard
-          label="Awaiting Evaluation"
-          value={awaitingHires.length}
-          icon={Hourglass}
-          tone="success"
-          onClick={() => {
-            setAwaitingOnly(true);
-            setShowAllStages(false);
-          }}
-        />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          {
+            label: "Total New Hires",
+            value: onboardingHires.length,
+            hint: "Everyone in the onboarding pipeline",
+            icon: Users,
+            onClick: () => {
+              setShowAllStages(true);
+              setAwaitingOnly(false);
+            },
+          },
+          {
+            label: "Pre-onboarding",
+            value: onboardingHires.filter((h) => h.stage === "Pre-onboarding").length,
+            hint: "Requirements still being completed",
+            icon: ClipboardList,
+            onClick: () => selectStage("Pre-onboarding"),
+          },
+          {
+            label: "Probationary",
+            value: onboardingHires.filter((h) => h.stage === "Probationary").length,
+            hint: "Working through their probation period",
+            icon: ClipboardCheck,
+            onClick: () => selectStage("Probationary"),
+          },
+          {
+            label: "Awaiting Evaluation",
+            value: awaitingHires.length,
+            hint: "Checklist complete, evaluation pending",
+            icon: Hourglass,
+            onClick: () => {
+              setAwaitingOnly(true);
+              setShowAllStages(false);
+            },
+          },
+        ].map((m) => (
+          <button
+            key={m.label}
+            type="button"
+            onClick={m.onClick}
+            title={m.hint}
+            className="group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+          >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <m.icon className="h-6 w-6" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-xs font-medium text-muted-foreground">
+                {m.label}
+              </span>
+              <span className="mt-1 block font-display text-[1.45rem] font-bold leading-none tabular-nums text-foreground">
+                {m.value.toLocaleString()}
+              </span>
+            </span>
+          </button>
+        ))}
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList>
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="pipeline">
+          <TabsTrigger className="flex items-center gap-1.5" value="pipeline">
             <ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline
           </TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="checklists">
+          <TabsTrigger className="flex items-center gap-1.5" value="checklists">
             <Send className="h-3.5 w-3.5" /> Requested Checklists
           </TabsTrigger>
         </TabsList>
@@ -2069,24 +2139,19 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             </CardContent>
           </Card>
 
-          <div className="mt-6 grid gap-6 2xl:grid-cols-[1.6fr_1fr]">
+          <div className={cn("mt-6 grid gap-6", selected && "2xl:grid-cols-[1.6fr_1fr]")}>
             <Card className="flex h-[42rem] min-w-0 flex-col border-border/70">
               <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-6">
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                        <Users className="h-5 w-5 text-primary" />
-                        {awaitingOnly
-                          ? "Awaiting Evaluation"
-                          : showAllStages
-                            ? "All Hired Applicants"
-                            : `${stage} List`}
-                      </h2>
-                      <p className="text-xs text-muted-foreground">
-                        Click a hire to open their requirements checklist on the right.
-                      </p>
-                    </div>
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                      <Users className="h-5 w-5 text-primary" />
+                      {awaitingOnly
+                        ? "Awaiting Evaluation"
+                        : showAllStages
+                          ? "All Hired Applicants"
+                          : `${stage} List`}
+                    </h2>
                   </div>
 
                   <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
@@ -2137,19 +2202,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         <SelectItem value="awaiting">Awaiting evaluation</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      aria-label="Auto-regularization settings"
-                      title="Auto-regularization settings"
-                      className="h-9 w-9 shrink-0 cursor-pointer border-border bg-card text-foreground hover:bg-muted"
-                      onClick={() => {
-                        setAutoRegDraft(autoRegularizeDays);
-                        setAutoRegOpen(true);
-                      }}
-                    >
-                      <ShieldCheck className="h-4 w-4" />
-                    </Button>
                     <Button size="sm" onClick={openAddHire}>
                       <UserPlus className="mr-2 h-4 w-4" /> Add new hire
                     </Button>
@@ -2188,160 +2240,166 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         )}
                         {(!hiresLoading || hires.length > 0) &&
                           hirePage.pageItems.map((h) => {
-                          const pct = progress(h);
-                          const complete = pct === 100;
-                          const awaiting = evaluationRequested.includes(h.id);
-                          return (
-                            <TableRow
-                              key={h.id}
-                              className={cn(
-                                selectedId === h.id && "bg-primary/5",
-                                complete && !awaiting && "bg-success/5",
-                                awaiting && "bg-gold/5",
-                              )}
-                            >
-                              <TableCell>
-                                <div className="flex items-center gap-3">
-                                  <Avatar className="h-9 w-9">
-                                    <AvatarFallback
-                                      className={cn(
-                                        "text-xs",
-                                        awaiting
-                                          ? "bg-gold/15 text-gold-foreground"
-                                          : complete
-                                            ? "bg-success/15 text-success"
-                                            : "bg-primary/10 text-primary",
-                                      )}
-                                    >
-                                      {h.initials}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div>
-                                    <p className="text-sm font-medium">{h.name}</p>
-                                    <p className="text-xs text-muted-foreground">{h.department}</p>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm">{h.position}</TableCell>
-                              <TableCell className="text-xs text-muted-foreground">
-                                {h.startDate}
-                              </TableCell>
-                              <TableCell>
-                                {(() => {
-                                  const worked = daysOfWork(h.startDate);
-                                  const remaining = autoRegularizeDays - worked;
-                                  const isProbationary = h.stage === "Probationary";
-                                  return (
-                                    <div className="text-xs">
-                                      <span
+                            const pct = progress(h);
+                            const complete = pct === 100;
+                            const awaiting = evaluationRequested.includes(h.id);
+                            return (
+                              <TableRow
+                                key={h.id}
+                                className={cn(
+                                  selectedId === h.id && "bg-primary/5",
+                                  complete && !awaiting && "bg-success/5",
+                                  awaiting && "bg-gold/5",
+                                )}
+                              >
+                                <TableCell>
+                                  <div className="flex items-center gap-3">
+                                    <Avatar className="h-9 w-9">
+                                      <AvatarFallback
                                         className={cn(
-                                          "font-medium",
-                                          isProbationary &&
-                                            remaining <= 0 &&
-                                            "text-gold-foreground",
+                                          "text-xs",
+                                          awaiting
+                                            ? "bg-gold/15 text-gold-foreground"
+                                            : complete
+                                              ? "bg-success/15 text-success"
+                                              : "bg-primary/10 text-primary",
                                         )}
                                       >
-                                        {worked} {worked === 1 ? "day" : "days"} start working
-                                      </span>
-                                      {isProbationary && remaining > 0 && (
-                                        <span className="block text-[0.65rem] text-muted-foreground">
-                                          {remaining} {remaining === 1 ? "day" : "days"} to
-                                          auto-regularization
-                                        </span>
-                                      )}
-                                      {isProbationary && remaining <= 0 && (
-                                        <span className="block text-[0.65rem] font-medium text-gold-foreground">
-                                          Probation cap reached — regularization due
-                                        </span>
-                                      )}
+                                        {h.initials}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                      <p className="text-sm font-medium">{h.name}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {h.department}
+                                      </p>
                                     </div>
-                                  );
-                                })()}
-                              </TableCell>
-                              <TableCell className="w-48">
-                                <Progress
-                                  value={pct}
-                                  className={cn(
-                                    "h-2 [&>div]:transition-all",
-                                    awaiting ? "[&>div]:bg-gold" : "[&>div]:bg-success",
-                                    complete && awaiting && "[&>div]:shadow-[0_0_10px_var(--gold)]",
-                                  )}
-                                />
-                                {awaiting ? (
-                                  <p className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-gold-foreground">
-                                    <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                                    Waiting for evaluation
-                                  </p>
-                                ) : (
-                                  <p
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-sm">{h.position}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {h.startDate}
+                                </TableCell>
+                                <TableCell>
+                                  {(() => {
+                                    const worked = daysOfWork(h.startDate);
+                                    const remaining = autoRegularizeDays - worked;
+                                    const isProbationary = h.stage === "Probationary";
+                                    return (
+                                      <div className="text-xs">
+                                        <span
+                                          className={cn(
+                                            "font-medium",
+                                            isProbationary &&
+                                              remaining <= 0 &&
+                                              "text-gold-foreground",
+                                          )}
+                                        >
+                                          {worked} {worked === 1 ? "day" : "days"} start working
+                                        </span>
+                                        {isProbationary && remaining > 0 && (
+                                          <span className="block text-[0.65rem] text-muted-foreground">
+                                            {remaining} {remaining === 1 ? "day" : "days"} to
+                                            auto-regularization
+                                          </span>
+                                        )}
+                                        {isProbationary && remaining <= 0 && (
+                                          <span className="block text-[0.65rem] font-medium text-gold-foreground">
+                                            Probation cap reached — regularization due
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </TableCell>
+                                <TableCell className="w-48">
+                                  <Progress
+                                    value={pct}
                                     className={cn(
-                                      "mt-1 text-[0.7rem]",
-                                      complete ? "text-success" : "text-muted-foreground",
+                                      "h-2 [&>div]:transition-all",
+                                      awaiting ? "[&>div]:bg-gold" : "[&>div]:bg-success",
+                                      complete &&
+                                        awaiting &&
+                                        "[&>div]:shadow-[0_0_10px_var(--gold)]",
+                                    )}
+                                  />
+                                  {awaiting ? (
+                                    <p className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-gold-foreground">
+                                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                                      Waiting for evaluation
+                                    </p>
+                                  ) : (
+                                    <p
+                                      className={cn(
+                                        "mt-1 text-[0.7rem]",
+                                        complete ? "text-success" : "text-muted-foreground",
+                                      )}
+                                    >
+                                      {h.checklist.filter((c) => c.done).length}/
+                                      {h.checklist.length}{" "}
+                                      {complete ? "· all complete" : "complete"}
+                                    </p>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      awaiting
+                                        ? "border-gold/40 bg-gold/15 text-gold-foreground"
+                                        : complete &&
+                                            "border-success/30 bg-success/15 text-success",
                                     )}
                                   >
-                                    {h.checklist.filter((c) => c.done).length}/{h.checklist.length}{" "}
-                                    {complete ? "· all complete" : "complete"}
-                                  </p>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    awaiting
-                                      ? "border-gold/40 bg-gold/15 text-gold-foreground"
-                                      : complete && "border-success/30 bg-success/15 text-success",
-                                  )}
-                                >
-                                  {h.stage}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1.5">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="cursor-pointer"
-                                    onClick={() => {
-                                      if (editingId && editingId !== h.id) cancelEditChecklist();
-                                      setSelectedId(h.id);
-                                    }}
-                                  >
-                                    <Eye className="mr-1.5 h-3.5 w-3.5" /> View
-                                  </Button>
-                                  {editingId === h.id ? (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        className="cursor-pointer"
-                                        onClick={saveEditChecklist}
-                                      >
-                                        <Save className="mr-1.5 h-3.5 w-3.5" /> Save
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="cursor-pointer"
-                                        onClick={cancelEditChecklist}
-                                      >
-                                        Cancel
-                                      </Button>
-                                    </>
-                                  ) : (
+                                    {h.stage}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-1.5">
                                     <Button
                                       size="sm"
                                       variant="ghost"
                                       className="cursor-pointer"
-                                      onClick={() => startEditChecklist(h)}
+                                      onClick={() => {
+                                        if (editingId && editingId !== h.id) cancelEditChecklist();
+                                        setSelectedId(h.id);
+                                      }}
                                     >
-                                      <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Checklist
+                                      <Eye className="mr-1.5 h-3.5 w-3.5" /> View
                                     </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
+                                    {editingId === h.id ? (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          className="cursor-pointer"
+                                          onClick={saveEditChecklist}
+                                        >
+                                          <Save className="mr-1.5 h-3.5 w-3.5" /> Save
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="cursor-pointer"
+                                          onClick={cancelEditChecklist}
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="cursor-pointer"
+                                        onClick={() => startEditChecklist(h)}
+                                      >
+                                        <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Checklist
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         {(!hiresLoading || hires.length > 0) && visible.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="py-8">
@@ -2368,10 +2426,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               </CardContent>
             </Card>
 
-            {/* CHECKLIST PANEL — right corner */}
+            {/* CHECKLIST PANEL — only shown once a hire is opened with View */}
             <Card
               className={cn(
                 "flex h-[42rem] min-w-0 flex-col border-border/70 transition-colors",
+                !selected && "hidden",
                 selected &&
                   selected.stage === "Probationary" &&
                   evaluationRequested.includes(selected.id) &&
@@ -2438,17 +2497,18 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       return (
                         <>
                           <div className="mt-4 flex min-h-[16rem] flex-1 flex-col">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="eyebrow">Requirements checklist</span>
+                            <div className="flex items-baseline justify-between gap-2">
+                              <h3 className="text-sm font-semibold">Requirements checklist</h3>
                               <span
                                 className={cn(
-                                  "font-medium",
+                                  "text-xs font-medium tabular-nums",
                                   progress(selected) === 100
                                     ? "text-gold-foreground"
                                     : "text-muted-foreground",
                                 )}
                               >
-                                {progress(selected)}%
+                                {selected.checklist.filter((c) => c.done).length}/
+                                {selected.checklist.length} done · {progress(selected)}%
                               </span>
                             </div>
                             <Progress
@@ -2462,166 +2522,155 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                               )}
                             />
 
-                            <div className="mt-3 flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium">
-                              <span>Checklist items ({selected.checklist.length})</span>
-                              <span className="text-muted-foreground">
-                                {selected.checklist.filter((c) => c.done).length}/
-                                {selected.checklist.length}
-                              </span>
+                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+                              <ul className="mt-3 space-y-1.5">
+                                {[...selected.checklist]
+                                  .filter(
+                                    (c) =>
+                                      ((c.phase ?? "Probationary") === "Pre-onboarding") ===
+                                      (selected.stage === "Pre-onboarding"),
+                                  )
+                                  .map((c, i) => ({
+                                    ...c,
+                                    i,
+                                    submission: selectedSubmissions[normalizeChecklistKey(c.item)],
+                                  }))
+                                  .sort((a, b) => {
+                                    const rank = (x: {
+                                      done: boolean;
+                                      submission: EmployeeSubmission | undefined;
+                                    }) =>
+                                      x.done
+                                        ? 2
+                                        : x.submission &&
+                                            (x.submission.submittedAt ||
+                                              x.submission.fileName ||
+                                              x.submission.notes)
+                                          ? 1
+                                          : 0;
+                                    return rank(a) - rank(b) || a.i - b.i;
+                                  })
+                                  .map((c) => {
+                                    const isEditingThis = editingId === selected.id && !isWaiting;
+                                    const submission =
+                                      selectedSubmissions[normalizeChecklistKey(c.item)];
+                                    return (
+                                      <li
+                                        key={c.item}
+                                        className="rounded-md transition-all duration-300 ease-in-out"
+                                      >
+                                        <AdminChecklistRow
+                                          done={Boolean(c.done)}
+                                          submitted={Boolean(
+                                            submission &&
+                                            (submission.submittedAt ||
+                                              submission.fileName ||
+                                              submission.notes),
+                                          )}
+                                          label={c.item}
+                                          disabled={!isEditingThis}
+                                          onClick={() => toggleItem(selected.id, c.item)}
+                                          submission={submission}
+                                          {...submissionActions(c.item, Boolean(c.done))}
+                                        />
+                                      </li>
+                                    );
+                                  })}
+                              </ul>
+
+                              {selected.checklist.some(
+                                (c) =>
+                                  ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                  (selected.stage === "Pre-onboarding"),
+                              ) && (
+                                <Collapsible className="mt-3">
+                                  <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50">
+                                    <span className="flex items-center gap-1.5">
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                      {selected.stage === "Pre-onboarding"
+                                        ? "Probationary tasks"
+                                        : "Finished pre-onboarding checklist"}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      {
+                                        selected.checklist.filter(
+                                          (c) =>
+                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                              (selected.stage === "Pre-onboarding") && c.done,
+                                        ).length
+                                      }
+                                      /
+                                      {
+                                        selected.checklist.filter(
+                                          (c) =>
+                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                            (selected.stage === "Pre-onboarding"),
+                                        ).length
+                                      }{" "}
+                                      done
+                                    </span>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                                    <ul className="mt-2 space-y-1.5 pl-1.5">
+                                      {[...selected.checklist]
+                                        .filter(
+                                          (c) =>
+                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                            (selected.stage === "Pre-onboarding"),
+                                        )
+                                        .map((c, i) => ({
+                                          ...c,
+                                          i,
+                                          submission:
+                                            selectedSubmissions[normalizeChecklistKey(c.item)],
+                                        }))
+                                        .sort((a, b) => {
+                                          const rank = (x: {
+                                            done: boolean;
+                                            submission: EmployeeSubmission | undefined;
+                                          }) =>
+                                            x.done
+                                              ? 2
+                                              : x.submission &&
+                                                  (x.submission.submittedAt ||
+                                                    x.submission.fileName ||
+                                                    x.submission.notes)
+                                                ? 1
+                                                : 0;
+                                          return rank(a) - rank(b) || a.i - b.i;
+                                        })
+                                        .map((c) => {
+                                          const isEditingThis =
+                                            editingId === selected.id && !isWaiting;
+                                          const submission =
+                                            selectedSubmissions[normalizeChecklistKey(c.item)];
+                                          return (
+                                            <li
+                                              key={c.item}
+                                              className="rounded-md transition-all duration-300 ease-in-out"
+                                            >
+                                              <AdminChecklistRow
+                                                done={Boolean(c.done)}
+                                                submitted={Boolean(
+                                                  submission &&
+                                                  (submission.submittedAt ||
+                                                    submission.fileName ||
+                                                    submission.notes),
+                                                )}
+                                                label={c.item}
+                                                disabled={!isEditingThis}
+                                                onClick={() => toggleItem(selected.id, c.item)}
+                                                submission={submission}
+                                                {...submissionActions(c.item, Boolean(c.done))}
+                                              />
+                                            </li>
+                                          );
+                                        })}
+                                    </ul>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              )}
                             </div>
-
-                            <>
-                              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-                                <ul className="mt-3 space-y-1.5">
-                                  {[...selected.checklist]
-                                    .filter(
-                                      (c) =>
-                                        ((c.phase ?? "Probationary") === "Pre-onboarding") ===
-                                        (selected.stage === "Pre-onboarding"),
-                                    )
-                                    .map((c, i) => ({
-                                      ...c,
-                                      i,
-                                      submission:
-                                        selectedSubmissions[normalizeChecklistKey(c.item)],
-                                    }))
-                                    .sort((a, b) => {
-                                      const rank = (x: {
-                                        done: boolean;
-                                        submission: EmployeeSubmission | undefined;
-                                      }) =>
-                                        x.done
-                                          ? 2
-                                          : x.submission &&
-                                              (x.submission.submittedAt ||
-                                                x.submission.fileName ||
-                                                x.submission.notes)
-                                            ? 1
-                                            : 0;
-                                      return rank(a) - rank(b) || a.i - b.i;
-                                    })
-                                    .map((c) => {
-                                      const isEditingThis = editingId === selected.id && !isWaiting;
-                                      const submission =
-                                        selectedSubmissions[normalizeChecklistKey(c.item)];
-                                      return (
-                                        <li
-                                          key={c.item}
-                                          className="rounded-md transition-all duration-300 ease-in-out"
-                                        >
-                                          <AdminChecklistRow
-                                            done={Boolean(c.done)}
-                                            submitted={Boolean(
-                                              submission &&
-                                              (submission.submittedAt ||
-                                                submission.fileName ||
-                                                submission.notes),
-                                            )}
-                                            label={c.item}
-                                            disabled={!isEditingThis}
-                                            onClick={() => toggleItem(selected.id, c.item)}
-                                            submission={submission}
-                                            {...submissionActions(c.item, Boolean(c.done))}
-                                          />
-                                        </li>
-                                      );
-                                    })}
-                                </ul>
-
-                                {selected.checklist.some(
-                                  (c) =>
-                                    ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                    (selected.stage === "Pre-onboarding"),
-                                ) && (
-                                  <Collapsible className="mt-3">
-                                    <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50">
-                                      <span className="flex items-center gap-1.5">
-                                        <ChevronDown className="h-3.5 w-3.5" />
-                                        {selected.stage === "Pre-onboarding"
-                                          ? "Probationary tasks"
-                                          : "Finished pre-onboarding checklist"}
-                                      </span>
-                                      <span className="text-muted-foreground">
-                                        {
-                                          selected.checklist.filter(
-                                            (c) =>
-                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                                (selected.stage === "Pre-onboarding") && c.done,
-                                          ).length
-                                        }
-                                        /
-                                        {
-                                          selected.checklist.filter(
-                                            (c) =>
-                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                              (selected.stage === "Pre-onboarding"),
-                                          ).length
-                                        }{" "}
-                                        done
-                                      </span>
-                                    </CollapsibleTrigger>
-                                    <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-                                      <ul className="mt-2 space-y-1.5 pl-1.5">
-                                        {[...selected.checklist]
-                                          .filter(
-                                            (c) =>
-                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                              (selected.stage === "Pre-onboarding"),
-                                          )
-                                          .map((c, i) => ({
-                                            ...c,
-                                            i,
-                                            submission:
-                                              selectedSubmissions[normalizeChecklistKey(c.item)],
-                                          }))
-                                          .sort((a, b) => {
-                                            const rank = (x: {
-                                              done: boolean;
-                                              submission: EmployeeSubmission | undefined;
-                                            }) =>
-                                              x.done
-                                                ? 2
-                                                : x.submission &&
-                                                    (x.submission.submittedAt ||
-                                                      x.submission.fileName ||
-                                                      x.submission.notes)
-                                                  ? 1
-                                                  : 0;
-                                            return rank(a) - rank(b) || a.i - b.i;
-                                          })
-                                          .map((c) => {
-                                            const isEditingThis =
-                                              editingId === selected.id && !isWaiting;
-                                            const submission =
-                                              selectedSubmissions[normalizeChecklistKey(c.item)];
-                                            return (
-                                              <li
-                                                key={c.item}
-                                                className="rounded-md transition-all duration-300 ease-in-out"
-                                              >
-                                                <AdminChecklistRow
-                                                  done={Boolean(c.done)}
-                                                  submitted={Boolean(
-                                                    submission &&
-                                                    (submission.submittedAt ||
-                                                      submission.fileName ||
-                                                      submission.notes),
-                                                  )}
-                                                  label={c.item}
-                                                  disabled={!isEditingThis}
-                                                  onClick={() => toggleItem(selected.id, c.item)}
-                                                  submission={submission}
-                                                  {...submissionActions(c.item, Boolean(c.done))}
-                                                />
-                                              </li>
-                                            );
-                                          })}
-                                      </ul>
-                                    </CollapsibleContent>
-                                  </Collapsible>
-                                )}
-                              </div>
-                            </>
 
                             {progress(selected) === 100 && !isWaiting && (
                               <div className="mt-4 rounded-md border border-success/40 bg-success/10 p-3 text-xs text-success">
@@ -2766,10 +2815,10 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   </div>
                                 ) : progress(selected) === 100 &&
                                   checklistSaved.includes(selected.id) ? (
-                                  <div className="animate-in overflow-hidden rounded-xl border border-gold/45 bg-card shadow-[0_10px_30px_-18px_var(--gold)] fade-in duration-500">
-                                    <div className="relative flex items-center gap-3 border-b border-gold/30 bg-gradient-to-r from-gold/15 via-gold/5 to-transparent px-4 py-3">
+                                  <div className="animate-in overflow-hidden rounded-xl border border-border/70 bg-card fade-in duration-500">
+                                    <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
                                       <span className="flex h-10 w-10 shrink-0 items-center justify-center">
-                                        <ClipboardCheck className="h-5 w-5 text-gold-foreground" />
+                                        <ClipboardCheck className="h-5 w-5 text-primary" />
                                       </span>
                                       <div className="min-w-0 flex-1">
                                         <p className="font-display text-base font-semibold leading-tight">
@@ -2781,49 +2830,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       </div>
                                       <Badge
                                         variant="outline"
-                                        className="shrink-0 border-gold/50 bg-gold/15 text-[0.65rem] font-medium text-gold-foreground"
+                                        className="shrink-0 border-success/40 bg-success/10 text-[0.65rem] font-medium text-success"
                                       >
                                         100% complete
                                       </Badge>
                                     </div>
                                     <div className="space-y-3 p-4">
-                                      <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between text-[0.65rem] uppercase tracking-wide text-muted-foreground">
-                                          <span>Checklist completion</span>
-                                          <span className="font-semibold text-gold-foreground">
-                                            100%
-                                          </span>
-                                        </div>
-                                        <Progress
-                                          value={100}
-                                          className="h-2 [&>div]:bg-gold [&>div]:shadow-[0_0_10px_var(--gold)]"
-                                        />
-                                      </div>
-                                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
-                                        <div className="rounded-lg border border-gold/25 bg-gold/5 px-3 py-2">
-                                          <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
-                                            Requirements
-                                          </p>
-                                          <p className="mt-0.5 font-medium">
-                                            {selected.checklist.filter((c) => c.done).length}/
-                                            {selected.checklist.length} done
-                                          </p>
-                                        </div>
-                                        <div className="rounded-lg border border-gold/25 bg-gold/5 px-3 py-2">
-                                          <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
-                                            Checklist
-                                          </p>
-                                          <p className="mt-0.5 flex items-center gap-1 font-medium text-gold-foreground">
-                                            <CheckCircle2 className="h-3.5 w-3.5" /> Saved
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <p className="text-xs text-muted-foreground">
-                                        Every probationary requirement is complete and saved — hand
-                                        this hire over for evaluation.
-                                      </p>
+                                      <Progress value={100} className="h-2 [&>div]:bg-success" />
                                       <Button
-                                        className="h-10 w-full cursor-pointer bg-gold text-gold-foreground hover:bg-gold/90"
+                                        className="h-10 w-full cursor-pointer"
                                         onClick={() => requestEvaluation(selected)}
                                       >
                                         <Send className="mr-1.5 h-4 w-4" /> Request for evaluation
@@ -2874,84 +2889,166 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             {/* MASTER PROBATIONARY CHECKLIST — applies to every employee entering probation. */}
             <Card className="flex h-[46rem] flex-col border-border/70 xl:order-2">
               <CardContent className="flex min-h-0 flex-1 flex-col p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                      <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder
-                    </h2>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder
+                </h2>
+
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={checklistSearch}
+                      onChange={(e) => setChecklistSearch(e.target.value)}
+                      placeholder="Search checklists…"
+                      className="h-9 pl-8"
+                    />
                   </div>
+                  <Select value={checklistPhaseFilter} onValueChange={setChecklistPhaseFilter}>
+                    <SelectTrigger className="h-9 w-full sm:w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All stages</SelectItem>
+                      <SelectItem value="Pre-onboarding">Pre-onboarding</SelectItem>
+                      <SelectItem value="Probationary">Probationary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="shrink-0 cursor-pointer"
+                    onClick={() => setShowCreateChecklist(true)}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Create checklist
+                  </Button>
                 </div>
 
                 <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
-                  <div className="order-2 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+                  <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                     {checklistPage.pageItems.map((c) => (
                       <div key={c.id} className="rounded-lg border border-border p-4">
-                        {editingChecklistId === c.id ? (
-                          <>
-                            <Input
-                              value={editChecklistTitle}
-                              onChange={(e) => setEditChecklistTitle(e.target.value)}
-                              placeholder="Checklist title"
-                            />
-                            <div className="mt-3 space-y-2">
-                              <Label className="text-xs">Stage</Label>
-                              <Select
-                                value={editChecklistPhase}
-                                onValueChange={(v) =>
-                                  setEditChecklistPhase(v as "Pre-onboarding" | "Probationary")
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Pre-onboarding">Pre-onboarding</SelectItem>
-                                  <SelectItem value="Probationary">Probationary</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="mt-3 space-y-2">
-                              <Label className="text-xs">Applies to</Label>
-                              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                                <Checkbox
-                                  checked={editChecklistAllPositions}
-                                  onCheckedChange={(v) => setEditChecklistAllPositions(v === true)}
-                                />
-                                All positions
-                              </label>
-                              {!editChecklistAllPositions && (
-                                <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
-                                  {knownPositions.map((p) => (
-                                    <label
-                                      key={p.id}
-                                      className="flex cursor-pointer items-center gap-2 text-xs"
-                                    >
-                                      <Checkbox
-                                        checked={editChecklistPositions.includes(p.title)}
-                                        onCheckedChange={(v) =>
-                                          setEditChecklistPositions((prev) =>
-                                            v === true
-                                              ? [...prev, p.title]
-                                              : prev.filter((t) => t !== p.title),
-                                          )
-                                        }
-                                      />
-                                      {p.title}
-                                    </label>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <div className="mt-3 space-y-2 rounded-lg border border-border/70 bg-muted/20 p-2.5">
-                              <div className="flex gap-2">
+                        <Dialog
+                          open={editingChecklistId === c.id}
+                          onOpenChange={(open) => {
+                            if (!open) cancelEditMasterChecklist();
+                          }}
+                        >
+                          <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
+                            <DialogHeader>
+                              <DialogTitle className="font-display text-xl">
+                                Edit checklist
+                              </DialogTitle>
+                              <DialogDescription>
+                                Update the name, stage, positions, and requirements.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div>
+                              <div className="space-y-2">
+                                <Label className="text-xs">Checklist name</Label>
                                 <Input
-                                  value={editChecklistNewItem}
-                                  onChange={(e) => setEditChecklistNewItem(e.target.value)}
-                                  placeholder="Requirement name…"
-                                  className="h-8 text-xs"
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter" && !showEditItemDetails) {
-                                      e.preventDefault();
+                                  value={editChecklistTitle}
+                                  onChange={(e) => setEditChecklistTitle(e.target.value)}
+                                  placeholder="Checklist title"
+                                />
+                              </div>
+                              <div className="mt-3 space-y-2">
+                                <Label className="text-xs">Stage</Label>
+                                <Select
+                                  value={editChecklistPhase}
+                                  onValueChange={(v) =>
+                                    setEditChecklistPhase(v as "Pre-onboarding" | "Probationary")
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Pre-onboarding">Pre-onboarding</SelectItem>
+                                    <SelectItem value="Probationary">Probationary</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="mt-3 space-y-2">
+                                <Label className="text-xs">Applies to</Label>
+                                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                                  <Checkbox
+                                    checked={editChecklistAllPositions}
+                                    onCheckedChange={(v) =>
+                                      setEditChecklistAllPositions(v === true)
+                                    }
+                                  />
+                                  All positions
+                                </label>
+                                {!editChecklistAllPositions && (
+                                  <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
+                                    {knownPositions.map((p) => (
+                                      <label
+                                        key={p.id}
+                                        className="flex cursor-pointer items-center gap-2 text-xs"
+                                      >
+                                        <Checkbox
+                                          checked={editChecklistPositions.includes(p.title)}
+                                          onCheckedChange={(v) =>
+                                            setEditChecklistPositions((prev) =>
+                                              v === true
+                                                ? [...prev, p.title]
+                                                : prev.filter((t) => t !== p.title),
+                                            )
+                                          }
+                                        />
+                                        {p.title}
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="mt-3 space-y-2 rounded-lg border border-border/70 bg-muted/20 p-2.5">
+                                <div className="flex gap-2">
+                                  <Input
+                                    value={editChecklistNewItem}
+                                    onChange={(e) => setEditChecklistNewItem(e.target.value)}
+                                    placeholder="Requirement name…"
+                                    className="h-8 text-xs"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && !showEditItemDetails) {
+                                        e.preventDefault();
+                                        const v = editChecklistNewItem.trim();
+                                        if (!v) return;
+                                        setEditChecklistRichItems((prev) => [
+                                          ...prev,
+                                          {
+                                            item_text: v,
+                                            requires_upload: editItemRequiresUpload,
+                                            ...(editItemInstructions.trim()
+                                              ? { instructions: editItemInstructions.trim() }
+                                              : {}),
+                                            ...(editItemUploadPlaceholder.trim()
+                                              ? {
+                                                  upload_placeholder:
+                                                    editItemUploadPlaceholder.trim(),
+                                                }
+                                              : {}),
+                                          },
+                                        ]);
+                                        setEditChecklistNewItem("");
+                                        setEditItemInstructions("");
+                                        setEditItemUploadPlaceholder("");
+                                      }
+                                    }}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs cursor-pointer"
+                                    onClick={() => setShowEditItemDetails(!showEditItemDetails)}
+                                  >
+                                    {showEditItemDetails ? "Simple" : "Configure"}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-8 cursor-pointer"
+                                    onClick={() => {
                                       const v = editChecklistNewItem.trim();
                                       if (!v) return;
                                       setEditChecklistRichItems((prev) => [
@@ -2973,249 +3070,207 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       setEditChecklistNewItem("");
                                       setEditItemInstructions("");
                                       setEditItemUploadPlaceholder("");
-                                    }
-                                  }}
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 text-xs cursor-pointer"
-                                  onClick={() => setShowEditItemDetails(!showEditItemDetails)}
-                                >
-                                  {showEditItemDetails ? "Simple" : "Configure"}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="h-8 cursor-pointer"
-                                  onClick={() => {
-                                    const v = editChecklistNewItem.trim();
-                                    if (!v) return;
-                                    setEditChecklistRichItems((prev) => [
-                                      ...prev,
-                                      {
-                                        item_text: v,
-                                        requires_upload: editItemRequiresUpload,
-                                        ...(editItemInstructions.trim()
-                                          ? { instructions: editItemInstructions.trim() }
-                                          : {}),
-                                        ...(editItemUploadPlaceholder.trim()
-                                          ? { upload_placeholder: editItemUploadPlaceholder.trim() }
-                                          : {}),
-                                      },
-                                    ]);
-                                    setEditChecklistNewItem("");
-                                    setEditItemInstructions("");
-                                    setEditItemUploadPlaceholder("");
-                                  }}
-                                >
-                                  <Plus className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-
-                              {showEditItemDetails && (
-                                <div className="space-y-2 pt-2 border-t border-border/60 text-xs">
-                                  <div className="space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">
-                                      Instructions
-                                    </Label>
-                                    <Input
-                                      value={editItemInstructions}
-                                      onChange={(e) => setEditItemInstructions(e.target.value)}
-                                      placeholder="e.g. Upload scanned original document..."
-                                      className="h-7 text-xs"
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">
-                                      Upload Placeholder / Hint
-                                    </Label>
-                                    <Input
-                                      value={editItemUploadPlaceholder}
-                                      onChange={(e) => setEditItemUploadPlaceholder(e.target.value)}
-                                      placeholder="e.g. Upload PDF or clear scan..."
-                                      className="h-7 text-xs"
-                                    />
-                                  </div>
-                                  <label className="flex items-center gap-2 cursor-pointer pt-0.5">
-                                    <Checkbox
-                                      checked={editItemRequiresUpload}
-                                      onCheckedChange={(v) => setEditItemRequiresUpload(v === true)}
-                                    />
-                                    <span className="font-medium text-[11px]">
-                                      Require document upload
-                                    </span>
-                                  </label>
-                                </div>
-                              )}
-                            </div>
-
-                            <ul className="mt-3 space-y-1.5">
-                              {editChecklistRichItems.map((item, i) => (
-                                <li
-                                  key={`${item.item_text}-${i}`}
-                                  className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-xs"
-                                >
-                                  <div className="min-w-0">
-                                    <span className="font-medium">{item.item_text}</span>
-                                    {item.instructions && (
-                                      <p className="text-[10px] text-muted-foreground truncate">
-                                        {item.instructions}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="flex shrink-0 items-center gap-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6 cursor-pointer"
-                                      onClick={() =>
-                                        setConfirmDelete({
-                                          kind: "item",
-                                          index: i,
-                                          label: item.item_text,
-                                        })
-                                      }
-                                      aria-label={`Delete ${item.item_text}`}
-                                      title="Delete checklist item"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6 cursor-pointer text-primary"
-                                      aria-label={`Configure ${item.item_text}`}
-                                      title="Configure checklist item"
-                                      onClick={() => configureMasterChecklistItem(i)}
-                                    >
-                                      <Pencil className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
-                            <div className="mt-3 flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                className="cursor-pointer text-xs h-8"
-                                onClick={cancelEditMasterChecklist}
-                              >
-                                <X className="mr-1.5 h-3.5 w-3.5" /> Cancel
-                              </Button>
-                              <Button
-                                className="cursor-pointer text-xs h-8"
-                                onClick={saveEditMasterChecklist}
-                              >
-                                <Save className="mr-1.5 h-3.5 w-3.5" /> Save Configuration
-                              </Button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="font-medium">{c.title}</p>
-                                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                  <Badge variant="outline" className="text-[0.65rem]">
-                                    {c.phase ?? "Probationary"}
-                                  </Badge>
-                                  <Badge variant="outline" className="text-[0.65rem]">
-                                    {c.positions === "all" || !c.positions
-                                      ? "All positions"
-                                      : `${c.positions.length} position${c.positions.length === 1 ? "" : "s"}`}
-                                  </Badge>
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      "text-[0.65rem]",
-                                      (c.status ?? "Active") === "Active"
-                                        ? "border-success/30 bg-success/15 text-success"
-                                        : "border-border bg-muted text-muted-foreground",
-                                    )}
+                                    }}
                                   >
-                                    {c.status ?? "Active"}
-                                  </Badge>
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </Button>
                                 </div>
+
+                                {showEditItemDetails && (
+                                  <div className="space-y-2 pt-2 border-t border-border/60 text-xs">
+                                    <div className="space-y-1">
+                                      <Label className="text-[10px] text-muted-foreground">
+                                        Instructions
+                                      </Label>
+                                      <Input
+                                        value={editItemInstructions}
+                                        onChange={(e) => setEditItemInstructions(e.target.value)}
+                                        placeholder="e.g. Upload scanned original document..."
+                                        className="h-7 text-xs"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-[10px] text-muted-foreground">
+                                        Upload Placeholder / Hint
+                                      </Label>
+                                      <Input
+                                        value={editItemUploadPlaceholder}
+                                        onChange={(e) =>
+                                          setEditItemUploadPlaceholder(e.target.value)
+                                        }
+                                        placeholder="e.g. Upload PDF or clear scan..."
+                                        className="h-7 text-xs"
+                                      />
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer pt-0.5">
+                                      <Checkbox
+                                        checked={editItemRequiresUpload}
+                                        onCheckedChange={(v) =>
+                                          setEditItemRequiresUpload(v === true)
+                                        }
+                                      />
+                                      <span className="font-medium text-[11px]">
+                                        Require document upload
+                                      </span>
+                                    </label>
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex shrink-0 gap-1">
+
+                              <ul className="mt-3 space-y-1.5">
+                                {editChecklistRichItems.map((item, i) => (
+                                  <li
+                                    key={`${item.item_text}-${i}`}
+                                    className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-xs"
+                                  >
+                                    <div className="min-w-0">
+                                      <span className="font-medium">{item.item_text}</span>
+                                      {item.instructions && (
+                                        <p className="text-[10px] text-muted-foreground truncate">
+                                          {item.instructions}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 cursor-pointer"
+                                        onClick={() =>
+                                          setConfirmDelete({
+                                            kind: "item",
+                                            index: i,
+                                            label: item.item_text,
+                                          })
+                                        }
+                                        aria-label={`Delete ${item.item_text}`}
+                                        title="Delete checklist item"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 cursor-pointer text-primary"
+                                        aria-label={`Configure ${item.item_text}`}
+                                        title="Configure checklist item"
+                                        onClick={() => configureMasterChecklistItem(i)}
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                              <div className="mt-4 flex justify-end gap-2">
                                 <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8 cursor-pointer text-xs"
-                                  onClick={() =>
-                                    hireStore.updateMasterChecklist(c.id, {
-                                      status:
-                                        (c.status ?? "Active") === "Active" ? "Closed" : "Active",
-                                    })
-                                  }
+                                  variant="outline"
+                                  className="cursor-pointer"
+                                  onClick={cancelEditMasterChecklist}
                                 >
-                                  {(c.status ?? "Active") === "Active" ? "Close" : "Activate"}
+                                  Cancel
                                 </Button>
                                 <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 cursor-pointer text-primary hover:bg-primary/10"
-                                  aria-label={`Edit configuration for ${c.title}`}
-                                  title="Edit configuration"
-                                  onClick={() => startEditMasterChecklist(c.id)}
+                                  className="cursor-pointer"
+                                  onClick={saveEditMasterChecklist}
                                 >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 cursor-pointer hover:text-destructive"
-                                  aria-label={`Delete ${c.title}`}
-                                  title="Delete checklist"
-                                  onClick={() => setConfirmDelete({ kind: "template", id: c.id, label: c.title })}
-                                >
-                                  <Trash2 className="h-4 w-4" />
+                                  <Save className="mr-1.5 h-4 w-4" /> Save checklist
                                 </Button>
                               </div>
                             </div>
-                            <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-                              {c.items.map((item, i) => (
-                                <li key={`${item}-${i}`} className="flex items-center gap-2">
-                                  <Circle className="h-3 w-3 shrink-0" />
-                                  {item}
-                                </li>
-                              ))}
-                            </ul>
-                          </>
-                        )}
+                          </DialogContent>
+                        </Dialog>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium">{c.title}</p>
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              <Badge variant="outline" className="text-[0.65rem]">
+                                {c.phase ?? "Probationary"}
+                              </Badge>
+                              <Badge variant="outline" className="text-[0.65rem]">
+                                {c.positions === "all" || !c.positions
+                                  ? "All positions"
+                                  : `${c.positions.length} position${c.positions.length === 1 ? "" : "s"}`}
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-[0.65rem]",
+                                  (c.status ?? "Active") === "Active"
+                                    ? "border-success/30 bg-success/15 text-success"
+                                    : "border-border bg-muted text-muted-foreground",
+                                )}
+                              >
+                                {c.status ?? "Active"}
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 cursor-pointer text-xs"
+                              onClick={() =>
+                                hireStore.updateMasterChecklist(c.id, {
+                                  status: (c.status ?? "Active") === "Active" ? "Closed" : "Active",
+                                })
+                              }
+                            >
+                              {(c.status ?? "Active") === "Active" ? "Close" : "Activate"}
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 cursor-pointer text-primary hover:bg-primary/10"
+                              aria-label={`Edit configuration for ${c.title}`}
+                              title="Edit configuration"
+                              onClick={() => startEditMasterChecklist(c.id)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 cursor-pointer hover:text-destructive"
+                              aria-label={`Delete ${c.title}`}
+                              title="Delete checklist"
+                              onClick={() =>
+                                setConfirmDelete({ kind: "template", id: c.id, label: c.title })
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+                          {c.items.map((item, i) => (
+                            <li key={`${item}-${i}`} className="flex items-center gap-2">
+                              <Circle className="h-3 w-3 shrink-0" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     ))}
-                    {masterChecklists.length === 0 && (
+                    {checklistPage.pageItems.length === 0 && (
                       <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                        No checklist yet — create one above.
+                        {masterChecklists.length === 0
+                          ? "No checklist yet — create one."
+                          : "No checklist matches your search."}
                       </p>
                     )}
                   </div>
 
-                  <div className="order-1">
-                    {!showCreateChecklist ? (
-                      <Button
-                        className="w-full cursor-pointer"
-                        onClick={() => setShowCreateChecklist(true)}
-                      >
-                        <ClipboardList className="mr-1.5 h-4 w-4" /> Create checklist
-                      </Button>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="eyebrow">New checklist</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 cursor-pointer text-xs"
-                            onClick={() => setShowCreateChecklist(false)}
-                          >
-                            <X className="mr-1 h-3.5 w-3.5" /> Close
-                          </Button>
-                        </div>
-                        <div className="mt-2 space-y-2">
+                  <Dialog open={showCreateChecklist} onOpenChange={setShowCreateChecklist}>
+                    <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle className="font-display text-xl">Create checklist</DialogTitle>
+                        <DialogDescription>
+                          Name the checklist, pick its stage, then add the requirements.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div>
+                        <div className="space-y-2">
                           <Label className="text-xs">Checklist name</Label>
                           <Input
                             value={newChecklistTitle}
@@ -3302,7 +3357,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <div className="space-y-2.5 pt-2 border-t border-border/60 text-xs">
                               <div className="space-y-1">
                                 <Label className="text-[11px] text-muted-foreground">
-                                  Instructions for New Hire
+                                  Instructions
                                 </Label>
                                 <Input
                                   value={newItemInstructions}
@@ -3313,7 +3368,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                               </div>
                               <div className="space-y-1">
                                 <Label className="text-[11px] text-muted-foreground">
-                                  Upload Placeholder / File Hint
+                                  Upload hint
                                 </Label>
                                 <Input
                                   value={newItemUploadPlaceholder}
@@ -3327,9 +3382,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   checked={newItemRequiresUpload}
                                   onCheckedChange={(v) => setNewItemRequiresUpload(v === true)}
                                 />
-                                <span className="font-medium">
-                                  Require document attachment / upload
-                                </span>
+                                <span className="font-medium">Require document upload</span>
                               </label>
                             </div>
                           )}
@@ -3367,15 +3420,21 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             </li>
                           )}
                         </ul>
+                      </div>
+                      <DialogFooter>
                         <Button
-                          className="mt-3 w-full cursor-pointer"
-                          onClick={createMasterChecklist}
+                          variant="outline"
+                          className="cursor-pointer"
+                          onClick={() => setShowCreateChecklist(false)}
                         >
+                          Cancel
+                        </Button>
+                        <Button className="cursor-pointer" onClick={createMasterChecklist}>
                           <ClipboardList className="mr-1.5 h-4 w-4" /> Save checklist
                         </Button>
-                      </>
-                    )}
-                  </div>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </div>
 
                 <div className="shrink-0 border-t border-border/60 pt-3">
@@ -3396,51 +3455,155 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             {/* REQUESTED CHECKLISTS — reference items raised by Performance for checklist creation. */}
             <Card className="flex h-[46rem] flex-col border-border/70 xl:order-1">
               <CardContent className="flex min-h-0 flex-1 flex-col p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                      <Send className="h-5 w-5 text-primary" /> Requested Checklists
-                    </h2>
-                  </div>
-                </div>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <Send className="h-5 w-5 text-primary" /> Requested Checklists
+                </h2>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_13rem_auto]">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Checklist Item info</Label>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      value={reqItemDraft}
-                      onChange={(e) => setReqItemDraft(e.target.value)}
-                      placeholder="e.g. Barista certification copy"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addRequestedItem();
-                        }
-                      }}
+                      value={requestSearch}
+                      onChange={(e) => setRequestSearch(e.target.value)}
+                      placeholder="Search requests…"
+                      className="h-9 pl-8"
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Job position</Label>
-                    <Select value={reqPositionDraft} onValueChange={setReqPositionDraft}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select position" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Select All (all positions)</SelectItem>
-                        {knownPositions.map((p) => (
-                          <SelectItem key={p.id} value={p.title}>
-                            {p.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-end">
-                    <Button className="w-full cursor-pointer sm:w-auto" onClick={addRequestedItem}>
-                      <Plus className="mr-1.5 h-4 w-4" /> Add request
-                    </Button>
-                  </div>
+                  <Select value={requestPositionFilter} onValueChange={setRequestPositionFilter}>
+                    <SelectTrigger className="h-9 w-full sm:w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All positions</SelectItem>
+                      {knownPositions.map((p) => (
+                        <SelectItem key={p.id} value={p.title}>
+                          {p.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="shrink-0 cursor-pointer"
+                    onClick={() => setShowAddRequest(true)}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Add request
+                  </Button>
                 </div>
+
+                <Dialog open={showAddRequest} onOpenChange={setShowAddRequest}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="font-display text-xl">Add request</DialogTitle>
+                      <DialogDescription>
+                        Request a checklist item for a position. It appears in the list right away.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Checklist Item info</Label>
+                        <Input
+                          value={reqItemDraft}
+                          onChange={(e) => setReqItemDraft(e.target.value)}
+                          placeholder="e.g. Barista certification copy"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addRequestedItem();
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Job position</Label>
+                        <Select value={reqPositionDraft} onValueChange={setReqPositionDraft}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select position" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All positions</SelectItem>
+                            {knownPositions.map((p) => (
+                              <SelectItem key={p.id} value={p.title}>
+                                {p.title}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        className="cursor-pointer"
+                        onClick={() => setShowAddRequest(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button className="cursor-pointer" onClick={addRequestedItem}>
+                        <Plus className="mr-1.5 h-4 w-4" /> Add request
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog
+                  open={editingReqId !== null}
+                  onOpenChange={(open) => {
+                    if (!open) setEditingReqId(null);
+                  }}
+                >
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="font-display text-xl">Edit request</DialogTitle>
+                      <DialogDescription>
+                        Change the requested item or the position it applies to.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Checklist Item info</Label>
+                        <Input
+                          value={editReqItem}
+                          onChange={(e) => setEditReqItem(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              saveRequestedItem();
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Job position</Label>
+                        <Select value={editReqPosition} onValueChange={setEditReqPosition}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All positions</SelectItem>
+                            {knownPositions.map((p) => (
+                              <SelectItem key={p.id} value={p.title}>
+                                {p.title}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        className="cursor-pointer"
+                        onClick={() => setEditingReqId(null)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button className="cursor-pointer" onClick={saveRequestedItem}>
+                        <Save className="mr-1.5 h-4 w-4" /> Save
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
 
                 <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-lg border border-border">
                   <table className="w-full text-sm">
@@ -3455,104 +3618,61 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     <tbody>
                       {reqPage.pageItems.map((r) => (
                         <tr key={r.id} className="border-t border-border/70">
-                          {editingReqId === r.id ? (
-                            <>
-                              <td className="px-4 py-2">
-                                <Input
-                                  value={editReqItem}
-                                  onChange={(e) => setEditReqItem(e.target.value)}
-                                  className="h-8"
-                                />
-                              </td>
-                              <td className="px-4 py-2">
-                                <Select value={editReqPosition} onValueChange={setEditReqPosition}>
-                                  <SelectTrigger className="h-8">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="all">Select All (all positions)</SelectItem>
-                                    {knownPositions.map((p) => (
-                                      <SelectItem key={p.id} value={p.title}>
-                                        {p.title}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </td>
-                              <td className="px-4 py-2 text-xs text-muted-foreground">
-                                {r.requestedAt}
-                              </td>
-                              <td className="px-4 py-2 text-right">
-                                <div className="flex justify-end gap-1.5">
-                                  <Button
-                                    size="sm"
-                                    className="h-8 cursor-pointer"
-                                    onClick={saveRequestedItem}
-                                  >
-                                    Save
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-8 cursor-pointer"
-                                    onClick={() => setEditingReqId(null)}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              <td className="px-4 py-2.5">{r.item}</td>
-                              <td className="px-4 py-2.5">
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "text-xs",
-                                    r.position === "all" &&
-                                      "border-gold/40 bg-gold/10 text-gold-foreground",
-                                  )}
-                                >
-                                  {r.position === "all" ? "All positions" : r.position}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                                {r.requestedBy} · {r.requestedAt}
-                              </td>
-                              <td className="px-4 py-2.5 text-right">
-                                <div className="flex justify-end gap-1">
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 cursor-pointer"
-                                    aria-label="Edit requested item"
-                                    onClick={() => startEditRequestedItem(r)}
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 cursor-pointer"
-                                    aria-label="Delete requested item"
-                                    onClick={() => setConfirmDelete({ kind: "requested", id: r.id, label: r.item })}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </td>
-                            </>
-                          )}
+                          <td className="px-4 py-2.5">{r.item}</td>
+                          <td className="px-4 py-2.5">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs",
+                                r.position === "all" &&
+                                  "border-gold/40 bg-gold/10 text-gold-foreground",
+                              )}
+                            >
+                              {r.position === "all" ? "All positions" : r.position}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                            {r.requestedBy} · {r.requestedAt}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 cursor-pointer"
+                                aria-label="Edit requested item"
+                                onClick={() => startEditRequestedItem(r)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 cursor-pointer"
+                                aria-label="Delete requested item"
+                                onClick={() =>
+                                  setConfirmDelete({
+                                    kind: "requested",
+                                    id: r.id,
+                                    label: r.item,
+                                  })
+                                }
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
-                      {requestedItems.length === 0 && (
+                      {reqPage.total === 0 && (
                         <tr>
                           <td
                             colSpan={4}
                             className="px-4 py-8 text-center text-sm text-muted-foreground"
                           >
-                            No requested checklist items yet.
+                            {requestedItems.length === 0
+                              ? "No requested checklist items yet."
+                              : "No requests match your search."}
                           </td>
                         </tr>
                       )}
@@ -3613,34 +3733,29 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Auto-Regularization</DialogTitle>
             <DialogDescription>
-              Set the maximum probationary period in days of work. A probationary hire who keeps
-              working past this many days without a completed evaluation is regularized
-              automatically by operation of law. This applies to every probationary hire and is
-              shared across all admin sessions.
+              A hire who keeps working past this cap without a completed evaluation becomes regular
+              by operation of law.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 rounded-lg border border-gold/40 bg-gold/5 p-4 text-sm">
-            <p className="text-muted-foreground">
-              Legal basis — Art. 296 of the Labor Code (DOLE 6-month rule): an employee allowed to
-              work past the maximum probationary period without a formal evaluation, notice of
-              termination or extension is{" "}
+          <div className="space-y-2 rounded-lg border border-gold/40 bg-gold/5 px-4 py-3 text-sm text-muted-foreground">
+            <p>
+              Art. 296, Labor Code: working even one day past the maximum probationary period
+              without a formal evaluation makes the hire{" "}
               <span className="font-medium text-foreground">
-                deemed a regular employee by operation of law
+                a regular employee by operation of law
               </span>
-              , even for a single day past the cap.
+              .
             </p>
-            <p className="text-muted-foreground">
+            <p>
               Current threshold:{" "}
               <span className="font-medium text-foreground">
                 {autoRegDraft} days of work
-                {autoRegDraft === 180 ? " (6-month statutory default)" : ""}
+                {autoRegDraft === 180 ? " (6-month default)" : ""}
               </span>
             </p>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">
-              Maximum probationary period (days of work from the start date)
-            </Label>
+            <Label className="text-xs">Maximum probationary period (days of work)</Label>
             <Input
               type="number"
               min={1}
@@ -3664,8 +3779,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               }}
             />
             <p className="text-[0.7rem] text-muted-foreground">
-              The probationary hire's checklist must also be 100% complete with a requested
-              evaluation before auto-regularization fires.
+              Also requires a 100% checklist and a requested evaluation.
             </p>
           </div>
           <DialogFooter>
@@ -3731,25 +3845,17 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             </DialogTitle>
             <DialogDescription>
               {completingId
-                ? "Confirm this hire's details to move them to Probationary and create their portal account. Closing without saving keeps them in Pre-onboarding."
-                : "Creates a pre-onboarding record with the standard requirements checklist, and adds the hire to Employee Records."}
+                ? "Confirm the details to move this hire to Probationary and create their portal account."
+                : "Creates a pre-onboarding record with the standard requirements checklist."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-            {passwordFromDb ? (
-              <>
-                Account note: the employee portal account is created with the default password{" "}
-                <span className="font-medium text-foreground">{defaultPassword}</span> — the hire is
-                prompted to change it on first login.
-              </>
-            ) : (
-              <>
-                Account note: the employee portal account is created with the system default
-                password — login credentials are emailed to the hire, who is prompted to change the
-                password on first login.
-              </>
-            )}
+          <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+            Portal account uses{" "}
+            <span className="font-medium text-foreground">
+              {passwordFromDb ? defaultPassword : "the system default password"}
+            </span>{" "}
+            — the hire changes it on first login.
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -3942,11 +4048,12 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <RotateCcw className="h-4 w-4 text-orange-500 dark:text-orange-400" /> Return for correction
+              <RotateCcw className="h-4 w-4 text-orange-500 dark:text-orange-400" /> Return for
+              correction
             </DialogTitle>
             <DialogDescription>
-              “{returnTarget?.itemText}” goes back to the employee with your note so they can fix
-              or re-upload it. You can verify it here once they resubmit.
+              “{returnTarget?.itemText}” goes back to the employee with your note so they can fix or
+              re-upload it. You can verify it here once they resubmit.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
@@ -4168,7 +4275,9 @@ export function EmployeeOnboarding() {
             (myEmployeeId != null
               ? listRes.data.find((h) => h.employee_id === myEmployeeId)
               : undefined) ??
-            (myName ? listRes.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
+            (myName
+              ? listRes.data.find((h) => h.name.trim().toLowerCase() === myName)
+              : undefined) ??
             // Demo fallback: prefer a Probationary hire so the probationary
             // checklist view stays populated straight from the database.
             listRes.data.find((h) => h.stage === "Probationary") ??
@@ -4492,17 +4601,34 @@ export function EmployeeOnboarding() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="New Hire Onboarding"
-        description="Track your onboarding checklist, pre-employment requirements, and first-day readiness."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={loadOnboarding} disabled={loading}>
+      <div className="-mx-1 mb-4 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              <UserPlus className="h-11 w-11 fill-current" strokeWidth={1.25} />
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                New Hire Onboarding
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Complete your requirements and track your probation progress.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 self-start">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={loadOnboarding}
+              disabled={loading}
+            >
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
+                <Button size="sm" variant="outline" className="gap-2">
                   <Download className="h-4 w-4" /> Generate Report
                 </Button>
               </DropdownMenuTrigger>
@@ -4561,9 +4687,8 @@ export function EmployeeOnboarding() {
               onConfirm={confirmEmployeeCsv}
             />
           </div>
-        }
-      />
-
+        </div>
+      </div>
 
       {/* SPLIT VIEW CONTAINER: Checklist on Left, Task Detail Panel on Right.
           The checklist card keeps a constant 7-row height and DEFINES the
@@ -4577,9 +4702,6 @@ export function EmployeeOnboarding() {
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                   <ClipboardList className="h-5 w-5 text-primary" /> Onboarding Checklist
                 </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Probationary checklist requirements
-                </p>
               </div>
               <div className="flex items-center gap-2">
                 <div className="relative">
@@ -4605,6 +4727,18 @@ export function EmployeeOnboarding() {
               </div>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col">
+              <div className="mb-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
+                  <span className="font-semibold">Onboarding progress</span>
+                  <span className="text-muted-foreground">
+                    {completedCount}/{totalCount} requirements ·{" "}
+                    <span className="font-display text-sm font-semibold text-primary tabular-nums">
+                      {pct}%
+                    </span>
+                  </span>
+                </div>
+                <Progress value={pct} className="mt-2.5 h-2 [&>div]:bg-success" />
+              </div>
               <div ref={listScrollRef} className="-mr-2 overflow-y-auto pr-2">
                 {loading ? (
                   <ListSkeleton items={5} />
@@ -4696,23 +4830,27 @@ export function EmployeeOnboarding() {
 
                 {/* Existing Uploaded Document */}
                 {viewingItem.fileName && (
-                  <div className={cn(
-                    "flex items-center justify-between gap-3 rounded-lg border p-3",
-                    viewingItem.done
-                      ? "border-success/30 bg-success/5"
-                      : viewingItem.reviewNote
-                        ? "border-orange-500/30 bg-orange-500/5 dark:border-orange-400/20 dark:bg-orange-400/5"
-                        : "border-primary/30 bg-primary/5",
-                  )}>
+                  <div
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-lg border p-3",
+                      viewingItem.done
+                        ? "border-success/30 bg-success/5"
+                        : viewingItem.reviewNote
+                          ? "border-orange-500/30 bg-orange-500/5 dark:border-orange-400/20 dark:bg-orange-400/5"
+                          : "border-primary/30 bg-primary/5",
+                    )}
+                  >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <FileCheck2 className={cn(
-                        "h-5 w-5 shrink-0",
-                        viewingItem.done
-                          ? "text-success"
-                          : viewingItem.reviewNote
-                            ? "text-orange-500 dark:text-orange-400"
-                            : "text-primary",
-                      )} />
+                      <FileCheck2
+                        className={cn(
+                          "h-5 w-5 shrink-0",
+                          viewingItem.done
+                            ? "text-success"
+                            : viewingItem.reviewNote
+                              ? "text-orange-500 dark:text-orange-400"
+                              : "text-primary",
+                        )}
+                      />
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-foreground truncate">
                           {viewingItem.fileName}
@@ -4756,8 +4894,8 @@ export function EmployeeOnboarding() {
                     </Label>
                     {viewingItem.reviewNote && (
                       <p className="text-[11px] text-orange-600 dark:text-orange-400 leading-relaxed">
-                        HR returned this requirement for correction. Please upload the corrected file
-                        and resubmit.
+                        HR returned this requirement for correction. Please upload the corrected
+                        file and resubmit.
                       </p>
                     )}
                     <div
@@ -4862,14 +5000,10 @@ export function EmployeeOnboarding() {
                         )}
                       />
                       <p className="text-xs font-medium text-foreground">
-                        {uploadFile
-                          ? uploadFile.name
-                          : "Choose a file or drag & drop here"}
+                        {uploadFile ? uploadFile.name : "Choose a file or drag & drop here"}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {dragActive
-                          ? "Release to attach"
-                          : "PDF, DOCX, PNG, JPG (up to 10MB)"}
+                        {dragActive ? "Release to attach" : "PDF, DOCX, PNG, JPG (up to 10MB)"}
                       </p>
                       <input
                         type="file"
@@ -4949,7 +5083,8 @@ export function EmployeeOnboarding() {
                       disabled={submitting}
                       className={cn(
                         "cursor-pointer text-xs h-9",
-                        viewingItem.reviewNote && "bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600",
+                        viewingItem.reviewNote &&
+                          "bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600",
                       )}
                     >
                       {submitting ? (

@@ -220,22 +220,17 @@ INSERT INTO `job_posts` (
  '["Recruitment","Documentation","MS Office","Confidentiality"]',
  '["HMO","Paid Leave","Career Growth","Training"]');
 
--- job_post_platforms
-INSERT INTO `job_post_platforms` (`job_post_id`, `platform`, `published_at`, `status`) VALUES
-(1, 'Company Website', '2026-05-22 08:00:00', 'published'),
-(1, 'Facebook',        '2026-05-22 08:15:00', 'published'),
-(1, 'Indeed',          '2026-05-22 09:00:00', 'published'),
-(2, 'Company Website', '2026-05-18 08:00:00', 'published'),
-(2, 'Indeed',          '2026-05-18 09:30:00', 'published'),
-(3, 'Company Website', '2026-05-10 08:00:00', 'published'),
-(3, 'Facebook',        '2026-05-10 08:20:00', 'published'),
-(4, 'Company Website', '2026-05-20 08:00:00', 'published'),
-(4, 'Facebook',        '2026-05-20 08:30:00', 'published'),
-(4, 'Instagram',       '2026-05-20 09:00:00', 'published'),
-(5, 'Company Website', '2026-05-15 08:00:00', 'published'),
-(5, 'Instagram',       '2026-05-15 08:45:00', 'published'),
-(6, 'Company Website', '2026-05-08 08:00:00', 'published'),
-(6, 'Indeed',          '2026-05-08 09:15:00', 'published');
+-- job_post_platforms (inlined into job_posts.platforms_json)
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 1, "job_post_id": 1, "platform": "Website", "published_at": "2026-10-26 16:10:14", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 2, "job_post_id": 1, "platform": "Facebook", "published_at": "2026-05-22 08:15:00", "status": "unpublished", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 3, "job_post_id": 1, "platform": "Indeed", "published_at": "2026-05-22 09:00:00", "status": "unpublished", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 1;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 4, "job_post_id": 2, "platform": "Website", "published_at": "2026-10-21 07:19:52", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 5, "job_post_id": 2, "platform": "Indeed", "published_at": "2026-05-18 09:30:00", "status": "unpublished", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 2;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 6, "job_post_id": 3, "platform": "Website", "published_at": "2026-05-10 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 7, "job_post_id": 3, "platform": "Facebook", "published_at": "2026-05-10 08:20:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 3;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 8, "job_post_id": 4, "platform": "Website", "published_at": "2026-05-20 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 9, "job_post_id": 4, "platform": "Facebook", "published_at": "2026-05-20 08:30:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 10, "job_post_id": 4, "platform": "Instagram", "published_at": "2026-05-20 09:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 4;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 11, "job_post_id": 5, "platform": "Website", "published_at": "2026-05-15 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 12, "job_post_id": 5, "platform": "Instagram", "published_at": "2026-05-15 08:45:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 5;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 13, "job_post_id": 6, "platform": "Website", "published_at": "2026-05-08 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 14, "job_post_id": 6, "platform": "Indeed", "published_at": "2026-05-08 09:15:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 6;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 15, "job_post_id": 7, "platform": "Website", "published_at": "2026-05-25 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 16, "job_post_id": 7, "platform": "Facebook", "published_at": "2026-05-25 08:20:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 7;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 17, "job_post_id": 8, "platform": "Website", "published_at": "2026-05-26 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 18, "job_post_id": 8, "platform": "Facebook", "published_at": "2026-05-26 08:30:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 8;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 19, "job_post_id": 9, "platform": "Website", "published_at": "2026-05-27 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 20, "job_post_id": 9, "platform": "Indeed", "published_at": "2026-05-27 09:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 9;
+UPDATE `job_posts` SET `platforms_json` = '[{"job_post_platform_id": 21, "job_post_id": 10, "platform": "Website", "published_at": "2026-05-28 08:00:00", "status": "published", "created_at": "2026-10-18 17:06:13"}, {"job_post_platform_id": 22, "job_post_id": 10, "platform": "Indeed", "published_at": "2026-05-28 09:15:00", "status": "published", "created_at": "2026-10-18 17:06:13"}]' WHERE `job_post_id` = 10;
 
 -- applicants (ids 1-10)
 INSERT INTO `applicants` (`applicant_id`, `applicant_code`, `job_post_id`, `name`, `email`, `phone`, `applied_at`, `fit_score`, `status`, `stage`, `source`, `resume_file_path`, `summary`, `flags_json`) VALUES

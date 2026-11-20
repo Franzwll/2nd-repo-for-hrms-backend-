@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
   Archive,
@@ -38,19 +30,21 @@ import {
   Download,
   Eye,
   ExternalLink,
-  FileCheck2,
   FileText,
   Flag,
   Lock,
   Link2,
   CalendarPlus,
   History,
+  LayoutGrid,
   Loader2,
   Mail,
+  MapPin,
   Maximize2,
   Monitor,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   Printer,
   Repeat2,
@@ -64,7 +58,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sliders,
-  Star,
+  Sparkles,
   Target,
   Trash2,
   Trophy,
@@ -86,12 +80,22 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip as RTooltip } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as RTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { toast } from "sonner";
 
 import { ListBody } from "@/components/portal/ListBody";
-import { PageHeader } from "@/components/portal/PageHeader";
-import { StatCard } from "@/components/portal/StatCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -147,6 +151,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -211,6 +216,7 @@ import {
   type ApiApplicant,
   type ApiApplicantDocument,
   type ApiApplicantHistory,
+  type ApiApplicantHistoryRow,
   type ApiAssessmentTest,
   type ApiDocumentVerificationCheck,
   type ApiDepartment,
@@ -347,6 +353,19 @@ const RETURN_TARGET_STAGES: { value: ReturnTargetStage; label: string }[] = [
   { value: "Offer", label: "Offer" },
 ];
 
+/** Pipeline order used by the stage dialogs to mark a move as rollback or advance. */
+const APPLICANT_STAGE_ORDER: Record<string, number> = {
+  Screened: 0,
+  Accepted: 1,
+  "Interview Scheduled": 2,
+  Assessed: 3,
+  "Assessment Test": 4,
+  "Practical Test": 5,
+  "Final Evaluation": 6,
+  Offer: 7,
+  Hired: 8,
+};
+
 /** Normalized offer state for the final-evaluation decision (null when no
  *  offer was ever sent). Drives the offer banners + Accept / Decline gates. */
 type OfferState = {
@@ -458,6 +477,330 @@ const displayAppliedAt = (v: string | null | undefined): string => {
 };
 
 /**
+ * Splits an applied date into a readable short date (e.g. "Nov 5, 2026") and time ("03:48 PM").
+ */
+const formatDisplayDate = (v: string | null | undefined): { date: string; time: string } => {
+  if (!v) return { date: "—", time: "" };
+  const shown = displayAppliedAt(v);
+  const parts = shown.split(" ");
+  if (parts.length >= 2) {
+    const rawDate = parts[0] ?? "";
+    const time = parts.slice(1).join(" ");
+    const m = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      const monthNames = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const monthIdx = parseInt(m[2] ?? "", 10) - 1;
+      const day = parseInt(m[3] ?? "", 10);
+      const year = m[1] ?? "";
+      if (monthIdx >= 0 && monthIdx < 12) {
+        return { date: `${monthNames[monthIdx]} ${day}, ${year}`, time };
+      }
+    }
+    return { date: rawDate, time };
+  }
+  return { date: shown, time: "" };
+};
+
+/** Status pill for a past application row (API returns lowercase statuses). */
+const historyStatusClass = (status: string) =>
+  status === "hired"
+    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+    : status === "rejected"
+      ? "border-destructive/40 bg-destructive/10 text-destructive"
+      : "border-border bg-muted/60 text-muted-foreground";
+
+/** Re-application state for one history row: an active block wins, then an
+ *  audited cooldown lift, then the cooldown counted from the rejection date. */
+function historyReapplyState(
+  row: ApiApplicantHistoryRow,
+  cooldownDays: number,
+): { tone: "blocked" | "cooldown" | "eligible"; label: string; detail?: string | undefined } {
+  if (row.is_active_blocked || row.is_blocked) {
+    return {
+      tone: "blocked",
+      label: "Blocked from re-applying",
+      detail: row.blocked_reason ?? undefined,
+    };
+  }
+  if (row.cooldown_lifted_at) {
+    return {
+      tone: "eligible",
+      label: "Cooldown lifted — may re-apply",
+      detail: `Lifted ${formatDisplayDate(row.cooldown_lifted_at).date}`,
+    };
+  }
+  if (row.status?.toLowerCase() === "rejected" && row.rejected_at) {
+    const eligible = new Date(row.rejected_at);
+    if (!Number.isNaN(eligible.getTime())) {
+      eligible.setDate(eligible.getDate() + cooldownDays);
+      const label = eligible.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      if (eligible.getTime() > Date.now()) {
+        const days = Math.ceil((eligible.getTime() - Date.now()) / 86_400_000);
+        return {
+          tone: "cooldown",
+          label: `Re-apply after ${label}`,
+          detail: `${days} day${days === 1 ? "" : "s"} left`,
+        };
+      }
+      return { tone: "eligible", label: "Eligible to re-apply", detail: `Cooldown ended ${label}` };
+    }
+  }
+  return { tone: "eligible", label: "Eligible to re-apply" };
+}
+
+/**
+ * Application history for the Activity tab: every attempt for this person,
+ * including the current record, with fit, status and re-application state.
+ * The Profile tab points here instead of repeating the section.
+ */
+function ApplicationHistorySection({
+  history,
+  loading,
+  onOverrideCooldown,
+  overrideBusy,
+  isSuperAdmin,
+  onUnblock,
+}: {
+  history?: ApiApplicantHistory | null | undefined;
+  loading?: boolean | undefined;
+  onOverrideCooldown?: (() => void) | undefined;
+  overrideBusy?: boolean | undefined;
+  isSuperAdmin?: boolean | undefined;
+  onUnblock?: (() => void) | undefined;
+}) {
+  const attempts = history?.data ?? [];
+  const cooldownDays = history?.cooldown_days ?? 30;
+  const blocked = Boolean(history?.block?.is_blocked);
+  const cooling = Boolean(history?.cooldown);
+  return (
+    <section aria-label="Application history" className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <History className="h-3.5 w-3.5 text-primary" /> Application History
+        </h4>
+        <div className="flex items-center gap-2">
+          {!loading && attempts.length > 0 && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[0.62rem] font-semibold tabular-nums text-muted-foreground">
+              {attempts.length} application{attempts.length === 1 ? "" : "s"}
+            </span>
+          )}
+          {onOverrideCooldown && (cooling || blocked) && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 cursor-pointer gap-1.5 border-amber-500/30 text-xs text-amber-600 hover:bg-amber-500/10"
+              disabled={overrideBusy}
+              onClick={onOverrideCooldown}
+            >
+              {overrideBusy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <ShieldAlert className="h-3.5 w-3.5" />
+              )}
+              Override cooldown
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {blocked && (
+        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-3.5">
+          <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-destructive">Applicant is blocked</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {history?.block?.reason ||
+                "This applicant is restricted from re-applying. Only a super admin can lift it."}
+            </p>
+          </div>
+          {isSuperAdmin && onUnblock && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 cursor-pointer gap-1.5 border-emerald-500/30 text-xs text-emerald-600 hover:bg-emerald-500/10"
+              onClick={onUnblock}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+            </Button>
+          )}
+        </div>
+      )}
+
+      {!loading &&
+        history &&
+        (cooling ? (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-3.5">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                Cooling-down period active
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                May re-apply after {history.cooldown?.eligible_after_label} (
+                {history.cooldown?.days_left} day
+                {history.cooldown?.days_left === 1 ? "" : "s"} left).
+              </p>
+            </div>
+          </div>
+        ) : !blocked ? (
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-3.5">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                Eligible to re-apply
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                No cooldown or block restriction is active.
+              </p>
+            </div>
+          </div>
+        ) : null)}
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div
+              key={`history-skeleton-${i}`}
+              className="h-20 animate-pulse rounded-lg border border-border bg-muted/30"
+            />
+          ))}
+        </div>
+      ) : attempts.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border px-3 py-2.5 text-[0.7rem] text-muted-foreground">
+          No applications recorded for this person yet.
+        </p>
+      ) : (
+        <ol className="relative space-y-3 border-l border-border/70 pl-4">
+          {attempts.map((row) => {
+            const reapply = historyReapplyState(row, cooldownDays);
+            const applied = formatDisplayDate(row.applied_at);
+            const fit = row.fit_score == null ? null : Math.round(Number(row.fit_score));
+            return (
+              <li key={row.applicant_id} className="relative">
+                <span
+                  className={cn(
+                    "absolute -left-[21px] top-1 h-2 w-2 rounded-full ring-2 ring-background",
+                    row.is_current ? "bg-primary" : "bg-border",
+                  )}
+                />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-[0.66rem] font-bold text-muted-foreground">
+                    {row.applicant_code ?? `#${row.applicant_id}`}
+                  </span>
+                  {row.is_current && (
+                    <Badge
+                      variant="outline"
+                      className="border-primary/40 text-[0.6rem] text-primary"
+                    >
+                      Current
+                    </Badge>
+                  )}
+                  {row.stage && (
+                    <Badge variant="secondary" className="text-[0.6rem]">
+                      {row.stage}
+                    </Badge>
+                  )}
+                  <span
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[0.62rem] font-semibold capitalize",
+                      historyStatusClass(row.status),
+                    )}
+                  >
+                    {row.status || "—"}
+                  </span>
+                  <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[0.62rem] font-semibold tabular-nums text-muted-foreground">
+                    {fit == null ? "Fit —" : `Fit ${fit}%`}
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-xs font-semibold text-foreground">
+                  {row.position || "—"}
+                </p>
+                <p className="mt-0.5 text-[0.68rem] tabular-nums text-muted-foreground">
+                  Applied {applied.date}
+                  {applied.time ? ` · ${applied.time}` : ""}
+                </p>
+                <p
+                  className={cn(
+                    "mt-1.5 flex items-start gap-1.5 text-[0.68rem]",
+                    reapply.tone === "blocked"
+                      ? "text-destructive"
+                      : reapply.tone === "cooldown"
+                        ? "text-amber-700 dark:text-amber-300"
+                        : "text-emerald-700 dark:text-emerald-300",
+                  )}
+                >
+                  {reapply.tone === "blocked" ? (
+                    <Ban className="mt-0.5 h-3 w-3 shrink-0" />
+                  ) : reapply.tone === "cooldown" ? (
+                    <Clock className="mt-0.5 h-3 w-3 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
+                  )}
+                  <span>
+                    {reapply.label}
+                    {reapply.detail ? (
+                      <span className="text-muted-foreground"> · {reapply.detail}</span>
+                    ) : null}
+                  </span>
+                </p>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+/** One labelled linear meter — the drawer's screening bars, reused per stage. */
+function ScoreMeter({
+  label,
+  value,
+  max = 100,
+  suffix = "%",
+  barClass = "bg-primary",
+}: {
+  label: string;
+  value: number;
+  max?: number;
+  suffix?: string;
+  barClass?: string;
+}) {
+  const width = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3 text-[0.68rem]">
+        <span className="truncate text-muted-foreground">{label}</span>
+        <span className="shrink-0 font-semibold tabular-nums text-foreground">
+          {Math.round(value)}
+          {suffix}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className={cn("h-full rounded-full", barClass)} style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/**
  * Safely parses any date representation (formatted PH string "YYYY-MM-DD HH:mm",
  * ISO 8601 string, or Date) into year, month (1-12), day, and local midnight timestamp.
  */
@@ -523,7 +866,15 @@ function checkDateInRange(
   if (range === "week") {
     const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0 ... Sunday = 6
     const startOfWeek = new Date(nowYear, nowMonth - 1, nowDay - dayOfWeek).getTime();
-    const endOfWeek = new Date(nowYear, nowMonth - 1, nowDay - dayOfWeek + 6, 23, 59, 59, 999).getTime();
+    const endOfWeek = new Date(
+      nowYear,
+      nowMonth - 1,
+      nowDay - dayOfWeek + 6,
+      23,
+      59,
+      59,
+      999,
+    ).getTime();
     const rolling7Days = todayMidnight - 6 * 24 * 60 * 60 * 1000;
 
     return (
@@ -535,7 +886,8 @@ function checkDateInRange(
   if (range === "month") {
     const isCurrentCalendarMonth = parts.year === nowYear && parts.month === nowMonth;
     const rolling30Days = todayMidnight - 29 * 24 * 60 * 60 * 1000;
-    const isWithin30Days = parts.timestamp >= rolling30Days && parts.timestamp <= todayMidnight + 24 * 60 * 60 * 1000;
+    const isWithin30Days =
+      parts.timestamp >= rolling30Days && parts.timestamp <= todayMidnight + 24 * 60 * 60 * 1000;
 
     return isCurrentCalendarMonth || isWithin30Days;
   }
@@ -557,7 +909,9 @@ function isApplicantInPerfectRange(
   if (range === "all") return true;
   if (a.isArchived || a.isActiveBlocked) return false;
 
-  const candidateDates = [a.screenedAt, a.updatedAt, a.appliedAt, a.createdAt].filter(Boolean) as string[];
+  const candidateDates = [a.screenedAt, a.updatedAt, a.appliedAt, a.createdAt].filter(
+    Boolean,
+  ) as string[];
   if (candidateDates.length === 0) return false;
   return candidateDates.some((d) => checkDateInRange(d, range, now));
 }
@@ -567,6 +921,15 @@ function transformApiInterview(i: ApiInterview): Interview {
     id: i.interview_code || `INT-${i.interview_id}`,
     dbId: i.interview_id,
     applicant: i.applicant?.name ?? `Applicant #${i.applicant_id}`,
+    ...(() => {
+      const appCode =
+        i.applicant?.applicant_code ?? (i.applicant_id ? `APP-${i.applicant_id}` : null);
+      const appDbId = i.applicant_id ?? i.applicant?.applicant_id;
+      return {
+        ...(appCode != null ? { applicantId: appCode } : {}),
+        ...(appDbId != null ? { applicantDbId: appDbId } : {}),
+      };
+    })(),
     position: i.applicant?.position || "Front Desk Receptionist",
     date: i.scheduled_date,
     time: formatApiTime(i.scheduled_time),
@@ -584,6 +947,19 @@ function transformApiInterview(i: ApiInterview): Interview {
     zoomPassword: (i as unknown as Record<string, string | null>)["zoom_password"] ?? null,
     interview_notes: (i as unknown as Record<string, string | null>)["interview_notes"] ?? null,
   };
+}
+
+function matchesInterviewApplicant(
+  interview: { applicant?: string; applicantId?: string; applicantDbId?: number },
+  applicant: { id?: string; dbId?: number; name?: string },
+): boolean {
+  if (interview.applicantDbId !== undefined && applicant.dbId !== undefined) {
+    return interview.applicantDbId === applicant.dbId;
+  }
+  if (interview.applicantId && applicant.id) {
+    return interview.applicantId === applicant.id;
+  }
+  return !!interview.applicant && interview.applicant === applicant.name;
 }
 
 /** Maps an API assessment test into the local row shape. */
@@ -738,6 +1114,311 @@ const tooltipStyle = {
   fontSize: 12,
 };
 
+/** Reference-style soft status pills for the stage boards. */
+function stagePillMeta(stage: string): { label: string; className: string } {
+  if (stage === "Rejected")
+    return { label: "Rejected", className: "bg-destructive/10 text-destructive" };
+  if (stage === "Hired") return { label: "Hired", className: "bg-success/15 text-success" };
+  if (stage === "Offer") return { label: "Offer Sent", className: "bg-gold-soft text-gold" };
+  if (stage === "Accepted" || stage === "Screened")
+    return {
+      label: stage === "Screened" ? "Under Review" : "Shortlisted",
+      className: "bg-gold-soft text-gold",
+    };
+  if (stage === "Interview Scheduled")
+    return { label: "Interview", className: "bg-primary/10 text-primary" };
+  if (stage === "Assessment Test" || stage === "Practical Test" || stage === "Assessed")
+    return { label: "Assessment", className: "bg-primary/10 text-primary" };
+  if (stage === "Final Evaluation")
+    return { label: "Final Evaluation", className: "bg-primary/10 text-primary" };
+  return { label: stage, className: "bg-muted text-muted-foreground" };
+}
+
+/** Four-step rail shown in the right-side applicant profile panel. */
+const APPLICANT_PROFILE_STEPS: { label: string; icon: typeof Users }[] = [
+  { label: "Screening", icon: ScanLine },
+  { label: "Interview", icon: Users },
+  { label: "Assessment", icon: ClipboardCheck },
+  { label: "Final Evaluation", icon: Award },
+];
+
+/** Shared four-stage pipeline rail: Screening → Interview → Assessment →
+ *  Final Evaluation. Completed stages show a green check, the current stage is
+ *  maroon, future stages stay outlined. Every stage is clickable. */
+function ProfileStageRail({
+  stageIndex,
+  activeStage,
+  onSelect,
+  className,
+}: {
+  stageIndex: number;
+  activeStage: number | null;
+  onSelect: (index: number) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex w-full items-start", className)}>
+      {APPLICANT_PROFILE_STEPS.map((step, index) => {
+        const Icon = step.icon;
+        const done = index < stageIndex;
+        const current = index === stageIndex;
+        const selected = index === activeStage;
+        return (
+          <div key={step.label} className="relative flex min-w-0 flex-1 flex-col items-center">
+            {index < APPLICANT_PROFILE_STEPS.length - 1 && (
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute left-1/2 top-4 h-[2px] w-full",
+                  index < stageIndex ? "bg-emerald-500" : "bg-border",
+                )}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => onSelect(index)}
+              aria-pressed={selected}
+              aria-current={current ? "step" : undefined}
+              title={step.label}
+              className="group relative z-10 flex min-w-0 cursor-pointer flex-col items-center gap-1.5 rounded-lg px-1 pb-1 pt-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <span
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
+                  done
+                    ? "border-emerald-500 bg-emerald-500 text-white"
+                    : current
+                      ? "border-primary bg-primary text-primary-foreground ring-4 ring-primary/15"
+                      : "border-border bg-card text-muted-foreground group-hover:border-primary/50 group-hover:text-primary",
+                  selected && "outline outline-2 outline-offset-2 outline-primary/40",
+                )}
+              >
+                {done ? (
+                  <Check className="h-4 w-4" strokeWidth={3} />
+                ) : (
+                  <Icon className="h-4 w-4" />
+                )}
+              </span>
+              <span
+                className={cn(
+                  "block max-w-full text-center text-[0.56rem] font-semibold leading-tight",
+                  current
+                    ? "border-b-2 border-primary pb-0.5 text-primary"
+                    : selected
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                )}
+              >
+                {step.label}
+              </span>
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function applicantProfileStageIndex(a: Applicant): number {
+  switch (a.stage) {
+    case "Screened":
+      return 0;
+    case "Accepted":
+    case "Interview Scheduled":
+      return 1;
+    case "Assessment Test":
+    case "Practical Test":
+    case "Assessed":
+      return 2;
+    case "Final Evaluation":
+    case "Offer":
+    case "Hired":
+      return 3;
+    case "Rejected":
+      return 0;
+    default:
+      return 0;
+  }
+}
+
+function applicantNextStep(a: Applicant, hasInterview: boolean): string {
+  switch (a.stage) {
+    case "Screened":
+      return "Review the screening result and decide whether to move this applicant to interview.";
+    case "Accepted":
+      return hasInterview
+        ? "Confirm the interview schedule and send the candidate the invite."
+        : "Schedule the interview to keep the application moving.";
+    case "Interview Scheduled":
+      return "Prepare the interview panel and confirm the candidate's attendance.";
+    case "Assessment Test":
+      return a.requiresPractical
+        ? "Record the assessment test, then move on to the practical assessment."
+        : "Record the assessment test result to complete this stage.";
+    case "Practical Test":
+      return "Record the practical assessment result to unlock the final evaluation.";
+    case "Assessed":
+      return "Confirm every assessment result, then complete the final evaluation.";
+    case "Final Evaluation":
+      return "Review the final evaluation and confirm the hiring decision.";
+    case "Offer":
+      return "Track the applicant's response to the offer and record it once received.";
+    case "Hired":
+      return "Coordinate the onboarding start date with New Hire Onboarding.";
+    case "Rejected":
+      return "No further action — the applicant was rejected at this stage.";
+    default:
+      return "Review this applicant's record and continue the hiring process.";
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Recruitment pipeline tracker — the always-visible stage rail above the tabs */
+/* -------------------------------------------------------------------------- */
+
+type PipelineStageKey = "application" | "screening" | "interview" | "assessment" | "final";
+
+const PIPELINE_STAGE_STEPS: {
+  key: PipelineStageKey;
+  tab: string;
+  label: string;
+  hint: string;
+  icon: typeof Users;
+}[] = [
+  {
+    key: "application",
+    tab: "ranking",
+    label: "Application",
+    hint: "New applications",
+    icon: FileText,
+  },
+  {
+    key: "screening",
+    tab: "screening",
+    label: "Screening",
+    hint: "Resume match",
+    icon: ScanLine,
+  },
+  {
+    key: "interview",
+    tab: "scheduling",
+    label: "Interview",
+    hint: "Scheduled & assessed",
+    icon: CalendarClock,
+  },
+  {
+    key: "assessment",
+    tab: "assessment",
+    label: "Assessment",
+    hint: "Test & practical",
+    icon: ClipboardCheck,
+  },
+  {
+    key: "final",
+    tab: "final",
+    label: "Final Evaluation",
+    hint: "Hiring decision",
+    icon: Award,
+  },
+];
+
+function RecruitmentPipelineTracker({
+  counts,
+  active,
+  onSelect,
+}: {
+  counts: Record<PipelineStageKey, number>;
+  active: PipelineStageKey;
+  onSelect: (tab: string) => void;
+}) {
+  const activeIndex = PIPELINE_STAGE_STEPS.findIndex((step) => step.key === active);
+  return (
+    <Card className="mt-3 border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <BarChart3 className="h-4 w-4" />
+            </span>
+            <h2 className="font-display text-base font-bold leading-tight">
+              Recruitment Pipeline Tracker
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSelect("history")}
+            className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-primary hover:underline"
+          >
+            View History <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="relative mt-4 px-0 sm:px-2">
+          <div
+            aria-hidden
+            className="absolute left-[10%] right-[10%] top-[21px] hidden h-[2px] grid-cols-4 sm:grid"
+          >
+            {PIPELINE_STAGE_STEPS.slice(0, -1).map((step, index) => (
+              <span
+                key={step.key}
+                className={cn("h-full", index < activeIndex ? "bg-primary/70" : "bg-border")}
+              />
+            ))}
+          </div>
+          <ol className="relative grid grid-cols-1 gap-2 sm:grid-cols-5 sm:gap-0">
+            {PIPELINE_STAGE_STEPS.map((step, index) => {
+              const Icon = step.icon;
+              const isActive = step.key === active;
+              const reached = index <= activeIndex;
+              return (
+                <li key={step.key} className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => onSelect(step.tab)}
+                    aria-current={isActive ? "step" : undefined}
+                    className={cn(
+                      "group flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors sm:flex-col sm:gap-2 sm:px-1 sm:text-center",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 transition-all",
+                        reached
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card text-muted-foreground group-hover:border-primary/60 group-hover:text-primary",
+                        isActive && "shadow-md ring-4 ring-primary/15",
+                      )}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span
+                        className={cn(
+                          "block truncate text-xs font-semibold",
+                          isActive
+                            ? "text-foreground"
+                            : reached
+                              ? "text-foreground"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {step.label}
+                      </span>
+                      <span className="mt-0.5 block text-[0.68rem] tabular-nums text-muted-foreground">
+                        ({counts[step.key].toLocaleString()})
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 /** Keyword library suggested per job position for the screening setup checklist. */
 export const keywordLibrary: Record<string, string[]> = {
   "Front Desk Receptionist": [
@@ -811,6 +1492,7 @@ const DEFAULT_SCHEDULABLE_DAYS = [
 
 type AssessmentResult = {
   applicantId: string;
+  applicantDbId?: number;
   dbId?: number;
   name: string;
   position: string;
@@ -832,47 +1514,6 @@ const initials = (name: string) =>
     .map((p) => p[0])
     .slice(0, 2)
     .join("");
-
-/** Resolves which facility an interview occupies — by its reserved room name,
- *  falling back to the virtual room for online interviews. On-site interviews
- *  without a reserved room resolve to null (unassigned). */
-const facilityOfInterview = (i: Interview): Facility | null => {
-  const byName = facilities.find((f) => f.name === i.facilityName);
-  if (byName) return byName;
-  if (i.mode === "Virtual") return facilities.find((f) => f.type === "Virtual") ?? null;
-  return null;
-};
-
-/** Front-view door icon in the style of the Places reference (green when reserved). */
-function DoorIcon({ highlighted, className }: { highlighted: boolean; className?: string }) {
-  return (
-    <svg viewBox="0 0 48 72" className={className ?? "h-16 w-12"} aria-hidden="true">
-      <rect
-        x="7"
-        y="4"
-        width="34"
-        height="64"
-        rx="2"
-        fill={highlighted ? "#15803d" : "transparent"}
-        className={highlighted ? "dark:fill-green-500" : undefined}
-        stroke="currentColor"
-        strokeWidth="2.5"
-      />
-      <rect
-        x="13"
-        y="10"
-        width="22"
-        height="52"
-        rx="1"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        opacity="0.65"
-      />
-      <circle cx="31" cy="40" r="2.2" fill={highlighted ? "#ffffff" : "currentColor"} />
-    </svg>
-  );
-}
 
 /** Normalizes extracted contact numbers to plain local form:
  *  strips "-" and spaces, converts a leading +63 to 0
@@ -1205,26 +1846,26 @@ function screeningVerdictCopy(
   if (status === "fit" && score >= 95)
     return {
       title: "Perfect for the job!",
-      subtitle: "All key requirements are matched. This applicant meets the job qualifications.",
+      subtitle: "All key requirements matched.",
     };
   if (status === "fit")
     return {
       title: "Strong match with the requirements",
-      subtitle: "for this position.",
+      subtitle: "",
     };
   if (status === "other-role")
     return {
       title: "Better fit for another role",
-      subtitle: "Some requirements match, but the profile aligns more strongly elsewhere.",
+      subtitle: "Profile aligns more strongly elsewhere.",
     };
   if (status === "credential")
     return {
       title: "Needs credential review",
-      subtitle: "A required certification or credential could not be verified automatically.",
+      subtitle: "A required credential could not be verified automatically.",
     };
   return {
     title: "Below the role requirements",
-    subtitle: "Key requirements are missing for this position.",
+    subtitle: "Key requirements are missing.",
   };
 }
 
@@ -1259,34 +1900,6 @@ function screeningVerdictTone(
     iconWrap: "bg-destructive text-destructive-foreground",
     title: "text-destructive",
   };
-}
-
-/** Green verdict banner beside the donut ("Strong match…", "Perfect for the job!"). */
-export function ScreeningVerdictBanner({
-  status,
-  score,
-}: {
-  status: ApplicantStatus;
-  score: number;
-}) {
-  const copy = screeningVerdictCopy(status, score);
-  const tone = screeningVerdictTone(status, score);
-  return (
-    <div className={cn("flex items-start gap-3 rounded-lg border p-3.5", tone.bar)}>
-      <span
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          tone.iconWrap,
-        )}
-      >
-        <Check className="h-4 w-4" strokeWidth={3} />
-      </span>
-      <div className="min-w-0">
-        <p className={cn("text-sm font-semibold leading-snug", tone.title)}>{copy.title}</p>
-        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{copy.subtitle}</p>
-      </div>
-    </div>
-  );
 }
 
 type ScreeningTone = "success" | "destructive" | "primary" | "gold";
@@ -1335,18 +1948,18 @@ function ScreeningStatTile({
   const t = screeningToneClass[tone];
   return (
     <div className={cn("h-full rounded-lg border p-3", t.card, className)}>
-      <p
+      <div
         className={cn(
-          "flex items-center gap-1.5 font-bold leading-none",
-          small ? "text-sm leading-tight" : "text-lg",
+          "flex items-start gap-1.5 font-bold",
+          small ? "text-xs leading-snug" : "text-lg leading-none items-center",
           t.value,
         )}
       >
-        {icon}
-        <span className="truncate" title={valueTitle}>
+        {icon && <span className="shrink-0">{icon}</span>}
+        <span className={small ? "line-clamp-2 break-words" : "truncate"} title={valueTitle}>
           {value}
         </span>
-      </p>
+      </div>
       <p className={cn("mt-1.5 text-[0.7rem] font-medium leading-tight", t.label)}>{label}</p>
     </div>
   );
@@ -1450,7 +2063,93 @@ export function ScreeningStatTiles({
   );
 }
 
-/** Single-row summary strip for the review dialog: donut + verdict + 4 tiles. */
+/** Full-profile screening summary: score ring, verdict and the four facts HR
+ *  scans first, in one calm card instead of a stack of tiles. */
+export function ScreeningResultHero({
+  status,
+  score,
+  matchedCount,
+  missingCount,
+  yearsExperience,
+  educationLabel,
+}: {
+  status: ApplicantStatus;
+  score: number;
+  matchedCount: number;
+  missingCount: number;
+  yearsExperience: number | null;
+  educationLabel: string;
+}) {
+  const copy = screeningVerdictCopy(status, score);
+  const tone = screeningVerdictTone(status, score);
+  const facts = [
+    {
+      icon: CheckCircle2,
+      label: "Matched",
+      value: String(matchedCount),
+      className: "text-success",
+    },
+    {
+      icon: XCircle,
+      label: "Missing",
+      value: String(missingCount),
+      className: "text-destructive",
+    },
+    {
+      icon: CalendarDays,
+      label: "Experience",
+      value: yearsExperience !== null ? formatExperienceYears(yearsExperience) : "—",
+      className: "text-primary",
+    },
+    {
+      icon: GraduationCap,
+      label: "Education",
+      value: educationLabel,
+      className: "text-gold-foreground dark:text-gold",
+    },
+  ];
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex flex-col items-center gap-5 p-5 sm:flex-row">
+        <ScreeningScoreDonut score={score} size={112} />
+        <div className="min-w-0 flex-1 text-center sm:text-left">
+          <p className={cn("font-display text-lg font-bold leading-tight", tone.title)}>
+            {copy.title}
+          </p>
+          {copy.subtitle && (
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">
+              {copy.subtitle}
+            </p>
+          )}
+        </div>
+      </div>
+      <dl className="grid grid-cols-2 gap-px border-t border-border/60 bg-border/60 sm:grid-cols-4">
+        {facts.map((fact) => {
+          const FactIcon = fact.icon;
+          return (
+            <div key={fact.label} className="flex items-center gap-2.5 bg-card px-4 py-3">
+              <FactIcon className={cn("h-4 w-4 shrink-0", fact.className)} />
+              <div className="min-w-0">
+                <dt className="text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {fact.label}
+                </dt>
+                <dd
+                  className={cn("truncate text-sm font-semibold leading-tight", fact.className)}
+                  title={fact.value}
+                >
+                  {fact.value}
+                </dd>
+              </div>
+            </div>
+          );
+        })}
+      </dl>
+    </div>
+  );
+}
+
+/** Review / preview summary — same card as the full profile, so the screening
+ *  result looks the same wherever HR opens it. */
 export function ScreeningModalSummary({
   status,
   score,
@@ -1466,44 +2165,15 @@ export function ScreeningModalSummary({
   yearsExperience: number | null;
   educationLabel: string;
 }) {
-  const years = yearsExperience !== null ? formatExperienceYears(yearsExperience) : "—";
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex flex-col items-center gap-4 xl:flex-row">
-        <ScreeningScoreDonut score={score} size={132} />
-        <div className="grid w-full min-w-0 flex-1 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <div className="col-span-2 md:col-span-3 xl:col-span-2">
-            <ScreeningVerdictMini status={status} score={score} />
-          </div>
-          <ScreeningStatTile
-            icon={<CheckCircle2 className="h-4 w-4 shrink-0" />}
-            value={matchedCount}
-            label="Matched Keywords"
-            tone="success"
-          />
-          <ScreeningStatTile
-            icon={<XCircle className="h-4 w-4 shrink-0" />}
-            value={missingCount}
-            label="Missing Keywords"
-            tone="destructive"
-          />
-          <ScreeningStatTile
-            icon={<CalendarDays className="h-4 w-4 shrink-0" />}
-            value={years}
-            label="Experience"
-            tone="primary"
-          />
-          <ScreeningStatTile
-            icon={<GraduationCap className="h-4 w-4 shrink-0" />}
-            value={educationLabel}
-            valueTitle={educationLabel}
-            label="Education"
-            tone="gold"
-            small
-          />
-        </div>
-      </div>
-    </div>
+    <ScreeningResultHero
+      status={status}
+      score={score}
+      matchedCount={matchedCount}
+      missingCount={missingCount}
+      yearsExperience={yearsExperience}
+      educationLabel={educationLabel}
+    />
   );
 }
 
@@ -1529,13 +2199,10 @@ export function ScreeningVerificationImpact({
 }) {
   const status = (verification?.status ?? "NOT_PROVIDED").toUpperCase();
   const decisive = ["VERIFIED", "PARTIAL", "DISCREPANCY"].includes(status);
-  const weight = Math.round((verification?.weight ?? 0.15) * 100);
   const documentsScore =
     verification?.documents_score !== null && verification?.documents_score !== undefined
       ? Math.round(verification.documents_score)
       : null;
-  const movement = Math.round((score - resumeScore) * 10) / 10;
-
   const tone: { wrap: string; chip: string; label: string } =
     status === "VERIFIED"
       ? {
@@ -1562,87 +2229,69 @@ export function ScreeningVerificationImpact({
             };
 
   return (
-    <div className={cn("rounded-xl border p-4", tone.wrap)}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-semibold">
-            <ShieldCheck className="h-4 w-4 text-primary" />
-            Ranking score with document verification
-            <span
-              className={cn(
-                "rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide",
-                tone.chip,
-              )}
+    <div className={cn("rounded-xl border px-4 py-3", tone.wrap)}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <ShieldCheck className="h-4 w-4 text-primary" /> Ranking score
+        </p>
+        <span
+          className={cn(
+            "rounded-full border px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide",
+            tone.chip,
+          )}
+        >
+          {tone.label}
+        </span>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground">
+            Resume{" "}
+            <b className="font-semibold tabular-nums text-foreground">{Math.round(resumeScore)}%</b>
+          </span>
+          <ArrowRight className="h-3 w-3 text-muted-foreground/70" />
+          <span className="text-muted-foreground">
+            Documents{" "}
+            <b className="font-semibold tabular-nums text-foreground">
+              {documentsScore !== null ? `${documentsScore}%` : "—"}
+            </b>
+          </span>
+          <ArrowRight className="h-3 w-3 text-muted-foreground/70" />
+          <span className="text-muted-foreground">
+            Final{" "}
+            <b className="font-display text-sm font-bold tabular-nums text-primary">
+              {Math.round(score)}%
+            </b>
+          </span>
+          {onRecompute && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-[0.68rem]"
+              disabled={recomputing}
+              onClick={onRecompute}
             >
-              {tone.label}
-            </span>
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Resume screening plus the verification of the resume claims, so the candidate&apos;s
-            rank reflects both.
-          </p>
-        </div>
-        {onRecompute && (
-          <Button size="sm" variant="outline" disabled={recomputing} onClick={onRecompute}>
-            {recomputing ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            )}
-            Recompute ranking
-          </Button>
-        )}
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-lg border border-border/70 bg-card px-3 py-2">
-          <p className="eyebrow">Resume score</p>
-          <p className="font-display text-lg font-semibold">{Math.round(resumeScore)}%</p>
-          <p className="text-[0.68rem] text-muted-foreground">Screening only</p>
-        </div>
-        <div className="rounded-lg border border-border/70 bg-card px-3 py-2">
-          <p className="eyebrow">Documents score</p>
-          <p className="font-display text-lg font-semibold">
-            {documentsScore !== null ? `${documentsScore}%` : "—"}
-          </p>
-          <p className="text-[0.68rem] text-muted-foreground">
-            {decisive ? `${weight}% of the ranking score` : "No usable evidence yet"}
-          </p>
-        </div>
-        <div className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
-          <p className="eyebrow">Ranking score</p>
-          <p className="font-display text-lg font-semibold text-primary">{Math.round(score)}%</p>
-          <p className="text-[0.68rem] text-muted-foreground">
-            {movement === 0
-              ? "Unchanged by documents"
-              : movement > 0
-                ? `+${movement} pts from documents`
-                : `${movement} pts from documents`}
-          </p>
+              {recomputing ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1 h-3 w-3" />
+              )}
+              Recompute
+            </Button>
+          )}
         </div>
       </div>
 
-      {decisive ? (
-        <div className="mt-3 space-y-1">
-          <p className="text-xs text-muted-foreground">
-            {`${verification?.verified_count ?? 0} verified · ${verification?.discrepancy_count ?? 0} with discrepancies · ${verification?.unable_count ?? 0} unable to verify`}
-            {verification?.escalate_invalid
-              ? " — a document contradicts the resume, so the candidate is flagged Invalid Credential."
-              : "."}
-          </p>
+      {decisive && (verification?.flags ?? []).length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {(verification?.flags ?? []).slice(0, 4).map((flag) => (
-            <p key={flag} className="flex items-start gap-1.5 text-[0.68rem] text-muted-foreground">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-              {flag}
-            </p>
+            <span
+              key={flag}
+              className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[0.65rem] text-muted-foreground"
+            >
+              <AlertTriangle className="h-3 w-3 shrink-0" /> {flag}
+            </span>
           ))}
         </div>
-      ) : (
-        <p className="mt-3 text-xs text-muted-foreground">
-          No COE, Certificate or Credential has been compared against this resume yet, so the score
-          reflects the resume screening only — upload a supporting document to include its
-          verification.
-        </p>
       )}
     </div>
   );
@@ -1731,9 +2380,6 @@ export function RequirementMatchPanel({
         <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-success" style={{ width: `${pct}%` }} />
         </div>
-        <span className="shrink-0 text-[0.7rem] font-semibold text-muted-foreground">
-          {found} of {rows.length} met
-        </span>
       </div>
       {groupsWithItems.length === 0 ? (
         <p className="mt-3 rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
@@ -2202,8 +2848,7 @@ function reportAllUnrecognized(
     }),
   );
   toast.success(`${unique.size} unrecognized entr${unique.size === 1 ? "y" : "ies"} reported`, {
-    description:
-      "Process them in Recruitment Management → Screening Setup → Reported Entities.",
+    description: "Process them in Recruitment Management → Screening Setup → Reported Entities.",
   });
 }
 
@@ -2378,9 +3023,12 @@ export function ResumeInfoPanel({
   personalInfo = null,
   skillsRecognized = false,
   unrecognizedCertifications = [],
+  focus = "all",
 }: {
   title?: string;
   variant?: "profile" | "modal";
+  /** Narrow the panel to one pipeline stage: extracted facts or recognized entities. */
+  focus?: "all" | "profile" | "entities";
   skills: string[];
   recognizedRoles: string[];
   unrecognizedRoles: string[];
@@ -2394,6 +3042,8 @@ export function ResumeInfoPanel({
 }) {
   const modal = variant === "modal";
   const hasJobRoles = recognizedRoles.length > 0 || unrecognizedRoles.length > 0;
+  const showEntities = focus !== "profile";
+  const showProfile = focus !== "entities";
   const count = (n: number) =>
     modal && n > 0 ? <span className="text-muted-foreground">({n})</span> : null;
   return (
@@ -2431,34 +3081,36 @@ export function ResumeInfoPanel({
             </dl>
           </section>
         )}
-        <section className={cn(modal && "border-t border-border/60 pt-3")}>
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <Users className="h-3.5 w-3.5 text-primary" /> Skills {count(skills.length)}
-          </p>
-          {skills.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {skills.map((s) => {
-                const recognized = modal && skillsRecognized;
-                return (
-                  <span
-                    key={s}
-                    className={
-                      recognized
-                        ? "rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-[0.7rem] font-medium text-success"
-                        : "rounded-full bg-secondary px-2.5 py-1 text-[0.7rem] font-medium text-secondary-foreground"
-                    }
-                  >
-                    {s}
-                    {recognized ? " (Recognized)" : ""}
-                  </span>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="mt-1.5 text-xs text-muted-foreground">No skills extracted.</p>
-          )}
-        </section>
-        {modal && hasJobRoles && (
+        {showEntities && (
+          <section className={cn(modal && "border-t border-border/60 pt-3")}>
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Users className="h-3.5 w-3.5 text-primary" /> Skills {count(skills.length)}
+            </p>
+            {skills.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {skills.map((s) => {
+                  const recognized = modal && skillsRecognized;
+                  return (
+                    <span
+                      key={s}
+                      className={
+                        recognized
+                          ? "rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-[0.7rem] font-medium text-success"
+                          : "rounded-full bg-secondary px-2.5 py-1 text-[0.7rem] font-medium text-secondary-foreground"
+                      }
+                    >
+                      {s}
+                      {recognized ? " (Recognized)" : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-1.5 text-xs text-muted-foreground">No skills extracted.</p>
+            )}
+          </section>
+        )}
+        {showEntities && modal && hasJobRoles && (
           <section className="border-t border-border/60 pt-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Briefcase className="h-3.5 w-3.5 text-primary" /> Job Titles{" "}
@@ -2484,44 +3136,52 @@ export function ResumeInfoPanel({
             </div>
           </section>
         )}
-        <section className="border-t border-border/60 pt-3">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <Briefcase className="h-3.5 w-3.5 text-primary" /> Work Experience{" "}
-            {count(workExperience.length)}
-          </p>
-          {workExperience.length > 0 ? (
-            <ul className="mt-2 space-y-2">
-              {workExperience.slice(0, 4).map((w, i) => (
-                <li key={i} className="flex items-start justify-between gap-3">
-                  <p className="min-w-0 truncate text-xs font-semibold">{w.job_title || "Role"}</p>
-                  {w.period && (
-                    <span className="shrink-0 text-[0.7rem] text-muted-foreground">{w.period}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1.5 text-xs text-muted-foreground">No employer history detected.</p>
-          )}
-        </section>
-        <section className="border-t border-border/60 pt-3">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <GraduationCap className="h-3.5 w-3.5 text-primary" /> Education{" "}
-            {count(education.length)}
-          </p>
-          {education.length > 0 ? (
-            <ul className="mt-2 space-y-1.5">
-              {education.slice(0, 3).map((e, i) => (
-                <li key={i} className="text-xs font-medium leading-relaxed">
-                  {e}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1.5 text-xs text-muted-foreground">Not specified.</p>
-          )}
-        </section>
-        {modal && experienceYears !== null && experienceYears !== undefined && (
+        {showProfile && (
+          <section className="border-t border-border/60 pt-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Briefcase className="h-3.5 w-3.5 text-primary" /> Work Experience{" "}
+              {count(workExperience.length)}
+            </p>
+            {workExperience.length > 0 ? (
+              <ul className="mt-2 space-y-2">
+                {workExperience.slice(0, 4).map((w, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 truncate text-xs font-semibold">
+                      {w.job_title || "Role"}
+                    </p>
+                    {w.period && (
+                      <span className="shrink-0 text-[0.7rem] text-muted-foreground">
+                        {w.period}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1.5 text-xs text-muted-foreground">No employer history detected.</p>
+            )}
+          </section>
+        )}
+        {showProfile && (
+          <section className="border-t border-border/60 pt-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <GraduationCap className="h-3.5 w-3.5 text-primary" /> Education{" "}
+              {count(education.length)}
+            </p>
+            {education.length > 0 ? (
+              <ul className="mt-2 space-y-1.5">
+                {education.slice(0, 3).map((e, i) => (
+                  <li key={i} className="text-xs font-medium leading-relaxed">
+                    {e}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1.5 text-xs text-muted-foreground">Not specified.</p>
+            )}
+          </section>
+        )}
+        {showProfile && modal && experienceYears !== null && experienceYears !== undefined && (
           <section className="border-t border-border/60 pt-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Briefcase className="h-3.5 w-3.5 text-primary" /> Experience{" "}
@@ -2532,7 +3192,7 @@ export function ResumeInfoPanel({
             </p>
           </section>
         )}
-        {modal && certifications.length > 0 && (
+        {showEntities && modal && certifications.length > 0 && (
           <section className="border-t border-border/60 pt-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Info className="h-3.5 w-3.5 text-primary" /> Other extracted information{" "}
@@ -2867,9 +3527,6 @@ export function ScreeningDetailsAccordion({
         )}
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">Screening Details</span>
-          <span className="block truncate text-[0.7rem] text-muted-foreground">
-            Technical details from the resume analysis (OCR + NER + matching).
-          </span>
         </span>
         {modal ? (
           <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary">
@@ -2973,6 +3630,76 @@ function ScreeningDocIcon({ docType, label }: { docType: string; label?: string 
   );
 }
 
+/** Resume plus every uploaded supporting document, each openable on its own.
+ *  Shared by the full profile and the right-side profile panel. */
+function ApplicantDocumentsCard({
+  docs,
+  loading,
+  resumeUrl,
+}: {
+  docs: ApiApplicantDocument[];
+  loading?: boolean | undefined;
+  resumeUrl?: string | null | undefined;
+}) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-card p-4">
+      <p className="text-xs font-semibold text-foreground">Documents</p>
+
+      <div className="mt-2.5 flex items-center justify-between gap-3 text-[0.72rem]">
+        <span className="text-muted-foreground">Resume</span>
+        {resumeUrl ? (
+          <a
+            href={resumeUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+          >
+            Open <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : (
+          <span className="font-medium text-muted-foreground">Not uploaded</span>
+        )}
+      </div>
+
+      <div className="mt-2.5 space-y-2 border-t border-border/60 pt-2.5">
+        {loading ? (
+          <p className="text-[0.68rem] text-muted-foreground">Loading documents…</p>
+        ) : docs.length === 0 ? (
+          <p className="text-[0.68rem] text-muted-foreground">
+            No supporting documents uploaded yet.
+          </p>
+        ) : (
+          docs.map((d) => (
+            <div key={d.applicant_document_id} className="flex items-center gap-2.5">
+              <ScreeningDocIcon docType={d.doc_type} />
+              <div className="min-w-0 flex-1">
+                <p
+                  className="truncate text-[0.72rem] font-medium text-foreground"
+                  title={d.title ?? d.original_name ?? d.doc_type}
+                >
+                  {d.title || d.original_name || d.doc_type}
+                </p>
+                <p className="truncate text-[0.62rem] text-muted-foreground">
+                  {d.doc_type} ·{" "}
+                  {d.uploaded_at ? formatDisplayDate(d.uploaded_at).date : "No upload date"}
+                </p>
+              </div>
+              <a
+                href={applicantDocumentsApi.fileUrl(d.applicant_document_id)}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 text-[0.65rem] font-semibold text-primary hover:underline"
+              >
+                Open
+              </a>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Caption for a verification document's glyph (see ScreeningDocIcon). */
 function screeningDocCaption(docType: string): string {
   const t = docType.toLowerCase();
@@ -3057,6 +3784,7 @@ function ScreeningSupportDocsGrid({
   title = "Supporting Documents",
   subtitle = "These documents help verify the applicant's information.",
   showResume = true,
+  showResumeStatus = true,
 }: {
   resumeName: string;
   resumeSub: string;
@@ -3070,11 +3798,12 @@ function ScreeningSupportDocsGrid({
   onOverride?: ((d: ApiApplicantDocument) => void) | undefined;
   title?: string;
   subtitle?: string;
-  /** The resume card belongs to "Resume & Documents"; the Supporting Document
-   *  Verification section only lists the uploaded proof papers. */
   showResume?: boolean;
+  /** The "SCREENED" pill is screening evidence, so the documents-only view hides it. */
+  showResumeStatus?: boolean;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const detailed = !!onReverify;
   const docTitleOf = (d: ApiApplicantDocument) =>
     d.title || d.original_name || `Document #${d.applicant_document_id}`;
@@ -3086,180 +3815,254 @@ function ScreeningSupportDocsGrid({
         : d.doc_type === "Credential"
           ? "ID / Government ID"
           : "Supporting Document";
+
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-          <ShieldCheck className="h-4.5 w-4.5 text-primary" /> {title}
-        </h3>
-        <span className="rounded-full bg-secondary px-2 py-0.5 text-[0.68rem] font-semibold text-secondary-foreground">
-          {docs.length} document{docs.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      <p className="mt-0.5 text-[0.7rem] text-muted-foreground">{subtitle}</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {showResume && (
-          <div className="flex flex-col rounded-lg border border-border/70 p-4">
-            <div className="flex items-start gap-2.5">
-              <ScreeningDocIcon docType="resume" />
-              <div className="min-w-0">
-                <p className="truncate text-xs font-semibold" title={resumeName}>
-                  Resume
-                </p>
-                <p className="truncate text-[0.7rem] text-muted-foreground" title={resumeSub}>
-                  {resumeSub}
-                </p>
-              </div>
-            </div>
-            <div className="mt-3">
-              <ScreeningDocStatusPill status="SCREENED" />
-            </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button size="sm" variant="outline" onClick={onOpenResume}>
-                View
-              </Button>
-              <Button size="sm" onClick={onOpenResume}>
-                Download
-              </Button>
-            </div>
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="rounded-xl border border-border bg-card"
+    >
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full flex-wrap items-center justify-between gap-2 p-5 text-left cursor-pointer"
+        >
+          <div>
+            <h3 className="flex items-center gap-2 font-display text-base font-semibold">
+              <ShieldCheck className="h-4.5 w-4.5 text-primary" /> {title}
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
           </div>
-        )}
-        {loading && (
-          <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border p-6 text-xs text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading documents…
-          </div>
-        )}
-        {!loading &&
-          docs.map((d) => {
-            const id = String(d.applicant_document_id);
-            const expanded = expandedId === id;
-            const checks = Object.entries(d.verification_result?.checks ?? {});
-            const busy = reverifyingId === id;
-            return (
-              <div
-                key={d.applicant_document_id}
-                className="flex flex-col rounded-lg border border-border/70 p-4"
-              >
-                <button
-                  type="button"
-                  className="flex items-start gap-2.5 text-left"
-                  onClick={() => (detailed ? setExpandedId(expanded ? null : id) : undefined)}
-                  aria-expanded={detailed ? expanded : undefined}
-                  title={docTitleOf(d)}
-                >
-                  <ScreeningDocIcon docType={d.doc_type} label={screeningDocCaption(d.doc_type)} />
+          <span className="flex items-center gap-2">
+            <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
+              {docs.length} document{docs.length === 1 ? "" : "s"}
+            </span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          </span>
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="grid gap-4 px-5 pb-5 [grid-template-columns:repeat(auto-fit,minmax(270px,1fr))]">
+          {showResume && (
+            <div className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <ScreeningDocIcon docType="resume" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold" title={docTitleOf(d)}>
-                      {docKindLabel(d)}
+                    <p
+                      className="font-semibold text-sm leading-snug break-words text-foreground"
+                      title={resumeName}
+                    >
+                      Resume / CV
                     </p>
-                    <p className="truncate text-[0.7rem] text-muted-foreground">
-                      {screeningDocCaption(d.doc_type)} · {d.doc_type}
+                    <p className="mt-0.5 text-xs text-muted-foreground truncate" title={resumeSub}>
+                      {resumeSub}
                     </p>
                   </div>
-                  {detailed && (
-                    <span
-                      className="flex h-7 w-6 shrink-0 items-center justify-center text-muted-foreground"
-                      aria-hidden="true"
-                    >
-                      {expanded ? (
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      )}
-                    </span>
-                  )}
-                </button>
-                <div className="mt-3">
-                  <ScreeningDocStatusPill status={d.verification_status} />
                 </div>
-                <div className={cn("mt-3 grid gap-2", detailed ? "grid-cols-3" : "grid-cols-2")}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={cn(detailed && "h-7 min-w-0 px-1 text-[0.68rem]")}
-                    onClick={() => onView(d)}
-                  >
-                    {detailed ? (
-                      <>
-                        <Eye className="mr-1 h-3 w-3 shrink-0" /> View
-                      </>
-                    ) : (
-                      "View"
-                    )}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={detailed ? "outline" : "default"}
-                    className={cn(detailed && "h-7 min-w-0 px-1 text-[0.68rem]")}
-                    onClick={() => onDownload(d)}
-                  >
-                    {detailed ? (
-                      <>
-                        <Download className="mr-1 h-3 w-3 shrink-0" /> Download
-                      </>
-                    ) : (
-                      "Download"
-                    )}
-                  </Button>
-                  {detailed && onReverify && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 min-w-0 px-1 text-[0.68rem]"
-                      disabled={busy}
-                      onClick={() => onReverify(d)}
-                    >
-                      {busy ? (
-                        <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                      ) : (
-                        <>
-                          <RefreshCw className="mr-1 h-3 w-3 shrink-0" /> Reverify
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
-                {detailed && expanded && (
-                  <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
-                    {d.verification_result?.summary && (
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        {d.verification_result.summary}
-                      </p>
-                    )}
-                    {onOverride && d.verification_status === "DISCREPANCY_FOUND" && (
-                      <div className="pt-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full h-7 text-[0.7rem] border-primary/40 text-primary hover:bg-primary/10"
-                          disabled={busy}
-                          onClick={() => onOverride(d)}
-                        >
-                          <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Resolve Discrepancy (HR Override)
-                        </Button>
-                      </div>
-                    )}
-                    {checks.length === 0 ? (
-                      <p className="text-xs italic text-muted-foreground">
-                        No field-by-field comparison available for this document yet.
-                      </p>
-                    ) : (
-                      checks.map(([key, check]) => (
-                        <DocVerificationCheckRow key={key} labelKey={key} check={check} />
-                      ))
-                    )}
+                {showResumeStatus && (
+                  <div className="flex items-center">
+                    <ScreeningDocStatusPill status="SCREENED" />
                   </div>
                 )}
               </div>
-            );
-          })}
-        {!loading && docs.length === 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground sm:col-span-1 xl:col-span-3">
-            <Info className="h-4 w-4 shrink-0" /> No verification documents uploaded yet.
-          </div>
-        )}
-      </div>
-    </div>
+              <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 flex-1 min-w-[75px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                  onClick={onOpenResume}
+                >
+                  <Eye className="h-3.5 w-3.5 shrink-0" />
+                  <span>View</span>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  className="h-8 flex-1 min-w-[90px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                  onClick={onOpenResume}
+                >
+                  <Download className="h-3.5 w-3.5 shrink-0" />
+                  <span>Download</span>
+                </Button>
+              </div>
+            </div>
+          )}
+          {loading && (
+            <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border p-6 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading documents…
+            </div>
+          )}
+          {!loading &&
+            docs.map((d) => {
+              const id = String(d.applicant_document_id);
+              const expanded = expandedId === id;
+              const checks = Object.entries(d.verification_result?.checks ?? {});
+              const busy = reverifyingId === id;
+              return (
+                <div
+                  key={d.applicant_document_id}
+                  className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div
+                        className={cn(
+                          "flex items-start gap-3 min-w-0 flex-1",
+                          detailed && "cursor-pointer select-none",
+                        )}
+                        onClick={() => (detailed ? setExpandedId(expanded ? null : id) : undefined)}
+                      >
+                        <ScreeningDocIcon
+                          docType={d.doc_type}
+                          label={screeningDocCaption(d.doc_type)}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="font-semibold text-sm leading-snug break-words text-foreground"
+                            title={docTitleOf(d)}
+                          >
+                            {docKindLabel(d)}
+                          </p>
+                          <p
+                            className="mt-0.5 text-xs text-muted-foreground truncate"
+                            title={docTitleOf(d)}
+                          >
+                            {d.title ||
+                              d.original_name ||
+                              `${screeningDocCaption(d.doc_type)} · ${d.doc_type}`}
+                          </p>
+                        </div>
+                      </div>
+                      {detailed && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedId(expanded ? null : id)}
+                          className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                          title={expanded ? "Collapse details" : "Expand details"}
+                          aria-expanded={expanded}
+                        >
+                          {expanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <ScreeningDocStatusPill status={d.verification_status} />
+                      {checks.length > 0 && (
+                        <span className="text-[0.68rem] font-medium text-muted-foreground">
+                          {
+                            checks.filter(
+                              ([, c]) =>
+                                (c as any).match === true ||
+                                (c as any).match === "MATCH" ||
+                                (c as any).result === "MATCH",
+                            ).length
+                          }
+                          /{checks.length} verified
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 flex-1 min-w-[75px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                      onClick={() => onView(d)}
+                    >
+                      <Eye className="h-3.5 w-3.5 shrink-0" />
+                      <span>View</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={detailed ? "outline" : "default"}
+                      className="h-8 flex-1 min-w-[90px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                      onClick={() => onDownload(d)}
+                    >
+                      <Download className="h-3.5 w-3.5 shrink-0" />
+                      <span>Download</span>
+                    </Button>
+                    {detailed && onReverify && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 flex-1 min-w-[85px] gap-1.5 px-2.5 text-xs font-medium cursor-pointer"
+                        disabled={busy}
+                        onClick={() => onReverify(d)}
+                      >
+                        {busy ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span>Reverify</span>
+                      </Button>
+                    )}
+                  </div>
+                  {detailed && expanded && (
+                    <div className="mt-3.5 space-y-2.5 border-t border-border/60 pt-3">
+                      {d.verification_result?.summary && (
+                        <div className="rounded-lg bg-muted/40 p-2.5 text-xs leading-relaxed text-muted-foreground">
+                          {d.verification_result.summary}
+                        </div>
+                      )}
+                      {onOverride && d.verification_status === "DISCREPANCY_FOUND" && (
+                        <div className="pt-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="w-full h-8 text-xs font-medium border-primary/40 text-primary hover:bg-primary/10 cursor-pointer"
+                            disabled={busy}
+                            onClick={() => onOverride(d)}
+                          >
+                            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Resolve Discrepancy (HR
+                            Override)
+                          </Button>
+                        </div>
+                      )}
+                      {checks.length === 0 ? (
+                        <p className="text-xs italic text-muted-foreground py-1">
+                          No field-by-field comparison available for this document yet.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {checks.map(([key, check]) => (
+                            <DocVerificationCheckRow key={key} labelKey={key} check={check} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          {!loading && docs.length === 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground sm:col-span-1 xl:col-span-3">
+              <Info className="h-4 w-4 shrink-0" /> No verification documents uploaded yet.
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -3339,37 +4142,36 @@ function ScreeningSupportDocsList({
                 <div className="px-3 pt-1.5">
                   <ScreeningDocStatusPill status={d.verification_status} />
                 </div>
-                <div className="grid grid-cols-3 gap-1.5 px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-1.5 px-3 py-2.5 border-t border-border/60">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 min-w-0 px-1 text-[0.68rem]"
+                    className="h-8 flex-1 min-w-[70px] gap-1 px-2 text-xs font-medium cursor-pointer"
                     onClick={() => onView(d)}
                   >
-                    <Eye className="mr-1 h-3 w-3 shrink-0" /> View
+                    <Eye className="h-3.5 w-3.5 shrink-0" /> View
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 min-w-0 px-1 text-[0.68rem]"
+                    className="h-8 flex-1 min-w-[85px] gap-1 px-2 text-xs font-medium cursor-pointer"
                     onClick={() => onDownload(d)}
                   >
-                    <Download className="mr-1 h-3 w-3 shrink-0" /> Download
+                    <Download className="h-3.5 w-3.5 shrink-0" /> Download
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 min-w-0 px-1 text-[0.68rem]"
+                    className="h-8 flex-1 min-w-[85px] gap-1 px-2 text-xs font-medium cursor-pointer"
                     disabled={busy}
                     onClick={() => onReverify(d)}
                   >
                     {busy ? (
-                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                     ) : (
-                      <>
-                        <RefreshCw className="mr-1 h-3 w-3 shrink-0" /> Reverify
-                      </>
+                      <RefreshCw className="h-3.5 w-3.5 shrink-0" />
                     )}
+                    Reverify
                   </Button>
                 </div>
                 {expanded && (
@@ -3702,170 +4504,140 @@ export function ScreeningReferenceManager() {
   };
 
   return (
-    <Card className="border-border/70">
-      <CardContent className="space-y-4 p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
-              <BookMarked className="h-5 w-5 text-primary" />
-              Reference Data &amp; Aliases
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Terms the NLP service recognizes in resumes. Changes apply to every screening.
-            </p>
-          </div>
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> Add entry
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search value or alias…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-9 pl-8"
+          />
+        </div>
+        <Button size="sm" className="shrink-0 cursor-pointer" onClick={openCreate}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add entry
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-muted-foreground">
+        <Badge variant="secondary">Education: {counts.education}</Badge>
+        <Badge variant="secondary">Certificates: {counts.certification}</Badge>
+        <Badge variant="secondary">Skills: {counts.skill}</Badge>
+        <Badge variant="secondary">Job Roles: {counts.job_role}</Badge>
+        <Badge variant="secondary">Experience: {counts.experience}</Badge>
+        <Badge variant="outline">{counts.active} active</Badge>
+      </div>
+
+      {loadError ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          {loadError}
+          <Button size="sm" variant="outline" className="ml-3" onClick={load}>
+            Retry
           </Button>
         </div>
-
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <Badge variant="secondary">Education: {counts.education}</Badge>
-          <Badge variant="secondary">Certificates: {counts.certification}</Badge>
-          <Badge variant="secondary">Skills: {counts.skill}</Badge>
-          <Badge variant="secondary">Job Roles: {counts.job_role}</Badge>
-          <Badge variant="secondary">Experience: {counts.experience}</Badge>
-          <Badge variant="outline">{counts.active} active</Badge>
-        </div>
-
-        {loadError ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-            {loadError}
-            <Button size="sm" variant="outline" className="ml-3" onClick={load}>
-              Retry
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search value or alias…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-64 pl-8"
-                />
-              </div>
-            </div>
-
-            <div className="max-h-[22rem] overflow-y-auto rounded-md border border-border">
-              <Table className="text-xs">
-                <TableHeader className="sticky top-0 bg-card">
-                  <TableRow>
-                    <TableHead className="w-28">Type</TableHead>
-                    <TableHead>Canonical value</TableHead>
-                    <TableHead>Aliases</TableHead>
-                    <TableHead className="w-16">Active</TableHead>
-                    <TableHead className="w-24 text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRowsSkeleton cols={5} rows={5} />
-                  ) : rows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                        No reference entries yet — add one above, or bulk-upload a file from the
-                        Add Reference Entry dialog.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    SCREENING_TYPE_ORDER.flatMap((type) => {
-                      const meta = SCREENING_TYPE_META[type];
-                      const entries = grouped[type] ?? [];
-                      if (entries.length === 0 && search.trim()) return [];
-                      return [
-                        <TableRow key={`section-${type}`} className="bg-muted/50 hover:bg-muted/50">
-                          <TableCell colSpan={5} className="py-1.5">
-                            <span className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="flex items-center gap-2">
-                                <Badge variant="outline" className={meta.className}>
-                                  {meta.label}
-                                </Badge>
-                                <span className="text-[0.65rem] text-muted-foreground">
-                                  {entries.length} entr{entries.length === 1 ? "y" : "ies"}
-                                </span>
-                              </span>
-                              <button
-                                type="button"
-                                className="cursor-pointer text-[0.65rem] font-semibold text-primary hover:underline"
-                                onClick={() => openCreateFor(type)}
-                              >
-                                + Add {meta.label}
-                              </button>
+      ) : (
+        <div className="max-h-[22rem] overflow-y-auto rounded-lg border border-border">
+          <Table className="text-xs">
+            <TableHeader className="sticky top-0 bg-card">
+              <TableRow>
+                <TableHead>Canonical value</TableHead>
+                <TableHead>Aliases</TableHead>
+                <TableHead className="w-16">Active</TableHead>
+                <TableHead className="w-24 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRowsSkeleton cols={4} rows={5} />
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    No reference entries yet — add one above.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                SCREENING_TYPE_ORDER.flatMap((type) => {
+                  const meta = SCREENING_TYPE_META[type];
+                  const entries = grouped[type] ?? [];
+                  if (entries.length === 0 && search.trim()) return [];
+                  return [
+                    <TableRow key={`section-${type}`} className="bg-muted/50 hover:bg-muted/50">
+                      <TableCell colSpan={4} className="py-1.5">
+                        <span className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="flex items-center gap-2">
+                            <Badge variant="outline" className={meta.className}>
+                              {meta.label}
+                            </Badge>
+                            <span className="text-[0.65rem] text-muted-foreground">
+                              {entries.length} entr{entries.length === 1 ? "y" : "ies"}
                             </span>
-                          </TableCell>
-                        </TableRow>,
-                        ...entries.map((row) => (
-                          <TableRow key={row.ref_id}>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className={SCREENING_TYPE_META[row.data_type].className}
-                              >
-                                {SCREENING_TYPE_META[row.data_type].label}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-medium">{row.canonical_value}</TableCell>
-                            <TableCell>
-                              <div className="flex max-w-md flex-wrap gap-1">
-                                {(row.aliases_json ?? []).length > 0 ? (
-                                  (row.aliases_json ?? []).map((alias) => (
-                                    <Badge
-                                      key={alias}
-                                      variant="secondary"
-                                      className="text-[0.65rem]"
-                                    >
-                                      {alias}
-                                    </Badge>
-                                  ))
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Switch
-                                checked={row.active}
-                                disabled={busyId === row.ref_id}
-                                onCheckedChange={() => toggleActive(row)}
-                                aria-label={`Toggle ${row.canonical_value}`}
-                              />
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7"
-                                  onClick={() => openEdit(row)}
-                                  aria-label={`Edit ${row.canonical_value}`}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 text-destructive"
-                                  onClick={() => setDeleteTarget(row)}
-                                  aria-label={`Delete ${row.canonical_value}`}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )),
-                      ];
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </>
-        )}
-      </CardContent>
+                          </span>
+                          <button
+                            type="button"
+                            className="cursor-pointer text-[0.65rem] font-semibold text-primary hover:underline"
+                            onClick={() => openCreateFor(type)}
+                          >
+                            + Add {meta.label}
+                          </button>
+                        </span>
+                      </TableCell>
+                    </TableRow>,
+                    ...entries.map((row) => (
+                      <TableRow key={row.ref_id}>
+                        <TableCell className="font-medium">{row.canonical_value}</TableCell>
+                        <TableCell>
+                          <div className="flex max-w-md flex-wrap gap-1">
+                            {(row.aliases_json ?? []).length > 0 ? (
+                              (row.aliases_json ?? []).map((alias) => (
+                                <Badge key={alias} variant="secondary" className="text-[0.65rem]">
+                                  {alias}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={row.active}
+                            disabled={busyId === row.ref_id}
+                            onCheckedChange={() => toggleActive(row)}
+                            aria-label={`Toggle ${row.canonical_value}`}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => openEdit(row)}
+                              aria-label={`Edit ${row.canonical_value}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-destructive"
+                              onClick={() => setDeleteTarget(row)}
+                              aria-label={`Delete ${row.canonical_value}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )),
+                  ];
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       {/* ADD / EDIT DIALOG */}
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
@@ -3873,44 +4645,46 @@ export function ScreeningReferenceManager() {
           <DialogHeader>
             <DialogTitle>{editing ? "Edit Reference Entry" : "Add Reference Entry"}</DialogTitle>
             <DialogDescription>
-              Canonical values are matched against entities extracted from resumes; aliases let
-              alternate phrasings map to the same entry. Add one entry at a time, or bulk-upload a
-              file below.
+              What screening reads in a resume. Aliases map other spellings to the same entry.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-1">
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Select
-                value={form.data_type}
-                onValueChange={(v) => setForm((f) => ({ ...f, data_type: v as ScreeningRefType }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCREENING_TYPE_OPTIONS.map(([value, meta]) => (
-                    <SelectItem key={value} value={value}>
-                      {meta.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-3 py-1">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Type</Label>
+                <Select
+                  value={form.data_type}
+                  onValueChange={(v) =>
+                    setForm((f) => ({ ...f, data_type: v as ScreeningRefType }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCREENING_TYPE_OPTIONS.map(([value, meta]) => (
+                      <SelectItem key={value} value={value}>
+                        {meta.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Canonical value</Label>
+                <Input
+                  placeholder={
+                    form.data_type === "job_role" ? "e.g. Front Desk Officer" : "e.g. POS Systems"
+                  }
+                  value={form.canonical_value}
+                  onChange={(e) => setForm((f) => ({ ...f, canonical_value: e.target.value }))}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Canonical value</Label>
-              <Input
-                placeholder={
-                  form.data_type === "job_role" ? "e.g. Front Desk Officer" : "e.g. POS Systems"
-                }
-                value={form.canonical_value}
-                onChange={(e) => setForm((f) => ({ ...f, canonical_value: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Aliases (comma separated)</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Aliases (comma separated)</Label>
               <Textarea
-                rows={3}
+                rows={2}
                 placeholder={
                   form.data_type === "skill"
                     ? "e.g. Point of Sale, POS, Cash Register System"
@@ -3921,8 +4695,8 @@ export function ScreeningReferenceManager() {
               />
             </div>
             {!editing && (
-              <div
-                className="space-y-2 rounded-md border border-dashed bg-muted/30 p-3 transition-colors"
+              <details
+                className="rounded-md border border-dashed bg-muted/30 px-3 py-2 transition-colors"
                 onDragOver={(e) => {
                   e.preventDefault();
                 }}
@@ -3931,10 +4705,13 @@ export function ScreeningReferenceManager() {
                   void handleBulkUpload(e.dataTransfer.files?.[0]);
                 }}
               >
-                <Label className="text-xs">
-                  Bulk upload entries — drag &amp; drop a .csv / .txt file here
-                </Label>
-                <div className="flex flex-wrap items-center gap-2">
+                <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium">
+                  <Upload className="h-3.5 w-3.5" /> Bulk upload entries
+                  {bulkSaving && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  )}
+                </summary>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Input
                     type="file"
                     accept=".csv,.txt"
@@ -3955,17 +4732,15 @@ export function ScreeningReferenceManager() {
                   >
                     <Download className="mr-1.5 h-3.5 w-3.5" /> Download sample
                   </Button>
-                  {bulkSaving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                 </div>
-                <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
+                <p className="mt-1.5 text-[0.7rem] leading-relaxed text-muted-foreground">
                   One entry per line:{" "}
                   <code className="rounded bg-muted px-1">
                     data_type,canonical_value,alias1|alias2
-                  </code>{" "}
-                  — data_type is education, certification, skill, job_role or experience. Download
-                  the sample file for the exact format.
+                  </code>
+                  . Types: education, certification, skill, job_role, experience.
                 </p>
-              </div>
+              </details>
             )}
           </div>
           <DialogFooter>
@@ -4005,7 +4780,7 @@ export function ScreeningReferenceManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }
 
@@ -5052,25 +5827,18 @@ export function ScreeningResumeDocsMatchDetail({
           {overall.label}
         </span>
       </div>
-      <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-        Separate from the job-fit score — this only checks whether the uploaded papers support the
-        resume.
-      </p>
-
       {loading ? (
         <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Checking papers…
         </p>
       ) : docs.length === 0 ? (
         <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
-          <Info className="h-4 w-4 shrink-0" /> No proof papers uploaded yet. Upload a COE,
-          education certificate or licence to start the check.
+          <Info className="h-4 w-4 shrink-0" /> No proof papers uploaded yet.
         </p>
       ) : allPending ? (
         <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
-          <Clock className="h-4 w-4 shrink-0" /> The papers are uploaded but not compared with the
-          resume yet. Use Re-verify on the document below (new applications are compared
-          automatically once the resume is screened).
+          <Clock className="h-4 w-4 shrink-0" /> Papers uploaded, not compared yet. Use Re-verify on
+          the document.
         </p>
       ) : (
         <>
@@ -5181,11 +5949,12 @@ export function ScreeningResumeDocsMatchDetail({
    Mirrors SCREEN 2 of docs/mockups/applicant-management-redesign-mockup.html:
    a per-applicant screen with hero, stage stepper and section nav hosting the
    Interview / Assessment Test / Practical Assessment / Final Evaluation panels
-   that used to be top-level tabs, alongside Current Stage, Application Details
-   and Resume & Documents. Activity history lives in Current Stage.
+   that used to be top-level tabs, alongside the applicant profile (with the
+   previous applications history). Activity history has its own tab.
    ============================================================================ */
 
-type ViewPanel = "current" | "history" | "details" | "resume" | "interview" | "test" | "practical" | "final";
+type ViewPanel =
+  "current" | "screening" | "interview" | "test" | "practical" | "final" | "activity";
 
 type ViewScreenDoc = {
   docType: VerificationDocType;
@@ -5259,10 +6028,9 @@ type ApplicantViewScreenProps = {
 
 /** Humanized hiring milestones for the stage stepper (maps internal stages). */
 const VIEW_MILESTONES: { key: ViewPanel; label: string }[] = [
-  /* Screening — the resume screening result and the supporting verification
-     documents live in the Resume & Documents section, so this node opens it
-     instead of the generic Current Stage overview. */
-  { key: "resume", label: "Screening" },
+  /* Screening owns the resume screening result. Resume & Documents only holds
+     the uploaded files. */
+  { key: "screening", label: "Screening" },
   { key: "interview", label: "Interview" },
   { key: "test", label: "Assessment Test" },
   { key: "practical", label: "Practical Assessment" },
@@ -5375,7 +6143,9 @@ function ApplicantViewScreen({
   const practical = practicalTests[0];
   const final = finalEvaluations[0];
   /** Ready-checks mirror the removed Interview / Test / Practical / Final tabs. */
-  const readyForTest = requiresTest && (a.stage === "Assessment Test" || (a.stage === "Assessed" && assessment?.result === "Passed"));
+  const readyForTest =
+    requiresTest &&
+    (a.stage === "Assessment Test" || (a.stage === "Assessed" && assessment?.result === "Passed"));
   const readyForPractical =
     requiresPrac &&
     (a.stage === "Practical Test" ||
@@ -5384,8 +6154,13 @@ function ApplicantViewScreen({
         : a.stage === "Assessed" && assessment?.result === "Passed"));
   const readyForFinal =
     ((requiresTest
-      ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") && test?.result === "Passed"
-      : (a.stage === "Assessed" || a.stage === "Final Evaluation") && assessment?.result === "Passed") &&
+      ? (a.stage === "Practical Test" ||
+          a.stage === "Assessment Test" ||
+          a.stage === "Assessed" ||
+          a.stage === "Final Evaluation") &&
+        test?.result === "Passed"
+      : (a.stage === "Assessed" || a.stage === "Final Evaluation") &&
+        assessment?.result === "Passed") &&
       (!requiresPrac || practical?.result === "Passed")) ||
     (!requiresTest &&
       (a.stage === "Practical Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
@@ -5451,7 +6226,7 @@ function ApplicantViewScreen({
     if (lastFlowKey.current === flowKey) return;
     lastFlowKey.current = flowKey;
     // Leave the user alone when they are reading reference material.
-    if (panel === "details" || panel === "resume" || panel === "history") return;
+    if (panel === "current" || panel === "activity") return;
     // Open the stage being worked on now (the first stage that is not finished).
     const nextIdx = stepStates.findIndex((s) => s === "current");
     // A closed pipeline (offer extended / hired) opens the final evaluation.
@@ -5467,29 +6242,9 @@ function ApplicantViewScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowKey, a, panel, requiresPrac, requiresTest]);
 
-  const stageDesc: Record<string, string> = {
-    Screened:
-      "Resume was screened by the NLP service. Review the result to accept, refer or reject.",
-    "Interview Scheduled":
-      "An interview slot has been booked. Start the interview assessment on the interview day.",
-    Assessed: "The interview has been assessed. Passed candidates unlock the assessment test.",
-    "Assessment Test":
-      "The job-specific test is complete for this applicant — next is the practical (when required) or the final evaluation.",
-    "Practical Test":
-      "The hands-on practical exam is complete — the final evaluation is now available.",
-    "Final Evaluation":
-      "All process stages are complete — record the final evaluation to decide the hire.",
-    Accepted: "The applicant has been accepted and can be scheduled for onboarding.",
-    Offer: "An offer has been extended to this applicant.",
-    Hired: "The applicant has been hired and moved to New Hire Onboarding.",
-    Rejected: "This applicant was not selected for the role.",
-  };
-
-  const docCount = docs.length + (a.resumeUrl ? 1 : 0);
-
   /** Server-side verification documents for this applicant (the source of
    *  truth — the `docs` prop only holds uploads staged in this session).
-   *  Loaded so View profile → Resume & Documents shows every uploaded
+   *  Loaded so the screening and profile views show every uploaded
    *  supporting document, not just session-staged ones. */
   const [serverDocs, setServerDocs] = useState<Record<string, ApiApplicantDocument>>({});
   const [serverDocsLoading, setServerDocsLoading] = useState(true);
@@ -5561,1638 +6316,1447 @@ function ApplicantViewScreen({
     else setPanel(key);
   };
 
-  /** One entry of the section nav. `done` turns the badge into a green check so
-   *  a finished process is visible at a glance (and, for positions that skip it,
-   *  the practical reads completed as soon as the applicant reaches the final
-   *  evaluation). */
-  const sectionBtn = (
-    id: ViewPanel,
-    label: string,
-    icon: React.ReactNode,
-    badge?: number,
-    done?: boolean,
-  ) => {
-    const active = panel === id;
-    return (
-      <button
-        type="button"
-        onClick={() => setPanel(id)}
-        className={cn(
-          "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-semibold transition-colors cursor-pointer",
-          active
-            ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-        )}
-      >
-        <span className={cn(active ? "text-primary-foreground" : "text-muted-foreground")}>
-          {icon}
-        </span>
-        <span className="truncate flex-1">{label}</span>
-        {done ? (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.6rem] font-bold",
-              active
-                ? "bg-primary-foreground/20 text-primary-foreground"
-                : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-            )}
-            title="Completed"
-          >
-            <Check className="h-3 w-3" strokeWidth={3} /> Done
-          </span>
-        ) : (
-          badge !== undefined &&
-          badge > 0 && (
-            <span
-              className={cn(
-                "ml-auto min-w-4 rounded-full px-1.5 py-0.2 text-center text-[0.65rem] font-bold",
-                active
-                  ? "bg-primary-foreground/20 text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground",
-              )}
-            >
-              {badge}
-            </span>
-          )
-        )}
-      </button>
-    );
-  };
-
   const emptyNote = (text: string) => (
     <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
       <Info className="h-4 w-4 shrink-0" /> {text}
     </p>
   );
 
+  /** Which pipeline node the open section belongs to (null for profile/activity). */
+  const railActiveIndex =
+    panel === "screening"
+      ? 0
+      : panel === "interview"
+        ? 1
+        : panel === "test" || panel === "practical"
+          ? 2
+          : panel === "final"
+            ? 3
+            : panel === "current"
+              ? Math.min(applicantProfileStageIndex(a), 3)
+              : null;
+
+  /** Rail click → the section that stage owns. Assessment opens the written
+   *  test when required, otherwise the practical (or the final evaluation). */
+  const openRailStage = (index: number) => {
+    if (index === 0) setPanel("screening");
+    else if (index === 1) setPanel("interview");
+    else if (index === 2) setPanel(requiresTest ? "test" : requiresPrac ? "practical" : "final");
+    else setPanel("final");
+  };
+
+  const profilePanels: ViewPanel[] = ["current"];
+  const activeViewTab: "stage" | "profile" | "activity" =
+    panel === "activity" ? "activity" : profilePanels.includes(panel) ? "profile" : "stage";
+
+  /** Administrative actions are applicant-wide, so the strip lives above the
+   *  sections and stays reachable from every tab. */
+  const hasAdminActions =
+    (!!isSuperAdmin && a.stage !== "Rejected" && !!onMoveToStage) ||
+    (!!isSuperAdmin && a.stage === "Rejected" && !!onReopen) ||
+    (!!isSuperAdmin &&
+      (a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") &&
+      !!onCorrectHiring) ||
+    (!a.isArchived && !!onArchive) ||
+    (!!a.isArchived && !!onRestore) ||
+    (!!isSuperAdmin && ((!a.isActiveBlocked && !!onBlock) || (a.isActiveBlocked && !!onUnblock)));
+
   return (
-    <div ref={rootRef} className="mt-6 space-y-5">
-      {/* Top bar — Back to applicants navigation */}
-      <div>
-        <Button variant="outline" size="sm" onClick={onBack} className="shadow-xs hover:bg-muted font-medium cursor-pointer">
-          <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
-        </Button>
-      </div>
+    <div ref={rootRef} className="mt-6">
+      <Card className="overflow-hidden border-border/70 shadow-xs">
+        {/* Maroon title bar — same language as the right-side profile panel. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-primary px-5 py-4 text-primary-foreground sm:px-6">
+          <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1 font-display text-xl font-bold tracking-tight">
+            <span className="truncate">{a.name}</span>
+            <span className="truncate text-xs font-medium text-primary-foreground/75">
+              {a.position} · {a.id}
+            </span>
+          </h2>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onBack}
+            className="shrink-0 cursor-pointer shadow-xs"
+          >
+            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
+          </Button>
+        </div>
 
-      {/* Applicant hero — sleek modern card with subtle gradient highlight & rich metadata */}
-      <Card className="relative overflow-hidden border-border/80 bg-gradient-to-br from-card via-card to-muted/20 shadow-xs">
-        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary via-primary/80 to-primary/40" />
-        <CardContent className="p-6">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-4">
-              <Avatar className="h-16 w-16 shrink-0 ring-2 ring-primary/20 ring-offset-2 ring-offset-background">
-                <AvatarFallback className="bg-primary/10 text-primary font-display text-xl font-bold">
-                  {initials(a.name)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-display text-2xl font-bold tracking-tight text-foreground">{a.name}</h2>
-                  <span className="rounded-md border border-border bg-muted/80 px-2 py-0.5 font-mono text-xs font-semibold text-muted-foreground">
-                    {a.id}
-                  </span>
-                  {tier <= 2 && (
-                    <Badge
-                      variant="outline"
-                      className={cn("gap-1 text-[11px] font-semibold", topCandidateTierMeta[tier].className)}
-                    >
-                      <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
-                    </Badge>
-                  )}
-                  {a.isArchived && (
-                    <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px]">
-                      <Archive className="h-3 w-3" /> Archived
-                    </Badge>
-                  )}
-                  {a.isActiveBlocked && (
-                    <Badge variant="outline" className="gap-1 border-destructive/40 bg-destructive/10 text-destructive text-[11px]">
-                      <Ban className="h-3 w-3" /> Blocked
-                    </Badge>
-                  )}
-                </div>
+        {/* Identity — avatar, badges, contact and match score. */}
+        <div className="flex flex-wrap items-start gap-4 border-b border-border/60 bg-background px-5 py-5 sm:px-6">
+          <Avatar className="h-16 w-16 shrink-0 border-2 border-card shadow-sm">
+            <AvatarFallback className="bg-secondary font-display text-xl font-semibold text-secondary-foreground">
+              {initials(a.name)}
+            </AvatarFallback>
+          </Avatar>
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1 font-medium text-foreground">
-                    <Briefcase className="h-3.5 w-3.5 text-primary" /> {a.position}
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" /> {departmentOf(a.position)}
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <CalendarDays className="h-3.5 w-3.5" /> Applied: {displayAppliedAt(a.appliedAt)}
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
-                  {a.email && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[11px]">
-                      <Mail className="h-3 w-3 text-muted-foreground" /> {a.email}
-                    </span>
+          <div className="min-w-0 flex-1 basis-[280px]">
+            <div className="flex flex-wrap items-center gap-2">
+              {tier <= 2 && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "gap-1 text-[11px] font-semibold",
+                    topCandidateTierMeta[tier].className,
                   )}
-                  {a.phone && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[11px]">
-                      <Phone className="h-3 w-3 text-muted-foreground" /> {a.phone}
-                    </span>
-                  )}
-                  <Badge variant="outline" className={cn("gap-1.5 ml-1 text-[11px]", statusMeta[a.status].className)}>
-                    <span className={cn("h-1.5 w-1.5 rounded-full animate-pulse", statusMeta[a.status].dot)} />
-                    {statusMeta[a.status].label}
-                  </Badge>
-                  <Badge variant="secondary" className="text-[11px]">
-                    {a.stage}
-                  </Badge>
-                </div>
-
-                {linkedHire?.startDate && (
-                  <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-gold-foreground dark:text-gold">
-                    <CalendarClock className="h-3.5 w-3.5" />
-                    Start Date as Employee: <span className="font-semibold underline">{linkedHire.startDate}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Right side: Resume Card or Score Widget */}
-            <div className="shrink-0 flex items-center">
-              {a.resumeUrl ? (
-                <div className="flex items-center gap-3 rounded-xl border border-border/80 bg-background/80 p-3 shadow-2xs backdrop-blur-xs">
-                  <ScreeningDocIcon docType="resume" label="RES" />
-                  <div className="min-w-0 max-w-48">
-                    <p className="truncate text-xs font-semibold text-foreground" title={a.resumeOriginalName || undefined}>
-                      {a.resumeOriginalName || "Resume / CV"}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className={cn(
-                        "inline-flex items-center rounded-full px-1.5 py-0.2 text-[10px] font-bold",
-                        a.score >= passing ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-destructive/15 text-destructive"
-                      )}>
-                        {Math.round(a.score)}% Score
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">PDF</span>
-                    </div>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 shrink-0 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                    title="Download resume"
-                    onClick={() => window.open(a.resumeUrl!, "_blank", "noopener")}
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-border/80 bg-background/80 px-4 py-3 text-right shadow-2xs">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Screening Score</p>
-                  <p
-                    className={cn(
-                      "font-display text-3xl font-bold tracking-tight",
-                      a.score >= passing
-                        ? "text-success"
-                        : a.score >= 60
-                          ? "text-caution"
-                          : "text-destructive",
-                    )}
-                  >
-                    {a.score}%
-                  </p>
-                  <p className="text-[10px] font-medium text-muted-foreground">
-                    {passedScreening ? "Passed screening" : "Below passing threshold"}
-                  </p>
-                </div>
+                >
+                  <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
+                </Badge>
+              )}
+              {a.isArchived && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-amber-500/40 bg-amber-500/10 text-[11px] text-amber-700 dark:text-amber-300"
+                >
+                  <Archive className="h-3 w-3" /> Archived
+                </Badge>
+              )}
+              {a.isActiveBlocked && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-destructive/40 bg-destructive/10 text-[11px] text-destructive"
+                >
+                  <Ban className="h-3 w-3" /> Blocked
+                </Badge>
               )}
             </div>
+
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Building2 className="h-3.5 w-3.5" /> {departmentOf(a.position)}
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <CalendarDays className="h-3.5 w-3.5" /> Applied {displayAppliedAt(a.appliedAt)}
+              </span>
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {a.email && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[0.65rem] text-muted-foreground">
+                  <Mail className="h-3 w-3" /> {a.email}
+                </span>
+              )}
+              {a.phone && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[0.65rem] text-muted-foreground">
+                  <Phone className="h-3 w-3" /> {a.phone}
+                </span>
+              )}
+              <Badge
+                variant="outline"
+                className={cn("gap-1.5 text-[11px]", statusMeta[a.status].className)}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", statusMeta[a.status].dot)} />
+                {statusMeta[a.status].label}
+              </Badge>
+            </div>
+
+            {linkedHire?.startDate && (
+              <p className="mt-2 flex items-center gap-1.5 text-[0.72rem] font-medium text-gold-foreground dark:text-gold">
+                <CalendarClock className="h-3.5 w-3.5" />
+                Start Date as Employee:{" "}
+                <span className="font-semibold underline">{linkedHire.startDate}</span>
+              </p>
+            )}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Stage stepper — timeline: Screening → Interview → Assessment Test → Practical Assessment → Final Evaluation */}
-      <Card className="border-border/70 bg-card/60 backdrop-blur-xs shadow-xs">
-        <CardContent className="overflow-x-auto px-6 py-4">
-          <div className="flex min-w-[640px] items-start">
-            {VIEW_MILESTONES.map((m, i) => {
-              /* Colour comes from the recorded progress, not the stage label:
-                 completed → green, the stage being worked on → red, the rest → gray. */
-              const state: StageProgressState = stepStates[i] ?? "pending";
-              const done = state === "done";
-              const current = state === "current";
-              const isTest = m.label === "Assessment Test";
-              const isPrac = m.label === "Practical Assessment";
-              const skipped = (isTest && !requiresTest) || (isPrac && !requiresPrac);
-              /** Verdict already recorded for this stage, when there is one. */
-              const verdict =
-                i === 1
-                  ? (assessment?.result ?? null)
-                  : i === 2
-                    ? (test?.result ?? null)
-                    : i === 3
-                      ? (practical?.result ?? null)
-                      : null;
-              const isFailed =
-                verdict === "Failed" ||
-                (i === 4 && final?.recommendation === "Not Recommended") ||
-                (i === 0 && a.stage === "Rejected" && !assessment && !test && !practical && !final);
-              const statusText = skipped
-                ? done
-                  ? "Not required — Completed"
-                  : "Not required"
-                : isFailed
-                  ? `Failed${verdict ? ` · ${verdict}` : ""}`
-                  : done
-                    ? verdict
-                      ? `Completed · ${verdict}`
-                      : "Completed"
-                    : a.stage === "Rejected"
-                      ? "Disqualified"
-                      : current
-                        ? "In Progress"
-                        : "Pending";
-              const isLast = i === VIEW_MILESTONES.length - 1;
-
-              // Connector to the next node: green behind a completed stage, a
-              // green→red ramp into the stage in progress, gray while pending.
-              const nextState = stepStates[i + 1] ?? "pending";
-              const lineClass =
-                nextState === "done"
-                  ? "bg-emerald-500"
-                  : nextState === "current"
-                    ? "bg-gradient-to-r from-emerald-500 to-primary/60"
-                    : "bg-muted";
-
-              return (
-                <div
-                  key={m.label}
-                  className="relative flex flex-1 flex-col items-center text-center"
+          <div className="flex shrink-0 items-stretch gap-2.5">
+            {a.resumeUrl && (
+              <div className="flex items-center gap-2.5 rounded-xl border border-border/80 bg-background/80 p-2.5">
+                <ScreeningDocIcon docType="resume" label="RES" />
+                <div className="min-w-0 max-w-40">
+                  <p
+                    className="truncate text-[0.7rem] font-semibold text-foreground"
+                    title={a.resumeOriginalName || undefined}
+                  >
+                    {a.resumeOriginalName || "Resume / CV"}
+                  </p>
+                  <p className="text-[0.62rem] text-muted-foreground">PDF</p>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                  title="Download resume"
+                  onClick={() => window.open(a.resumeUrl!, "_blank", "noopener")}
                 >
-                  {/* Connector line */}
-                  {!isLast && (
-                    <div
-                      aria-hidden
-                      className={cn(
-                        "absolute top-[14px] h-[2px]",
-                        "left-[calc(50%+16px)] right-[calc(-50%+16px)]",
-                        lineClass,
-                      )}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => openMilestone(m.key)}
-                    aria-label={`Open ${m.label}`}
-                    title={`Open ${m.label}`}
-                    className={cn(
-                      "relative z-10 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-bold transition-all",
-                      "hover:scale-105 active:scale-95 disabled:cursor-not-allowed",
-                      isFailed
-                        ? "bg-destructive text-destructive-foreground ring-4 ring-destructive/20 shadow-xs"
-                        : done
-                          ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/20"
-                          : current
-                            ? "bg-primary text-primary-foreground ring-4 ring-primary/25 shadow-xs"
-                            : "bg-muted text-muted-foreground border border-border",
-                    )}
-                  >
-                    {isFailed ? (
-                      <X className="h-3.5 w-3.5" strokeWidth={3} />
-                    ) : done ? (
-                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                    ) : (
-                      i + 1
-                    )}
-                  </button>
-                  <span
-                    className={cn(
-                      "mt-2 px-1 text-xs font-semibold leading-tight",
-                      done
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : current
-                          ? "text-primary font-bold"
-                          : "text-muted-foreground",
-                    )}
-                  >
-                    {m.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "mt-0.5 text-[11px] font-medium leading-tight",
-                      done
-                        ? "text-emerald-600/80 dark:text-emerald-400/80"
-                        : current
-                          ? "text-primary/90"
-                          : "text-muted-foreground/70",
-                    )}
-                  >
-                    {statusText}
-                  </span>
-                </div>
-              );
-            })}
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+            <div className="flex w-[104px] shrink-0 flex-col items-center justify-center rounded-xl border border-gold/30 bg-gold-soft/40 px-3 py-2 text-center">
+              <p className="flex items-center gap-1 text-[0.6rem] font-semibold text-muted-foreground">
+                <Target className="h-3 w-3 text-gold" /> Match
+              </p>
+              <p
+                className={cn(
+                  "mt-0.5 font-display text-2xl font-bold leading-none tabular-nums",
+                  a.score >= passing
+                    ? "text-success"
+                    : a.score >= 60
+                      ? "text-caution"
+                      : "text-destructive",
+                )}
+              >
+                {a.score}%
+              </p>
+              <p className="mt-1 text-[0.58rem] text-muted-foreground">
+                {passedScreening ? "Passed screening" : "For review"}
+              </p>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Body grid: section nav + panels */}
-      <div className="grid items-start gap-4 lg:grid-cols-[250px_1fr] lg:items-stretch">
-        <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh] shadow-xs">
-          <CardContent className="h-full p-3 flex flex-col justify-between lg:overflow-y-auto">
-            <div className="space-y-4">
-              <div>
-                <p className="px-2 pb-2 text-[10px] font-bold tracking-wider uppercase text-muted-foreground">
-                  Applicant Sections
-                </p>
-                <div className="space-y-1">
-                  {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
-                  {sectionBtn(
-                    "history",
-                    "Previous Applications",
-                    <History className="h-4 w-4" />,
-                    (history?.data?.length ?? 0) > 0 ? history?.data?.length : undefined,
-                    !history?.cooldown && !history?.block?.is_blocked && (history?.data?.length ?? 0) > 0,
-                  )}
-                  {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
-                  {sectionBtn(
-                    "resume",
-                    "Resume & Documents",
-                    <Upload className="h-4 w-4" />,
-                    docCount,
-                    passedScreening,
-                  )}
-                  {sectionBtn(
-                    "interview",
-                    "Interview",
-                    <ClipboardCheck className="h-4 w-4" />,
-                    assessments.length,
-                    !!assessment,
-                  )}
-                  {sectionBtn(
-                    "test",
-                    "Assessment Test",
-                    <BookMarked className="h-4 w-4" />,
-                    assessmentTests.length,
-                    !!test,
-                  )}
-                  {sectionBtn(
-                    "practical",
-                    "Practical Assessment",
-                    <Wrench className="h-4 w-4" />,
-                    requiresPrac ? practicalTests.length : undefined,
-                    /* Not required for this position: done as soon as the
-                     applicant has advanced past the stage (progress bar rule). */
-                    requiresPrac ? !!practical : stepStates[3] === "done",
-                  )}
-                  {sectionBtn(
-                    "final",
-                    "Final Evaluation",
-                    <CheckCircle2 className="h-4 w-4" />,
-                    finalEvaluations.length,
-                    stepStates[4] === "done",
-                  )}
-                </div>
-              </div>
+        {/* Administrative actions — applicant-wide, so they sit above the
+            sections and stay reachable from every tab. */}
+        {hasAdminActions && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 border-y border-border/60 bg-muted/20 px-5 py-2.5 sm:px-6">
+            <span className="flex items-center gap-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              <Sliders className="h-3.5 w-3.5 text-primary" /> Administrative Actions
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {isSuperAdmin && a.stage !== "Rejected" && onMoveToStage && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 cursor-pointer"
+                  onClick={() => onMoveToStage(a)}
+                >
+                  <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
+                </Button>
+              )}
+              {isSuperAdmin && a.stage === "Rejected" && onReopen && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                  onClick={() => onReopen(a)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Reopen application
+                </Button>
+              )}
+              {isSuperAdmin &&
+                (a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") &&
+                onCorrectHiring && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                    onClick={() => onCorrectHiring(a)}
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
+                  </Button>
+                )}
+              {!a.isArchived && onArchive ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 text-muted-foreground cursor-pointer"
+                  onClick={() => onArchive(a)}
+                >
+                  <Archive className="h-3.5 w-3.5" /> Archive
+                </Button>
+              ) : a.isArchived && onRestore ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                  onClick={() => onRestore(a)}
+                >
+                  <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+                </Button>
+              ) : null}
+              {isSuperAdmin &&
+                (!a.isActiveBlocked && onBlock ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer"
+                    onClick={() => onBlock(a)}
+                  >
+                    <Ban className="h-3.5 w-3.5" /> Block
+                  </Button>
+                ) : a.isActiveBlocked && onUnblock ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                    onClick={() => onUnblock(a)}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                  </Button>
+                ) : null)}
             </div>
+          </div>
+        )}
 
-            {/* Quick Summary Pill at bottom of sidebar */}
-            <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] uppercase font-bold tracking-wider">Applicant ID</span>
-                <span className="font-mono text-[11px] font-medium text-foreground">{a.id}</span>
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] uppercase font-bold tracking-wider">Current Stage</span>
-                <span className="text-[11px] font-semibold text-primary">{a.stage}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Shared pipeline rail — every stage opens its record. */}
+        <div className="border-b border-border/60 bg-muted/15 px-4 py-4 sm:px-6">
+          <ProfileStageRail
+            stageIndex={Math.min(applicantProfileStageIndex(a), 3)}
+            activeStage={railActiveIndex}
+            onSelect={openRailStage}
+          />
+        </div>
 
-        <div className="min-w-0 h-full space-y-4 lg:h-[80vh] lg:overflow-y-auto [&>*]:min-h-full">
-          {(() => {
-            switch (panel) {
-              case "current":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                        <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                            <Info className="h-4 w-4 text-primary" /> {a.stage}
-                          </h3>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {stageDesc[a.stage] ?? "Current recruitment pipeline stage for this applicant."}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {tier <= 2 && (
-                            <Badge
-                              variant="outline"
-                              className={cn("gap-1 font-semibold", topCandidateTierMeta[tier].className)}
-                            >
-                              <Trophy className="h-3 w-3" /> {topCandidateTierMeta[tier].label}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
+        {/* Sections — Stage workflow / Profile records / Activity timeline. */}
+        <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4 sm:px-6">
+          {[
+            { key: "stage" as const, label: "Stage", icon: Info },
+            { key: "profile" as const, label: "Profile", icon: FileText },
+            { key: "activity" as const, label: "Activity", icon: History },
+          ].map((t) => {
+            const TabIcon = t.icon;
+            const active = activeViewTab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => {
+                  if (t.key === "stage") {
+                    if (activeViewTab !== "stage")
+                      openRailStage(Math.min(applicantProfileStageIndex(a), 3));
+                  } else if (t.key === "profile") setPanel("current");
+                  else setPanel("activity");
+                }}
+                aria-pressed={active}
+                className={cn(
+                  "flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                    : "border-border bg-card text-foreground hover:bg-muted/60",
+                )}
+              >
+                <TabIcon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
 
-                      {/* Quick Administrative Controls Bar */}
-                      <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                          <Sliders className="h-3.5 w-3.5 text-primary" />
-                          <span>Administrative Actions</span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {isSuperAdmin && a.stage !== "Rejected" && onMoveToStage && (
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 cursor-pointer" onClick={() => onMoveToStage(a)}>
-                              <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
-                            </Button>
-                          )}
-                          {isSuperAdmin && a.stage === "Rejected" && onReopen && (
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onReopen(a)}>
-                              <RotateCcw className="h-3.5 w-3.5" /> Reopen application
-                            </Button>
-                          )}
-                          {isSuperAdmin && (a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") && onCorrectHiring && (
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer" onClick={() => onCorrectHiring(a)}>
-                              <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
-                            </Button>
-                          )}
-                          {!a.isArchived && onArchive ? (
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground cursor-pointer" onClick={() => onArchive(a)}>
-                              <Archive className="h-3.5 w-3.5" /> Archive
-                            </Button>
-                          ) : a.isArchived && onRestore ? (
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onRestore(a)}>
-                              <ArchiveRestore className="h-3.5 w-3.5" /> Restore
-                            </Button>
-                          ) : null}
-                          {isSuperAdmin && (!a.isActiveBlocked && onBlock ? (
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer" onClick={() => onBlock(a)}>
-                              <Ban className="h-3.5 w-3.5" /> Block
-                            </Button>
-                          ) : a.isActiveBlocked && onUnblock ? (
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer" onClick={() => onUnblock(a)}>
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
-                            </Button>
-                          ) : null)}
-                        </div>
-                      </div>
-
-                      {/* Stage overview — interactive shortcut cards */}
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        {[
-                          {
-                            id: "resume" as ViewPanel,
-                            icon: <FileText className="h-4 w-4" />,
-                            label: "Screening",
-                            meta: passedScreening ? "Passed" : "For Review",
-                            tone: passedScreening ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
-                            dot: passedScreening ? "bg-emerald-500" : "bg-amber-500",
-                          },
-                          {
-                            id: "interview" as ViewPanel,
-                            icon: <ClipboardCheck className="h-4 w-4" />,
-                            label: "Interview",
-                            meta: assessment
-                              ? `${assessment.result} · ${assessment.total}%`
-                              : interview
-                                ? `Scheduled · ${interview.date}`
-                                : "Not yet conducted",
-                            tone: assessment?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : assessment?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
-                            dot: assessment?.result === "Passed" ? "bg-emerald-500" : assessment?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
-                          },
-                          {
-                            id: "test" as ViewPanel,
-                            icon: <BookMarked className="h-4 w-4" />,
-                            label: "Assessment Test",
-                            meta: test ? `${test.result} · ${test.total}%` : "Not yet taken",
-                            tone: test?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : test?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
-                            dot: test?.result === "Passed" ? "bg-emerald-500" : test?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
-                          },
-                          {
-                            id: "practical" as ViewPanel,
-                            icon: <Wrench className="h-4 w-4" />,
-                            label: "Practical",
-                            meta: !requiresPrac
-                              ? "Not required"
-                              : practical
-                                ? `${practical.result} · ${practical.total}%`
-                                : "Pending",
-                            tone: !requiresPrac ? "text-muted-foreground" : practical?.result === "Passed" ? "text-emerald-600 dark:text-emerald-400" : practical?.result === "Failed" ? "text-destructive" : "text-muted-foreground",
-                            dot: !requiresPrac ? "bg-muted-foreground/30" : practical?.result === "Passed" ? "bg-emerald-500" : practical?.result === "Failed" ? "bg-destructive" : "bg-muted-foreground/40",
-                          },
-                        ].map((r) => (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onClick={() => setPanel(r.id)}
-                            className="group relative flex min-h-0 flex-col items-start gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition-all hover:border-primary/40 hover:shadow-sm hover:bg-muted/30"
-                          >
-                            <div className="flex w-full items-center justify-between">
-                              <span className="flex items-center gap-2">
-                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-primary">
-                                  {r.icon}
-                                </span>
-                                <span className="text-xs font-semibold text-foreground">{r.label}</span>
-                              </span>
-                              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", r.dot)} />
-                              <span className={cn("text-[0.68rem] font-medium", r.tone)}>{r.meta}</span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="mt-5 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            <History className="h-3.5 w-3.5 text-primary" /> Recent Activity & Milestones
-                          </h4>
-                          <span className="text-[11px] text-muted-foreground">Latest events</span>
-                        </div>
-                        {(() => {
-                          const stageFallback =
-                            audit.length === 0
-                              ? [
-                                  final
-                                    ? {
-                                        id: `stage-final-${final.id}`,
-                                        actionType: "Final Evaluation Completed",
-                                        details: `Final evaluation recorded — ${final.recommendation}.`,
-                                        actorName: "System",
-                                        date: final.date,
-                                        time: "",
-                                      }
-                                    : null,
-                                  test
-                                    ? {
-                                        id: `stage-test-${test.id}`,
-                                        actionType: "Assessment Test Completed",
-                                        details: `${test.title} — ${test.result} · ${test.total}%.`,
-                                        actorName: "System",
-                                        date: test.date,
-                                        time: "",
-                                      }
-                                    : null,
-                                  assessment
-                                    ? {
-                                        id: `stage-interview-${assessment.date}`,
-                                        actionType: "Interview Completed",
-                                        details: `Interview ${assessment.result} · ${assessment.total}% — ${assessment.outcome}.`,
-                                        actorName: "System",
-                                        date: assessment.date,
-                                        time: "",
-                                      }
-                                    : interview
-                                      ? {
-                                          id: `stage-sched-${interview.date}-${interview.time}`,
-                                          actionType: "Interview Scheduled",
-                                          details: `${interview.date} · ${interview.time} — ${interview.status}.`,
-                                          actorName: "System",
-                                          date: interview.date,
-                                          time: "",
-                                        }
-                                      : null,
-                                  {
-                                    id: `stage-screening-${a.id}`,
-                                    actionType: "Resume Screening Completed",
-                                    details: `Screened at ${a.score}% — ${passedScreening ? "Passed" : "For Review"}.`,
-                                    actorName: "System",
-                                    date: a.appliedAt,
-                                    time: "",
-                                  },
-                                ].filter((x): x is NonNullable<typeof x> => x !== null)
-                              : [];
-                          const items = (audit.length > 0 ? audit : stageFallback).slice(0, 6);
-                          if (items.length === 0) {
-                            return (
-                              <div className="mt-2">
-                                {emptyNote("No recorded events for this applicant yet.")}
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="space-y-2">
-                              {items.map((e) => (
-                                <div
-                                  key={e.id}
-                                  className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/20 p-3 transition-colors hover:bg-muted/40 hover:border-border"
-                                >
-                                  <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center">
-                                    <span
-                                      className={cn(
-                                        "h-2 w-2 rounded-full ring-4",
-                                        /Rejected|Cancelled|No-Show/.test(e.actionType)
-                                          ? "bg-destructive ring-destructive/20"
-                                          : /Passed|Hired|Completed/.test(e.actionType)
-                                            ? "bg-emerald-500 ring-emerald-500/20"
-                                            : "bg-primary ring-primary/20",
-                                      )}
-                                    />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center justify-between gap-1.5">
-                                      <p className="text-xs font-semibold text-foreground">{e.actionType}</p>
-                                      <span className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                                        {e.date} {e.time}
-                                      </span>
-                                    </div>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">
-                                      {e.details}
-                                    </p>
-                                    <span className="mt-1 inline-block text-[10px] text-muted-foreground/80">
-                                      Recorded by: {e.actorName}
-                                    </span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              case "history":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-5">
-                      {/* Header */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                        <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                            <History className="h-4 w-4 text-primary" /> Previous Applications
-                          </h3>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Past application attempts by the same email address.
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {historyLoading ? (
-                            <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse">
-                              <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs font-semibold">
-                              {history?.data?.length ?? 0} attempt{(history?.data?.length ?? 0) !== 1 ? "s" : ""}
-                            </Badge>
-                          )}
-                          {onOverrideCooldown && (history?.cooldown || history?.block?.is_blocked) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1.5 text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
-                              disabled={overrideBusy}
-                              onClick={onOverrideCooldown}
-                            >
-                              {overrideBusy ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <ShieldAlert className="h-3.5 w-3.5" />
-                              )}
-                              Override cooldown
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Block alert */}
-                      {history?.block?.is_blocked && (
-                        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
-                          <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-destructive">Applicant is blocked</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              This applicant has been restricted from re-applying. Only a super admin can lift this restriction.
-                            </p>
-                          </div>
-                          {isSuperAdmin && onUnblock && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 shrink-0 text-xs gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                              onClick={() => onUnblock(a)}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
-                            </Button>
-                          )}
-                        </div>
+        <div className="bg-muted/15 px-4 pb-5 pt-3 sm:px-5">
+          {activeViewTab === "stage" &&
+            (panel === "test" || panel === "practical") &&
+            requiresTest &&
+            requiresPrac && (
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {[
+                  { id: "test" as ViewPanel, label: "Written Test" },
+                  { id: "practical" as ViewPanel, label: "Practical Test" },
+                ].map((step) => {
+                  const active = panel === step.id;
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => setPanel(step.id)}
+                      aria-pressed={active}
+                      className={cn(
+                        "cursor-pointer rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold transition-colors",
+                        active
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-card text-muted-foreground hover:text-foreground",
                       )}
+                    >
+                      {step.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
-                      {/* Cooldown / eligible status card */}
-                      {!historyLoading && history && (
-                        Boolean(history.cooldown) ? (
-                          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
-                            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Cooling-down period active</p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {history.cooldown
-                                  ? `This applicant may re-apply after ${history.cooldown.eligible_after_label} (${history.cooldown.days_left} day${history.cooldown.days_left === 1 ? "" : "s"} left).`
-                                  : "This applicant must wait before re-applying."}
-                              </p>
-                            </div>
-                          </div>
-                        ) : !history.block?.is_blocked ? (
-                          <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4">
-                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                            <div>
-                              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Eligible to re-apply</p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">No cooldown or block restriction is active.</p>
-                            </div>
-                          </div>
-                        ) : null
-                      )}
+          <div className="min-w-0">
+            {(() => {
+              switch (panel) {
+                case "current":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-5">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
+                            <User className="h-4 w-4 text-primary" /> Applicant Profile
+                          </h3>
+                        </div>
 
-                      {/* History list */}
-                      {historyLoading ? (
-                        <div className="space-y-3">
-                          {Array.from({ length: 3 }).map((_, i) => (
-                            <div key={i} className="h-20 animate-pulse rounded-xl border border-border bg-muted/30" />
-                          ))}
-                        </div>
-                      ) : history?.data && history.data.length > 0 ? (
-                        <div className="space-y-3">
-                          {history.data.map((row, idx) => {
-                            const isCurrent = row.is_current;
-                            return (
-                              <div
-                                key={row.applicant_id}
-                                className={cn(
-                                  "rounded-xl border p-4 transition-colors",
-                                  isCurrent
-                                    ? "border-primary/40 bg-primary/5"
-                                    : "border-border bg-card hover:border-border/80 hover:bg-muted/20"
-                                )}
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                  <div className="min-w-0 flex-1 space-y-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="font-mono text-[11px] font-bold text-muted-foreground">
-                                        {row.applicant_code ?? `#${idx + 1}`}
-                                      </span>
-                                      {isCurrent && (
-                                        <Badge variant="outline" className="text-[10px] gap-1 border-primary/40 text-primary">
-                                          Current
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-sm font-semibold text-foreground">{row.position ?? a.position}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      Applied: {row.applied_at ? displayAppliedAt(row.applied_at) : "—"}
-                                    </p>
+                        {/* Same cards as the right-side profile drawer. */}
+                        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+                          <div className="rounded-xl border border-border/70 bg-card p-4">
+                            <p className="text-xs font-semibold text-foreground">Contact</p>
+                            <dl className="mt-2 space-y-2 text-[0.72rem]">
+                              {[
+                                { icon: User, label: "Full Name", value: a.name },
+                                { icon: Mail, label: "Email", value: a.email },
+                                { icon: Phone, label: "Phone", value: a.phone },
+                                {
+                                  icon: MapPin,
+                                  label: "Address",
+                                  value: a.address ?? "Not provided",
+                                },
+                                {
+                                  icon: CalendarDays,
+                                  label: "Applied",
+                                  value: formatDisplayDate(a.appliedAt).date,
+                                },
+                                { icon: Briefcase, label: "Source", value: a.source },
+                              ].map((row) => {
+                                const RowIcon = row.icon;
+                                return (
+                                  <div key={row.label} className="flex items-start gap-2.5">
+                                    <RowIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    <dt className="w-16 shrink-0 text-muted-foreground">
+                                      {row.label}
+                                    </dt>
+                                    <dd className="min-w-0 flex-1 break-words font-medium text-foreground">
+                                      {row.value}
+                                    </dd>
                                   </div>
-                                  <div className="flex flex-col items-end gap-1.5">
-                                    {row.stage && (
-                                      <Badge variant="secondary" className="text-[11px]">{row.stage}</Badge>
-                                    )}
-                                    {row.status && (
-                                      <Badge
-                                        variant="outline"
-                                        className={cn(
-                                          "text-[10px]",
-                                          row.status === "hired" ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/8" :
-                                          row.status === "rejected" ? "border-destructive/40 text-destructive bg-destructive/8" :
-                                          "border-border text-muted-foreground"
-                                        )}
-                                      >
-                                        {row.status}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : !historyLoading && (
-                        <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-                          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/60">
-                            <History className="h-7 w-7 text-muted-foreground/50" />
+                                );
+                              })}
+                            </dl>
                           </div>
+
+                          <ApplicantDocumentsCard
+                            docs={serverDocList}
+                            loading={serverDocsLoading}
+                            resumeUrl={a.resumeUrl}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                case "screening":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
                           <div>
-                            <p className="text-sm font-semibold text-foreground">First-Time Applicant</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">No previous applications found for this email address.</p>
+                            <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                              <ScanLine className="h-4 w-4 text-primary" /> Screening
+                            </h3>
                           </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              case "details":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-5">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <FileText className="h-4 w-4 text-primary" /> Application Details
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Submitted via {a.source} · {displayAppliedAt(a.appliedAt)}
-                        </p>
-                      </div>
-
-                      <div className="grid gap-4">
-                        {/* Card 1 — Candidate Profile */}
-                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
-                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            <User className="h-3.5 w-3.5" /> Candidate Profile
-                          </h4>
-                          {[
-                            { label: "Full Name", value: a.name },
-                            { label: "Email", value: a.email, mono: true },
-                            { label: "Phone", value: a.phone, mono: true },
-                            { label: "Source", value: a.source },
-                          ].map(({ label, value, mono }) => (
-                            <div key={label} className="flex items-start justify-between gap-2">
-                              <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">{label}</span>
-                              <span className={cn("text-right text-xs font-medium text-foreground break-all", mono && "font-mono")}>{value ?? "—"}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Card 2 — Application Metadata */}
-                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
-                          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            <Briefcase className="h-3.5 w-3.5" /> Application Metadata
-                          </h4>
-                          {[
-                            { label: "Applicant ID", value: String(a.id), mono: true },
-                            { label: "Position", value: a.position },
-                            { label: "Department", value: departmentOf(a.position) },
-                            { label: "Current Stage", value: a.stage },
-                            { label: "Date Applied", value: displayAppliedAt(a.appliedAt) },
-                          ].map(({ label, value, mono }) => (
-                            <div key={label} className="flex items-start justify-between gap-2">
-                              <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">{label}</span>
-                              <span className={cn("text-right text-xs font-medium text-foreground break-all", mono && "font-mono")}>{value ?? "—"}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              case "resume":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                        <div>
-                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                            <Upload className="h-4 w-4 text-primary" /> Resume &amp; Documents
-                          </h3>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Resume screening result plus supporting verification documents (COE,
-                            Certificate, Credentials, Others).
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className="border-border bg-secondary text-secondary-foreground"
-                          >
-                            {docCount} item{docCount === 1 ? "" : "s"}
-                          </Badge>
                           <Button size="sm" variant="outline" onClick={onReview}>
                             <ScanLine className="mr-1.5 h-3.5 w-3.5" /> Review Screening
                           </Button>
                         </div>
-                      </div>
 
-                      {/* Resume Screening Result — redesigned to the approved mockup */}
-                      {(() => {
-                        const vm = screeningViewModel(a);
-                        const detail = vm.detail;
-                        return (
-                          <div className="mt-4 space-y-4">
-                            <div className="rounded-xl border border-border bg-card p-5">
-                              <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-                                <ShieldCheck className="h-4.5 w-4.5 text-primary" /> Resume
-                                Screening
-                              </h3>
-                              <div className="mt-4 flex flex-col items-center gap-4 lg:flex-row lg:items-start">
-                                <ScreeningScoreDonut score={vm.score} />
-                                <div className="w-full min-w-0 flex-1 space-y-3">
-                                  <ScreeningVerdictBanner status={a.status} score={vm.score} />
-                                  <ScreeningStatTiles
-                                    matchedCount={vm.matched.length}
-                                    missingCount={vm.missing.length}
-                                    yearsExperience={vm.yearsExperience}
-                                    educationLabel={vm.educationLabel}
-                                    showIcons={false}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            <ScreeningVerificationImpact
-                              verification={vm.verification}
-                              resumeScore={vm.resumeScore}
-                              score={vm.score}
-                              onRecompute={onRecomputeRanking}
-                              recomputing={recomputingRanking}
-                            />
-
-                            <div className="grid items-stretch gap-4 lg:grid-cols-2">
-                              <ResumeInfoPanel
-                                title="Key Information Extracted"
-                                variant="modal"
-                                skills={vm.skills}
-                                recognizedRoles={vm.recognizedRoles}
-                                unrecognizedRoles={vm.unrecognizedRoles}
-                                workExperience={vm.workExperience}
-                                education={vm.education}
-                                experienceYears={vm.yearsExperience}
-                                certifications={vm.certifications}
-                                personalInfo={vm.personalInfo}
-                                skillsRecognized={vm.skillsRecognized}
-                                unrecognizedCertifications={vm.unrecognizedCertifications}
-                              />
-                              <RequirementMatchPanel
-                                rows={vm.rows}
-                                experienceMinYears={vm.experienceMinYears}
-                              />
-                            </div>
-
-                            <ScreeningResumeDocsMatchDetail
-                              docs={serverDocList}
-                              loading={serverDocsLoading}
-                              resumeName={vm.personalInfo.name ?? a.name}
-                              resumeEducation={vm.education}
-                              resumeCertifications={vm.certifications}
-                            />
-
-                            <ScreeningSupportDocsGrid
-                              resumeName={a.resumeOriginalName || "Resume / CV"}
-                              resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
-                              onOpenResume={
-                                a.resumeUrl
-                                  ? () => window.open(a.resumeUrl!, "_blank", "noopener")
-                                  : undefined
-                              }
-                              docs={serverDocList}
-                              loading={serverDocsLoading}
-                              onView={(d) =>
-                                window.open(
-                                  applicantDocumentsApi.fileUrl(d.applicant_document_id),
-                                  "_blank",
-                                  "noopener",
-                                )
-                              }
-                              onDownload={(d) =>
-                                window.open(
-                                  applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
-                                  "_blank",
-                                  "noopener",
-                                )
-                              }
-                            />
-
-                            {docs.length > 0 && (
-                              <div className="rounded-xl border border-border bg-card p-5">
-                                <h3 className="text-sm font-semibold">Session uploads</h3>
-                                <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-                                  Documents staged in this session, not yet verified against the
-                                  resume.
-                                </p>
-                                <div className="mt-3 space-y-4">
-                                  {VERIFICATION_DOC_TYPES.map((t) => {
-                                    const group = docs.filter((d) => d.docType === t.type);
-                                    if (group.length === 0) return null;
-                                    return (
-                                      <div key={t.type}>
-                                        <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
-                                          {t.label}
-                                          <Badge
-                                            variant="outline"
-                                            className="border-border bg-muted text-muted-foreground"
-                                          >
-                                            {group.length}
-                                          </Badge>
-                                        </p>
-                                        <p className="text-[0.7rem] text-muted-foreground">
-                                          {t.verifies}
-                                        </p>
-                                        <div className="mt-2 overflow-x-auto">
-                                          <Table>
-                                            <TableHeader>
-                                              <TableRow>
-                                                <TableHead>Title / File</TableHead>
-                                                <TableHead>Original Copy</TableHead>
-                                                <TableHead>Uploaded</TableHead>
-                                              </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                              {serverDocsLoading && (
-                                                <TableRowsSkeleton cols={3} rows={5} />
-                                              )}
-                                              {!serverDocsLoading &&
-                                                group.map((d) => (
-                                                  <TableRow key={`${d.docType}-${d.fileName}`}>
-                                                    <TableCell>
-                                                      <p className="text-sm font-medium">
-                                                        {d.title}
-                                                      </p>
-                                                      <p className="text-xs text-muted-foreground">
-                                                        {d.fileName}
-                                                      </p>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                      {d.originalCopy ? (
-                                                        <Badge
-                                                          variant="outline"
-                                                          className="border-success/30 bg-success/10 text-success"
-                                                        >
-                                                          Original
-                                                        </Badge>
-                                                      ) : (
-                                                        <Badge
-                                                          variant="outline"
-                                                          className="border-caution/30 bg-caution/10 text-caution"
-                                                        >
-                                                          Copy
-                                                        </Badge>
-                                                      )}
-                                                    </TableCell>
-                                                    <TableCell className="text-xs text-muted-foreground">
-                                                      {d.uploadedAt}
-                                                    </TableCell>
-                                                  </TableRow>
-                                                ))}
-                                            </TableBody>
-                                          </Table>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            <ScreeningDetailsAccordion
-                              detail={detail}
-                              variant="modal"
-                              position={a.position}
-                              score={vm.score}
-                              vm={vm}
-                            />
-
-                            {detail?.alternative_job && (
-                              <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
-                                <p className="font-medium text-warning-foreground">
-                                  Recommended alternative: {detail.alternative_job.title} (
-                                  {Math.round(detail.alternative_job.alternative_match_score ?? 0)}
-                                  %)
-                                </p>
-                                {detail.alternative_job.reason && (
-                                  <p className="mt-1 text-xs text-muted-foreground">
-                                    {detail.alternative_job.reason}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-
-                      {/* Report unrecognized entities — full width at the bottom
-                          of the Resume Screening Result in Resume & Documents. */}
-                      {(() => {
-                        const vm = screeningViewModel(a);
-                        const entries = unrecognizedEntriesFrom(vm, a.screening_detail);
-                        return (
-                          <ReportUnrecognizedDialog
-                            entries={entries}
-                            applicantName={a.name}
-                            className="mt-4 w-full justify-center"
-                            triggerLabel={
-                              entries.length > 0
-                                ? `Report unrecognized entities (${entries.length})`
-                                : "Report unrecognized entities"
-                            }
-                          />
-                        );
-                      })()}
-                    </CardContent>
-                  </Card>
-                );
-              case "interview":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <ClipboardCheck className="h-4 w-4 text-primary" /> Interview
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          This applicant&apos;s interview record and evaluation outcomes.
-                        </p>
-                      </div>
-
-                      {(showAcceptInterview ||
-                        showScheduleInterview ||
-                        showRescheduleInterview) && (
-                        <div className="flex flex-wrap gap-2">
-                          {showAcceptInterview && (
-                            <Button size="sm" onClick={onAcceptAndSchedule}>
-                              <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Accept &amp; Schedule
-                            </Button>
-                          )}
-                          {showScheduleInterview && (
-                            <Button size="sm" onClick={onAcceptAndSchedule}>
-                              <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Schedule Interview
-                            </Button>
-                          )}
-                          {showRescheduleInterview && liveInterview && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onRescheduleInterview?.(liveInterview)}
-                            >
-                              <Repeat2 className="mr-1.5 h-3.5 w-3.5" /> Reschedule Interview
-                            </Button>
-                          )}
-                        </div>
-                      )}
-
-                      {assessment ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              Interview completed {assessment.date}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {assessment.remarks || "No overall evaluation notes recorded."}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-bold text-primary">
-                              {assessment.total}%
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                assessment.result === "Passed"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {assessment.result}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                assessment.outcome === "Recommended"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : assessment.outcome === "Hold"
-                                    ? "border-warning/40 bg-warning/10 text-warning"
-                                    : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {assessment.outcome}
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onViewInterview(assessment)}
-                            >
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View Results
-                            </Button>
-                          </div>
-                        </div>
-                      ) : interview ? (
-                        <div className="space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium">
-                                {interview.date} · {interview.time}
-                              </p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {interview.mode}
-                                {interview.facilityName ? ` · ${interview.facilityName}` : ""}
-                                {interview.facilityStatus &&
-                                interview.facilityStatus !== "Not Required"
-                                  ? ` · ${interview.facilityStatus}`
-                                  : ""}
-                                {interview.interviewer ? ` · ${interview.interviewer}` : ""}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                variant="outline"
-                                className="border-gold/40 bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
-                              >
-                                {interview.status}
-                              </Badge>
-                              {(() => {
-                                // Startable only inside the slot window
-                                // ([start, start + duration)) — not the whole day.
-                                const windowState = interview
-                                  ? getInterviewWindow(
-                                      interview.date,
-                                      interview.time,
-                                      interviewDurationMinutes(
-                                        interview.time,
-                                        interview.endTime,
-                                        slotDurationMinutes,
-                                      ),
-                                      new Date(),
-                                    )
-                                  : "past-day";
-                                if (windowState === "live") {
-                                  return interview.mode === "Virtual" ? (
-                                    <Button size="sm" onClick={onStartInterview}>
-                                      <Video className="mr-1.5 h-3.5 w-3.5" /> Start Zoom Interview
-                                    </Button>
-                                  ) : (
-                                    <Button size="sm" onClick={onStartInterview}>
-                                      <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start
-                                      Interview
-                                    </Button>
-                                  );
-                                }
-                                return (
-                                  <span className="text-xs text-muted-foreground">
-                                    {windowState === "upcoming"
-                                      ? `Starts at ${interview.time} (${slotDurationMinutes} min)`
-                                      : windowState === "future-day"
-                                        ? "Available on interview day"
-                                        : "Interview window has passed"}
-                                  </span>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                          {interview.mode === "Virtual" &&
-                            (interview.zoomJoinUrl ||
-                              interview.zoomContinueUrl ||
-                              interview.zoomPassword) && (
-                              <div className="mt-3 rounded-md border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900/40 dark:bg-blue-950/20">
-                                <p className="mb-1.5 flex items-center gap-1.5 font-semibold text-blue-800 dark:text-blue-200">
-                                  <Video className="h-3.5 w-3.5" /> Zoom details emailed to
-                                  applicant
-                                </p>
-                                {interview.zoomJoinUrl && (
-                                  <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
-                                    1st link — Join:{" "}
-                                    <a
-                                      href={interview.zoomJoinUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="underline"
-                                    >
-                                      {interview.zoomJoinUrl}
-                                    </a>
-                                  </p>
-                                )}
-                                {interview.zoomContinueUrl && (
-                                  <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
-                                    2nd link — Continue:{" "}
-                                    <a
-                                      href={interview.zoomContinueUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="underline"
-                                    >
-                                      {interview.zoomContinueUrl}
-                                    </a>
-                                  </p>
-                                )}
-                                <p className="text-blue-700 dark:text-blue-300">
-                                  {interview.zoomPassword
-                                    ? `Password: ${interview.zoomPassword} · `
-                                    : ""}
-                                  Interviewer: {interview.interviewer}
-                                </p>
-                              </div>
-                            )}
-                          {interview.interview_notes && interview.interview_notes.trim() !== "" && (
-                            <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
-                              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                                <FileText className="h-3.5 w-3.5 text-primary" /> Interviewer notes
-                              </p>
-                              <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
-                                {interview.interview_notes}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="mt-4">
-                          {emptyNote(
-                            "No interview yet. Book a slot from the Interview Pipeline tab in the main list.",
-                          )}
-                        </div>
-                      )}
-
-                      {!assessment && (
-                        <p className="mt-4 flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-                          <Info className="h-4 w-4 shrink-0" />
-                          <span>
-                            Booking and rescheduling stay in the{" "}
-                            <b className="font-semibold text-foreground">Interview Pipeline</b> tab.
-                            This section shows this applicant&apos;s interview record only.
-                          </span>
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              case "test":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <BookMarked className="h-4 w-4 text-primary" /> Assessment Test
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Job-specific test that unlocks after the interview assessment is passed.
-                          {!requiresTest && " This position does not require it (set in Core HCM)."}
-                        </p>
-                      </div>
-
-                      {!requiresTest ? (
-                        <div className="mt-2">
-                          {emptyNote(
-                            "This position does not require an assessment test (Core HCM).",
-                          )}
-                        </div>
-                      ) : test ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">{test.title}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {test.name} · {test.position} · {test.date}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-bold text-primary">
-                              {test.total}%
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                test.result === "Passed"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {test.result}
-                            </Badge>
-                            <Button size="sm" variant="outline" onClick={() => onViewTest(test)}>
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View
-                            </Button>
-                          </div>
-                        </div>
-                      ) : readyForTest ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">Ready for the assessment test</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {a.position} — the interview assessment was passed.
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={inviteBusy}
-                              onClick={() => onCopyTestLink?.()}
-                              title="Email a no-login test link the applicant opens to answer the test themselves (also copies it)"
-                            >
-                              {inviteBusy ? (
-                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Link2 className="mr-1.5 h-3.5 w-3.5" />
-                              )}
-                              Email applicant test link
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-2">
-                          {emptyNote(
-                            requiresTest
-                              ? "Assessment test unlocks after the interview stage is completed and passed."
-                              : "Assessment test is not required for this position (Core HCM) — proceed to the practical (when required) or final evaluation.",
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              case "practical":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <Wrench className="h-4 w-4 text-primary" /> Practical Assessment
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Hands-on practical exam — required only when the Core HCM position
-                          requires it.
-                        </p>
-                      </div>
-
-                      {!requiresPrac ? (
-                        <div className="mt-2">
-                          {emptyNote("This position does not require a practical assessment.")}
-                        </div>
-                      ) : practical ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">{practical.taskTitle}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {practical.name} · {practical.position} · {practical.date}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-display text-2xl font-bold text-primary">
-                              {practical.total}%
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                practical.result === "Passed"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {practical.result}
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onViewPractical(practical)}
-                            >
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View
-                            </Button>
-                          </div>
-                        </div>
-                      ) : readyForPractical ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              Ready for the practical assessment
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {a.position} — the assessment test was passed.
-                            </p>
-                          </div>
-                          <Button size="sm" onClick={onStartPractical}>
-                            <Wrench className="mr-1.5 h-3.5 w-3.5" /> Record Practical Exam
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="mt-2">
-                          {emptyNote(
-                            requiresTest
-                              ? "Practical exam unlocks after passing the assessment test."
-                              : "Practical exam unlocks after the interview assessment is passed (assessment test not required for this position).",
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              case "final":
-                return (
-                  <Card className="border-border/70 min-h-full shadow-xs">
-                    <CardContent className="p-6 space-y-4">
-                      <div className="border-b border-border/60 pb-4">
-                        <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
-                          <CheckCircle2 className="h-4 w-4 text-primary" /> Final Evaluation
-                        </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Whole-process verdict — resume screening, interview, assessment test and
-                          practical.
-                        </p>
-                      </div>
-
-                      {final ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">
-                              Final evaluation recorded {final.date}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {final.overallRemarks || "No overall remarks recorded."}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                final.recommendation === "Recommended for Hire"
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : final.recommendation === "For Another Position"
-                                    ? "border-warning/40 bg-warning/10 text-warning"
-                                    : "border-destructive/30 bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {final.recommendation}
-                            </Badge>
-                            <Button size="sm" variant="outline" onClick={() => onViewFinal(final)}>
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> View Results
-                            </Button>
-                          </div>
-                        </div>
-                      ) : readyForFinal ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-foreground">Ready for the final evaluation</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {a.position} — all process stages completed.
-                            </p>
-                          </div>
-                          <Button size="sm" onClick={onStartFinal}>
-                            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Complete Final
-                            Evaluation
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="mt-2">
-                          {emptyNote(
-                            "Final evaluation unlocks after the assessment test (and the practical, when required) is passed.",
-                          )}
-                        </div>
-                      )}
-
-                      {/* Offer status — the Final Evaluation modal is where the
-                          decision is made and the applicant's reply
-                          (Accept / Decline applicant) is recorded. */}
-                      {final &&
-                        (() => {
-                          const offer = offerStateOf(a);
+                        {/* Resume screening result — the four pipeline stages
+                            double as the tab bar, so the process stays visible. */}
+                        {(() => {
+                          const vm = screeningViewModel(a);
+                          const detail = vm.detail;
+                          const verification = vm.verification;
+                          const docsChecked =
+                            (verification?.verified_count ?? 0) +
+                            (verification?.discrepancy_count ?? 0) +
+                            (verification?.unable_count ?? 0);
+                          const stages = [
+                            {
+                              value: "extraction",
+                              label: "Extraction",
+                              result: detail ? "Parsed" : "Not run",
+                              ok: Boolean(detail),
+                            },
+                            {
+                              value: "recognition",
+                              label: "Recognition",
+                              result: `${vm.skills.length} skills · ${vm.recognizedRoles.length} roles`,
+                              ok:
+                                vm.skills.length > 0 &&
+                                vm.unrecognizedRoles.length === 0 &&
+                                vm.unrecognizedCertifications.length === 0,
+                            },
+                            {
+                              value: "match",
+                              label: "Matching",
+                              result: `${vm.matched.length}/${vm.rows.length}`,
+                              ok: vm.rows.length > 0 && vm.missing.length === 0,
+                            },
+                            {
+                              value: "documents",
+                              label: "Documents",
+                              result:
+                                docsChecked > 0
+                                  ? `${verification?.verified_count ?? 0}/${docsChecked}`
+                                  : "None",
+                              ok: docsChecked > 0 && (verification?.discrepancy_count ?? 0) === 0,
+                            },
+                          ];
                           return (
-                            <div className="mt-6 space-y-2">
-                              <h4 className="flex items-center gap-2 text-sm font-semibold">
-                                <Send className="h-4 w-4 text-primary" /> Offer Status
-                              </h4>
-                              {offer ? (
-                                <p
-                                  className={cn(
-                                    "text-xs font-semibold",
-                                    offer.status === "Accepted" && !offer.expired
-                                      ? "text-success"
-                                      : offer.status === "Pending" && !offer.expired
-                                        ? "text-warning"
-                                        : "text-destructive",
-                                  )}
-                                >
-                                  {offerStateLabel(offer)}
-                                  {offer.status !== "Pending" && a.offerResponseChannel && (
-                                    <span className="font-normal text-muted-foreground">
-                                      {" "}
-                                      · replied via {a.offerResponseChannel}
-                                      {a.offerResponseRecordedBy
-                                        ? ` (recorded by ${a.offerResponseRecordedBy})`
-                                        : ""}
+                            <div className="mt-4 space-y-4">
+                              <ScreeningResultHero
+                                status={a.status}
+                                score={vm.score}
+                                matchedCount={vm.matched.length}
+                                missingCount={vm.missing.length}
+                                yearsExperience={vm.yearsExperience}
+                                educationLabel={vm.educationLabel}
+                              />
+
+                              {/* Same linear breakdown as the right-side drawer,
+                                  so the full profile keeps the detail. */}
+                              {a.breakdown.length > 0 ? (
+                                <div className="rounded-xl border border-border/70 bg-card p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-foreground">
+                                      Score breakdown
+                                    </p>
+                                    <span className="text-[0.65rem] text-muted-foreground">
+                                      Score to job requirements
                                     </span>
-                                  )}
-                                  {offer.status === "Pending" && !offer.expired && (
-                                    <span className="font-normal text-muted-foreground">
-                                      {" "}
-                                      — record the reply (and how it arrived) via Record
-                                      acceptance / Record decline in the Final Evaluation modal.
-                                    </span>
-                                  )}
-                                </p>
-                              ) : final.recommendation === "Not Recommended" ? (
-                                <p className="text-xs font-semibold text-destructive">
-                                  Not passed — recorded as Failed in the Pipeline Overview.
-                                </p>
+                                  </div>
+                                  <div className="mt-3 space-y-2">
+                                    {a.breakdown.slice(0, 6).map((b, i) => (
+                                      <ScoreMeter
+                                        key={`${b.criterion}-${i}`}
+                                        label={b.criterion}
+                                        value={b.score}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
                               ) : (
-                                <p className="text-xs text-muted-foreground">
-                                  No offer email sent yet — send it from the Pipeline Overview
-                                  (Actions → Send offer email).
+                                <p className="rounded-xl border border-dashed border-border p-3 text-center text-[0.7rem] text-muted-foreground">
+                                  No criteria breakdown recorded.
                                 </p>
                               )}
+
+                              <Tabs defaultValue="extraction" className="w-full space-y-4">
+                                <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-4">
+                                  {stages.map((stage, i) => (
+                                    <TabsTrigger
+                                      key={stage.value}
+                                      value={stage.value}
+                                      className="flex h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal rounded-lg border border-border bg-card px-2.5 py-2 text-left shadow-none data-[state=active]:border-primary/40 data-[state=active]:bg-primary/5 data-[state=active]:shadow-none cursor-pointer"
+                                    >
+                                      <span className="flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                                        <span
+                                          className={cn(
+                                            "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[0.6rem] font-bold tabular-nums",
+                                            stage.ok
+                                              ? "bg-success text-success-foreground"
+                                              : "bg-muted-foreground/20 text-muted-foreground",
+                                          )}
+                                        >
+                                          {i + 1}
+                                        </span>
+                                        {stage.label}
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          "w-full truncate text-xs font-semibold",
+                                          stage.ok ? "text-success" : "text-foreground",
+                                        )}
+                                        title={stage.result}
+                                      >
+                                        {stage.result}
+                                      </span>
+                                    </TabsTrigger>
+                                  ))}
+                                </TabsList>
+
+                                <TabsContent value="extraction" className="mt-0">
+                                  <ResumeInfoPanel
+                                    title="Extracted Information"
+                                    variant="modal"
+                                    focus="profile"
+                                    skills={vm.skills}
+                                    recognizedRoles={vm.recognizedRoles}
+                                    unrecognizedRoles={vm.unrecognizedRoles}
+                                    workExperience={vm.workExperience}
+                                    education={vm.education}
+                                    experienceYears={vm.yearsExperience}
+                                    certifications={vm.certifications}
+                                    personalInfo={vm.personalInfo}
+                                    skillsRecognized={vm.skillsRecognized}
+                                    unrecognizedCertifications={vm.unrecognizedCertifications}
+                                  />
+                                </TabsContent>
+
+                                <TabsContent value="recognition" className="mt-0">
+                                  <ResumeInfoPanel
+                                    title="Recognized Entities"
+                                    variant="modal"
+                                    focus="entities"
+                                    skills={vm.skills}
+                                    recognizedRoles={vm.recognizedRoles}
+                                    unrecognizedRoles={vm.unrecognizedRoles}
+                                    workExperience={vm.workExperience}
+                                    education={vm.education}
+                                    experienceYears={vm.yearsExperience}
+                                    certifications={vm.certifications}
+                                    personalInfo={vm.personalInfo}
+                                    skillsRecognized={vm.skillsRecognized}
+                                    unrecognizedCertifications={vm.unrecognizedCertifications}
+                                  />
+                                </TabsContent>
+
+                                <TabsContent value="match" className="mt-0 space-y-4">
+                                  <ScreeningVerificationImpact
+                                    verification={vm.verification}
+                                    resumeScore={vm.resumeScore}
+                                    score={vm.score}
+                                    onRecompute={onRecomputeRanking}
+                                    recomputing={recomputingRanking}
+                                  />
+
+                                  <RequirementMatchPanel
+                                    rows={vm.rows}
+                                    experienceMinYears={vm.experienceMinYears}
+                                  />
+                                </TabsContent>
+
+                                <TabsContent value="documents" className="mt-0 space-y-4">
+                                  <ScreeningSupportDocsGrid
+                                    key={a.dbId ?? a.id}
+                                    title="Supporting Document Verification"
+                                    subtitle="Uploaded documents compared field-by-field against the claims in the applicant's resume."
+                                    showResume={false}
+                                    resumeName={a.resumeOriginalName || "Resume / CV"}
+                                    resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
+                                    docs={serverDocList}
+                                    loading={serverDocsLoading}
+                                    reverifyingId={reverifyingServerDocId}
+                                    onView={(d) =>
+                                      window.open(
+                                        applicantDocumentsApi.fileUrl(d.applicant_document_id),
+                                        "_blank",
+                                        "noopener",
+                                      )
+                                    }
+                                    onDownload={(d) =>
+                                      window.open(
+                                        applicantDocumentsApi.fileUrl(
+                                          d.applicant_document_id,
+                                          true,
+                                        ),
+                                        "_blank",
+                                        "noopener",
+                                      )
+                                    }
+                                    onReverify={reverifyServerDoc}
+                                  />
+
+                                  <ScreeningResumeDocsMatchDetail
+                                    docs={serverDocList}
+                                    loading={serverDocsLoading}
+                                    resumeName={vm.personalInfo.name ?? a.name}
+                                    resumeEducation={vm.education}
+                                    resumeCertifications={vm.certifications}
+                                  />
+
+                                  {docs.length > 0 && (
+                                    <div className="rounded-xl border border-border bg-card p-5">
+                                      <h3 className="text-sm font-semibold">Session uploads</h3>
+                                      <div className="mt-3 space-y-4">
+                                        {VERIFICATION_DOC_TYPES.map((t) => {
+                                          const group = docs.filter((d) => d.docType === t.type);
+                                          if (group.length === 0) return null;
+                                          return (
+                                            <div key={t.type}>
+                                              <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
+                                                {t.label}
+                                                <Badge
+                                                  variant="outline"
+                                                  className="border-border bg-muted text-muted-foreground"
+                                                >
+                                                  {group.length}
+                                                </Badge>
+                                              </p>
+                                              <p className="text-[0.7rem] text-muted-foreground">
+                                                {t.verifies}
+                                              </p>
+                                              <div className="mt-2 overflow-x-auto">
+                                                <Table>
+                                                  <TableHeader>
+                                                    <TableRow>
+                                                      <TableHead>Title / File</TableHead>
+                                                      <TableHead>Original Copy</TableHead>
+                                                      <TableHead>Uploaded</TableHead>
+                                                    </TableRow>
+                                                  </TableHeader>
+                                                  <TableBody>
+                                                    {serverDocsLoading && (
+                                                      <TableRowsSkeleton cols={3} rows={5} />
+                                                    )}
+                                                    {!serverDocsLoading &&
+                                                      group.map((d) => (
+                                                        <TableRow
+                                                          key={`${d.docType}-${d.fileName}`}
+                                                        >
+                                                          <TableCell>
+                                                            <p className="text-sm font-medium">
+                                                              {d.title}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                              {d.fileName}
+                                                            </p>
+                                                          </TableCell>
+                                                          <TableCell>
+                                                            {d.originalCopy ? (
+                                                              <Badge
+                                                                variant="outline"
+                                                                className="border-success/30 bg-success/10 text-success"
+                                                              >
+                                                                Original
+                                                              </Badge>
+                                                            ) : (
+                                                              <Badge
+                                                                variant="outline"
+                                                                className="border-caution/30 bg-caution/10 text-caution"
+                                                              >
+                                                                Copy
+                                                              </Badge>
+                                                            )}
+                                                          </TableCell>
+                                                          <TableCell className="text-xs text-muted-foreground">
+                                                            {d.uploadedAt}
+                                                          </TableCell>
+                                                        </TableRow>
+                                                      ))}
+                                                  </TableBody>
+                                                </Table>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {detail?.alternative_job && (
+                                    <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
+                                      <p className="font-medium text-warning-foreground">
+                                        Recommended alternative: {detail.alternative_job.title} (
+                                        {Math.round(
+                                          detail.alternative_job.alternative_match_score ?? 0,
+                                        )}
+                                        %)
+                                      </p>
+                                      {detail.alternative_job.reason && (
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                          {detail.alternative_job.reason}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </TabsContent>
+                              </Tabs>
                             </div>
                           );
                         })()}
-                    </CardContent>
-                  </Card>
-                );
-              default:
-                return null;
-            }
-          })()}
+
+                        {/* Report unrecognized entities — full width at the bottom
+                          of the Resume Screening Result in Resume & Documents. */}
+                        {(() => {
+                          const vm = screeningViewModel(a);
+                          const entries = unrecognizedEntriesFrom(vm, a.screening_detail);
+                          return (
+                            <ReportUnrecognizedDialog
+                              entries={entries}
+                              applicantName={a.name}
+                              className="mt-4 w-full justify-center"
+                              triggerLabel={
+                                entries.length > 0
+                                  ? `Report unrecognized entities (${entries.length})`
+                                  : "Report unrecognized entities"
+                              }
+                            />
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
+                  );
+                case "interview":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <ClipboardCheck className="h-4 w-4 text-primary" /> Interview
+                          </h3>
+                        </div>
+
+                        {(showAcceptInterview ||
+                          showScheduleInterview ||
+                          showRescheduleInterview) && (
+                          <div className="flex flex-wrap gap-2">
+                            {showAcceptInterview && (
+                              <Button size="sm" onClick={onAcceptAndSchedule}>
+                                <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Accept &amp;
+                                Schedule
+                              </Button>
+                            )}
+                            {showScheduleInterview && (
+                              <Button size="sm" onClick={onAcceptAndSchedule}>
+                                <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Schedule Interview
+                              </Button>
+                            )}
+                            {showRescheduleInterview && liveInterview && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onRescheduleInterview?.(liveInterview)}
+                              >
+                                <Repeat2 className="mr-1.5 h-3.5 w-3.5" /> Reschedule Interview
+                              </Button>
+                            )}
+                          </div>
+                        )}
+
+                        {assessment ? (
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-foreground">
+                                  Interview completed {assessment.date}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {assessment.remarks || "No overall evaluation notes recorded."}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-display text-2xl font-bold text-primary">
+                                  {assessment.total}%
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    assessment.result === "Passed"
+                                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                                  )}
+                                >
+                                  {assessment.result}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    assessment.outcome === "Recommended"
+                                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                      : assessment.outcome === "Hold"
+                                        ? "border-warning/40 bg-warning/10 text-warning"
+                                        : "border-destructive/30 bg-destructive/10 text-destructive",
+                                  )}
+                                >
+                                  {assessment.outcome}
+                                </Badge>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-border/70 bg-card p-4">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Criteria
+                              </p>
+                              <div className="mt-1 divide-y divide-border/60">
+                                {Object.keys(assessment.scores).map((criterion) => (
+                                  <div
+                                    key={criterion}
+                                    className="flex items-start justify-between gap-3 py-2"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium text-foreground">
+                                        {criterion}
+                                      </p>
+                                      {assessment.comments?.[criterion] && (
+                                        <p className="mt-0.5 text-[0.7rem] leading-relaxed text-muted-foreground">
+                                          {assessment.comments[criterion]}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                                      {assessment.scores[criterion]} / 5
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ) : interview ? (
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium">
+                                  {interview.date} · {interview.time}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {interview.mode}
+                                  {interview.facilityName ? ` · ${interview.facilityName}` : ""}
+                                  {interview.facilityStatus &&
+                                  interview.facilityStatus !== "Not Required"
+                                    ? ` · ${interview.facilityStatus}`
+                                    : ""}
+                                  {interview.interviewer ? ` · ${interview.interviewer}` : ""}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className="border-gold/40 bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
+                                >
+                                  {interview.status}
+                                </Badge>
+                                {(() => {
+                                  // Startable only inside the slot window
+                                  // ([start, start + duration)) — not the whole day.
+                                  const windowState = interview
+                                    ? getInterviewWindow(
+                                        interview.date,
+                                        interview.time,
+                                        interviewDurationMinutes(
+                                          interview.time,
+                                          interview.endTime,
+                                          slotDurationMinutes,
+                                        ),
+                                        new Date(),
+                                      )
+                                    : "past-day";
+                                  if (windowState === "live") {
+                                    return interview.mode === "Virtual" ? (
+                                      <Button size="sm" onClick={onStartInterview}>
+                                        <Video className="mr-1.5 h-3.5 w-3.5" /> Start Zoom
+                                        Interview
+                                      </Button>
+                                    ) : (
+                                      <Button size="sm" onClick={onStartInterview}>
+                                        <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start
+                                        Interview
+                                      </Button>
+                                    );
+                                  }
+                                  if (
+                                    !assessment &&
+                                    interview.status !== "Cancelled" &&
+                                    (windowState === "ended" || windowState === "past-day")
+                                  ) {
+                                    return (
+                                      <Button size="sm" onClick={onStartInterview}>
+                                        <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Record
+                                        Evaluation
+                                      </Button>
+                                    );
+                                  }
+                                  return (
+                                    <span className="text-xs text-muted-foreground">
+                                      {windowState === "upcoming"
+                                        ? `Starts at ${interview.time} (${slotDurationMinutes} min)`
+                                        : windowState === "future-day"
+                                          ? "Available on interview day"
+                                          : "Interview window has passed"}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                            {interview.mode === "Virtual" &&
+                              (interview.zoomJoinUrl ||
+                                interview.zoomContinueUrl ||
+                                interview.zoomPassword) && (
+                                <div className="mt-3 rounded-md border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900/40 dark:bg-blue-950/20">
+                                  <p className="mb-1.5 flex items-center gap-1.5 font-semibold text-blue-800 dark:text-blue-200">
+                                    <Video className="h-3.5 w-3.5" /> Zoom details emailed to
+                                    applicant
+                                  </p>
+                                  {interview.zoomJoinUrl && (
+                                    <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
+                                      1st link — Join:{" "}
+                                      <a
+                                        href={interview.zoomJoinUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="underline"
+                                      >
+                                        {interview.zoomJoinUrl}
+                                      </a>
+                                    </p>
+                                  )}
+                                  {interview.zoomContinueUrl && (
+                                    <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
+                                      2nd link — Continue:{" "}
+                                      <a
+                                        href={interview.zoomContinueUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="underline"
+                                      >
+                                        {interview.zoomContinueUrl}
+                                      </a>
+                                    </p>
+                                  )}
+                                  <p className="text-blue-700 dark:text-blue-300">
+                                    {interview.zoomPassword
+                                      ? `Password: ${interview.zoomPassword} · `
+                                      : ""}
+                                    Interviewer: {interview.interviewer}
+                                  </p>
+                                </div>
+                              )}
+                            {interview.interview_notes &&
+                              interview.interview_notes.trim() !== "" && (
+                                <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+                                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                                    <FileText className="h-3.5 w-3.5 text-primary" /> Interviewer
+                                    notes
+                                  </p>
+                                  <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+                                    {interview.interview_notes}
+                                  </p>
+                                </div>
+                              )}
+                          </div>
+                        ) : (
+                          <div className="mt-4">
+                            {emptyNote(
+                              "No interview yet. Book a slot from the Interview Pipeline tab in the main list.",
+                            )}
+                          </div>
+                        )}
+
+                        {!assessment && (
+                          <p className="mt-4 flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                            <Info className="h-4 w-4 shrink-0" />
+                            <span>
+                              Booking and rescheduling stay in the{" "}
+                              <b className="font-semibold text-foreground">Interview Pipeline</b>{" "}
+                              tab. This section shows this applicant&apos;s interview record only.
+                            </span>
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                case "test":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <BookMarked className="h-4 w-4 text-primary" /> Assessment Test
+                          </h3>
+                        </div>
+
+                        {!requiresTest ? (
+                          <div className="mt-2">
+                            {emptyNote(
+                              "This position does not require an assessment test (Core HCM).",
+                            )}
+                          </div>
+                        ) : test ? (
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-foreground">
+                                  {test.title}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {test.name} · {test.position} · {test.date}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-display text-2xl font-bold text-primary">
+                                  {test.total}%
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    test.result === "Passed"
+                                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                                  )}
+                                >
+                                  {test.result}
+                                </Badge>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-border/70 bg-card p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Test &amp; answers
+                                </p>
+                                <span className="text-[0.65rem] text-muted-foreground">
+                                  {test.questions.length} questions · passing {test.passing}%
+                                </span>
+                              </div>
+                              <div className="mt-1 divide-y divide-border/60">
+                                {test.questions.map((q, i) => (
+                                  <div
+                                    key={`${q.question}-${i}`}
+                                    className="flex items-start justify-between gap-3 py-2"
+                                  >
+                                    <p className="min-w-0 text-xs leading-relaxed text-foreground">
+                                      {q.question}
+                                    </p>
+                                    <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                                      {test.scores[String(i)] ?? 0} / {q.points}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                              {test.remarks && (
+                                <p className="mt-2 rounded-lg bg-muted/40 px-3 py-2 text-[0.7rem] leading-relaxed text-muted-foreground">
+                                  {test.remarks}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ) : readyForTest ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">
+                                Ready for the assessment test
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {a.position} — the interview assessment was passed.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={inviteBusy}
+                                onClick={() => onCopyTestLink?.()}
+                                title="Email a no-login test link the applicant opens to answer the test themselves (also copies it)"
+                              >
+                                {inviteBusy ? (
+                                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                                )}
+                                Email applicant test link
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            {emptyNote(
+                              requiresTest
+                                ? "Assessment test unlocks after the interview stage is completed and passed."
+                                : "Assessment test is not required for this position (Core HCM) — proceed to the practical (when required) or final evaluation.",
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                case "practical":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <Wrench className="h-4 w-4 text-primary" /> Practical Assessment
+                          </h3>
+                        </div>
+
+                        {!requiresPrac ? (
+                          <div className="mt-2">
+                            {emptyNote("This position does not require a practical assessment.")}
+                          </div>
+                        ) : practical ? (
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 p-4 transition-colors hover:border-border">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-foreground">
+                                  {practical.taskTitle}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {practical.name} · {practical.position} · {practical.date}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-display text-2xl font-bold text-primary">
+                                  {practical.total}%
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    practical.result === "Passed"
+                                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                                  )}
+                                >
+                                  {practical.result}
+                                </Badge>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-border/70 bg-card p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Criteria
+                                </p>
+                                <span className="text-[0.65rem] text-muted-foreground">
+                                  {practical.criteria.length} criteria
+                                </span>
+                              </div>
+                              <div className="mt-1 divide-y divide-border/60">
+                                {practical.criteria.map((c, i) => (
+                                  <div
+                                    key={`${c.criterion}-${i}`}
+                                    className="flex items-start justify-between gap-3 py-2"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium text-foreground">
+                                        {c.criterion}
+                                      </p>
+                                      {c.comment && (
+                                        <p className="mt-0.5 text-[0.7rem] leading-relaxed text-muted-foreground">
+                                          {c.comment}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                                      {practical.scores[String(i)] ?? 0} / {c.maxPoints}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                              {practical.remarks && (
+                                <p className="mt-2 rounded-lg bg-muted/40 px-3 py-2 text-[0.7rem] leading-relaxed text-muted-foreground">
+                                  {practical.remarks}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ) : readyForPractical ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">
+                                Ready for the practical assessment
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {a.position} — the assessment test was passed.
+                              </p>
+                            </div>
+                            <Button size="sm" onClick={onStartPractical}>
+                              <Wrench className="mr-1.5 h-3.5 w-3.5" /> Record Practical Assessment
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            {emptyNote(
+                              requiresTest
+                                ? "Practical assessment unlocks after passing the assessment test."
+                                : "Practical assessment unlocks after the interview assessment is passed (assessment test not required for this position).",
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                case "final":
+                  return (
+                    <Card className="border-border/70 min-h-full shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <CheckCircle2 className="h-4 w-4 text-primary" /> Final Evaluation
+                          </h3>
+                        </div>
+
+                        {a.stage === "Hired" && (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/10 p-4">
+                            <div className="min-w-0">
+                              <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                <CheckCircle2 className="h-4 w-4 text-success" /> Hired
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                This applicant moved to New Hire Onboarding.
+                              </p>
+                            </div>
+                            {linkedHire?.startDate && (
+                              <Badge
+                                variant="outline"
+                                className="border-success/30 bg-background/70 text-success"
+                              >
+                                Start date {linkedHire.startDate}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        {final ? (
+                          <div className="rounded-xl border border-border/70 bg-card p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                Final evaluation recorded
+                              </p>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  final.recommendation === "Recommended for Hire"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : final.recommendation === "For Another Position"
+                                      ? "border-warning/40 bg-warning/10 text-warning"
+                                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                                )}
+                              >
+                                {final.recommendation}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Evaluated {final.date}
+                            </p>
+                            {final.overallRemarks && (
+                              <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-[0.7rem] leading-relaxed text-muted-foreground">
+                                {final.overallRemarks}
+                              </p>
+                            )}
+                          </div>
+                        ) : readyForFinal ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">
+                                Ready for the final evaluation
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {a.position} — all process stages completed.
+                              </p>
+                            </div>
+                            <Button size="sm" onClick={onStartFinal}>
+                              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Complete Final
+                              Evaluation
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            {emptyNote(
+                              "Final evaluation unlocks after the assessment test (and the practical, when required) is passed.",
+                            )}
+                          </div>
+                        )}
+
+                        {/* Offer status — the Final Evaluation modal is where the
+                          decision is made and the applicant's reply
+                          (Accept / Decline applicant) is recorded. */}
+                        {final &&
+                          (() => {
+                            const offer = offerStateOf(a);
+                            return (
+                              <div className="mt-6 space-y-2">
+                                <h4 className="flex items-center gap-2 text-sm font-semibold">
+                                  <Send className="h-4 w-4 text-primary" /> Offer Status
+                                </h4>
+                                {offer ? (
+                                  <p
+                                    className={cn(
+                                      "text-xs font-semibold",
+                                      offer.status === "Accepted" && !offer.expired
+                                        ? "text-success"
+                                        : offer.status === "Pending" && !offer.expired
+                                          ? "text-warning"
+                                          : "text-destructive",
+                                    )}
+                                  >
+                                    {offerStateLabel(offer)}
+                                    {offer.status !== "Pending" && a.offerResponseChannel && (
+                                      <span className="font-normal text-muted-foreground">
+                                        {" "}
+                                        · replied via {a.offerResponseChannel}
+                                        {a.offerResponseRecordedBy
+                                          ? ` (recorded by ${a.offerResponseRecordedBy})`
+                                          : ""}
+                                      </span>
+                                    )}
+                                    {offer.status === "Pending" && !offer.expired && (
+                                      <span className="font-normal text-muted-foreground">
+                                        {" "}
+                                        — record the reply (and how it arrived) via Record
+                                        acceptance / Record decline in the Final Evaluation modal.
+                                      </span>
+                                    )}
+                                  </p>
+                                ) : final.recommendation === "Not Recommended" ? (
+                                  <p className="text-xs font-semibold text-destructive">
+                                    Not passed — recorded as Failed in the Pipeline Overview.
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">
+                                    No offer email sent yet — send it from the Pipeline Overview
+                                    (Actions → Send offer email).
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                      </CardContent>
+                    </Card>
+                  );
+                case "activity":
+                  return (
+                    <Card className="border-border/70 shadow-xs">
+                      <CardContent className="p-6 space-y-4">
+                        <div className="border-b border-border/60 pb-4">
+                          <h3 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                            <History className="h-4 w-4 text-primary" /> Activity
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Application events and milestones recorded for this applicant.
+                          </p>
+                        </div>
+
+                        <ApplicationHistorySection
+                          history={history}
+                          loading={historyLoading}
+                          onOverrideCooldown={onOverrideCooldown}
+                          overrideBusy={overrideBusy}
+                          isSuperAdmin={isSuperAdmin}
+                          onUnblock={onUnblock ? () => onUnblock(a) : undefined}
+                        />
+
+                        <div className="border-t border-border/60 pt-4">
+                          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            <Clock className="h-3.5 w-3.5 text-primary" /> Activity Timeline
+                          </p>
+                        </div>
+
+                        <ol className="relative space-y-3 border-l border-border/70 pl-4">
+                          <li className="relative">
+                            <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
+                            <p className="text-xs font-semibold text-foreground">
+                              Application submitted
+                            </p>
+                            <p className="mt-0.5 text-[0.68rem] text-muted-foreground">
+                              {displayAppliedAt(a.appliedAt)} · {a.source}
+                            </p>
+                          </li>
+                          {audit.slice(0, 12).map((entry) => (
+                            <li key={entry.id} className="relative">
+                              <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-border ring-2 ring-background" />
+                              <p className="text-xs font-semibold text-foreground">
+                                {entry.actionType}
+                              </p>
+                              <p className="mt-0.5 text-[0.68rem] text-muted-foreground">
+                                {entry.date}
+                                {entry.time ? ` · ${entry.time}` : ""} · {entry.actorName}
+                              </p>
+                              {entry.details && (
+                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                  {entry.details}
+                                </p>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
+
+                        {audit.length === 0 && (
+                          <div className="mt-2">
+                            {emptyNote("No recorded events after the application was submitted.")}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                default:
+                  return null;
+              }
+            })()}
+          </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
-
-/** Candidate cards visible in the "Top 5 Candidates Today" list before it
- *  scrolls. Candidates 4 and 5 stay in the list and remain reachable by
- *  scrolling — the card never grows to fit all five. */
-const TOP_FIVE_VISIBLE_CARDS = 3;
 
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
   const { gateSensitive, gateDialog } = usePasswordGate();
@@ -7241,6 +7805,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         setAssessments(
           (asmRes.value ?? []).map((a) => ({
             applicantId: a.applicant?.applicant_code ?? `APP-${a.applicant_id}`,
+            applicantDbId: a.applicant_id,
             dbId: a.assessment_id,
             name: a.applicant?.name ?? `Applicant #${a.applicant_id}`,
             position: a.applicant?.position ?? "—",
@@ -7390,20 +7955,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [rankingFilter, setRankingFilter] = useState<"all" | "passed" | "ready">("all");
   const applicantListRef = useRef<HTMLDivElement>(null);
+  /** Screening Queue card — the status legend scrolls here so the filtered
+   *  rows are visible in this table, not in the Applicants list. */
+  const screeningQueueRef = useRef<HTMLDivElement>(null);
   /** Pipeline Overview card — the metric cards scroll it into view after
    *  applying their quick filter. */
   const pipelineListRef = useRef<HTMLDivElement>(null);
-  /** Room Availability & Daily Schedule card — "View in calendar" scrolls here. */
-  const roomAvailabilityRef = useRef<HTMLDivElement>(null);
-
-  /* --- Top 5 Candidates Today list viewport -------------------------------- */
-  /* The visible list area is locked to exactly TOP_FIVE_VISIBLE_CARDS cards so
-     candidates 4 and 5 scroll instead of stretching the card taller than the
-     Candidate Ranking card beside it. Card height is measured at runtime, so
-     the viewport stays exactly three cards at any zoom / font size. */
-  const [topFiveList, setTopFiveList] = useState<HTMLOListElement | null>(null);
-  const [topFiveCard, setTopFiveCard] = useState<HTMLLIElement | null>(null);
-  const [topFiveViewport, setTopFiveViewport] = useState<number | null>(null);
 
   const [search, setSearch] = useState("");
   const [review, setReview] = useState<Applicant | null>(null);
@@ -7411,8 +7968,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  no Accept & schedule / Reject / Refer / Schedule actions are shown.
    *  Ranking list entries keep the full decision footer. */
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
+  const [reviewTab, setReviewTab] = useState<
+    "extraction" | "recognition" | "matching" | "documents"
+  >("extraction");
   const openReview = (a: Applicant, readOnly = false) => {
     setReviewReadOnly(readOnly);
+    setReviewTab("extraction");
     setReview(a);
   };
   const closeReview = () => {
@@ -7499,7 +8060,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /* Function 4: Correct Hiring Decision */
   const [correctHiringFor, setCorrectHiringFor] = useState<Applicant | null>(null);
-  const [correctHiringType, setCorrectHiringType] = useState<"mistaken_hire" | "no_show" | "reneged">("no_show");
+  const [correctHiringType, setCorrectHiringType] = useState<
+    "mistaken_hire" | "no_show" | "reneged"
+  >("no_show");
   const [correctHiringReason, setCorrectHiringReason] = useState("");
   const [correctHiringCooldown, setCorrectHiringCooldown] = useState(true);
   const [correctHiringBusy, setCorrectHiringBusy] = useState(false);
@@ -7629,6 +8192,72 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** Applicant open in the redesign View screen — home of the moved stage sections
    *  (Interview, Assessment Test, Practical Assessment, Final Evaluation). */
   const [viewingApplicant, setViewingApplicant] = useState<Applicant | null>(null);
+  /** Right-hand quick profile panel opened by clicking an applicant's name. */
+  const [previewApplicant, setPreviewApplicant] = useState<Applicant | null>(null);
+  /** Active tab in the quick profile panel (Stage / Documents / Activity). */
+  const [profileTab, setProfileTab] = useState<"stage" | "documents" | "activity">("stage");
+  /** Stage opened in the profile panel rail — null means "current stage". */
+  const [profileStage, setProfileStage] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (previewApplicant) {
+      setProfileTab("stage");
+      setProfileStage(null);
+    }
+  }, [previewApplicant]);
+
+  /** Previous applications shown in the quick panel's Activity tab. */
+  const [previewHistory, setPreviewHistory] = useState<ApiApplicantHistory | null>(null);
+  const [previewHistoryLoading, setPreviewHistoryLoading] = useState(false);
+  useEffect(() => {
+    if (!previewApplicant?.dbId) {
+      setPreviewHistory(null);
+      return;
+    }
+    let cancelled = false;
+    setPreviewHistoryLoading(true);
+    applicantsApi
+      .history(previewApplicant.dbId)
+      .then((res) => {
+        if (!cancelled) setPreviewHistory(res);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewHistory(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [previewApplicant?.dbId]);
+
+  /** Supporting documents listed in the quick panel's Profile tab. */
+  const [previewDocs, setPreviewDocs] = useState<ApiApplicantDocument[]>([]);
+  const [previewDocsLoading, setPreviewDocsLoading] = useState(false);
+  useEffect(() => {
+    if (!previewApplicant?.dbId) {
+      setPreviewDocs([]);
+      setPreviewDocsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPreviewDocsLoading(true);
+    applicantDocumentsApi
+      .list(previewApplicant.dbId)
+      .then((res) => {
+        if (!cancelled) setPreviewDocs(res?.data ?? []);
+      })
+      .catch((e) => {
+        if (!cancelled) console.warn("Could not load verification documents:", e);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewDocsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [previewApplicant?.dbId]);
 
   /** Previous-applications history for the open View screen (HR strip). */
   const [viewHistory, setViewHistory] = useState<ApiApplicantHistory | null>(null);
@@ -7721,21 +8350,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  Schedule Preview "View list in Pipeline" action. */
   const [pipelineScheduledDate, setPipelineScheduledDate] = useState<string | null>(null);
   const [calSearch, setCalSearch] = useState("");
-  const [calStatusFilter, setCalStatusFilter] = useState<string>("all");
   const [slotSettings] = useState(DEFAULT_SLOT_SETTINGS);
-  /** Full calendar view. */
-  const [calViewOpen, setCalViewOpen] = useState(false);
-  /** Month shown in the full calendar view (independent from the mini calendar). */
-  const [calViewMonth, setCalViewMonth] = useState<Date>(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
-  /** Selected date (ISO yyyy-mm-dd) in the full calendar view. */
-  const [calViewDate, setCalViewDate] = useState<string>(() => isoOf(new Date()));
-  /** Facility selected in the full calendar view's schedule preview. */
-  const [calViewFacilityId, setCalViewFacilityId] = useState<string>("all");
-  /** Full calendar view panel — month grid, or the day detail (double-click a date). */
-  const [calViewPanel, setCalViewPanel] = useState<"calendar" | "day">("calendar");
+  /** Day shown in the Interview Schedule calendar — picks the month and week. */
+  const [interviewWeekAnchor, setInterviewWeekAnchor] = useState<string>(TODAY_ISO);
+  /** Month or Monday–Sunday week view of the Interview Schedule calendar. */
+  const [scheduleView, setScheduleView] = useState<"month" | "week">("week");
   /** Booking-mode layout — true once an applicant is picked for scheduling
    *  (Accept & schedule / Schedule interview / Reschedule / manual select).
    *  The Book an Interview card swaps into the merged card's right column and
@@ -8401,20 +9020,32 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   ];
   const isActionLocked = (a: Applicant) => LOCKED_ACTION_STAGES.includes(a.stage);
 
-  /** Interviews can be rescheduled while the applicant is still within the
-   *  interview phase (not yet assessed / offered / hired / rejected) and no
-   *  assessment is recorded. The assessment record — not the raw status
-   *  string — decides "done": a stale "Completed" without an assessment is
-   *  still an open booking (reschedulable / cancellable).
-   *  Cancelled interviews stay re-bookable (reschedule reactivates them). */
-  const isInterviewLocked = (i: { status: string; applicant: string }): boolean => {
+  /** Interviews can be rescheduled only while they are still open: not yet
+   *  completed and not yet assessed. A completed interview is final — HR moves
+   *  the applicant on by sending the assessment test. Cancelled interviews stay
+   *  re-bookable (reschedule reactivates them). */
+  const isInterviewLocked = (i: {
+    status: string;
+    applicant: string;
+    applicantId?: string;
+    applicantDbId?: number;
+  }): boolean => {
     if (i.status === "Cancelled") return false;
+    // Completed is final, whether or not an assessment record exists yet.
+    if (i.status === "Completed") return true;
     // An assessment record means the interview is truly done — locking it
     // protects the saved scorecard from being orphaned.
-    if (assessments.some((x) => x.name === i.applicant)) return true;
-    // Stale "Completed" without an assessment is still actionable.
-    if (i.status === "Completed") return false;
-    const src = rows.find((r) => r.name === i.applicant);
+    if (
+      assessments.some((x) =>
+        i.applicantDbId !== undefined && x.applicantDbId !== undefined
+          ? i.applicantDbId === x.applicantDbId
+          : i.applicantId && x.applicantId
+            ? i.applicantId === x.applicantId
+            : x.name === i.applicant,
+      )
+    )
+      return true;
+    const src = rows.find((r) => matchesInterviewApplicant(i, r));
     if (!src) return false;
     return [
       "Assessed",
@@ -8443,6 +9074,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   }, [rows, positionFilter]);
 
   const screenedTotal = distribution.reduce((t, d) => t + d.value, 0);
+  const screeningMatchRate = screenedTotal
+    ? Math.round(((distribution.find((d) => d.key === "fit")?.value ?? 0) / screenedTotal) * 100)
+    : 0;
 
   /** Applicants whose ranking percentage includes verified document evidence
    *  (a COE / Certificate / Credential was compared against the resume claims). */
@@ -8464,26 +9098,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         .slice(0, 5),
     [rows, isHiddenStage],
   );
-
-  /* Measures one candidate card once it is on screen and locks the list
-     viewport to TOP_FIVE_VISIBLE_CARDS cards (see the ranking card). Runs
-     before paint, so the list never flashes all five cards. */
-  useLayoutEffect(() => {
-    if (!topFiveList || !topFiveCard) return;
-    const measure = () => {
-      const rowGap = Number.parseFloat(getComputedStyle(topFiveList).rowGap || "0") || 0;
-      const cardHeight = topFiveCard.getBoundingClientRect().height;
-      if (cardHeight <= 0) return;
-      setTopFiveViewport(
-        Math.round(cardHeight * TOP_FIVE_VISIBLE_CARDS + rowGap * (TOP_FIVE_VISIBLE_CARDS - 1)),
-      );
-    };
-    measure();
-    // Re-measure when the card resizes (zoom, font-size, longer content).
-    const observer = new ResizeObserver(measure);
-    observer.observe(topFiveCard);
-    return () => observer.disconnect();
-  }, [topFiveList, topFiveCard, topFiveToday.length]);
 
   const filtered = rows.filter((a) => {
     if (isHiddenStage(a)) return false;
@@ -8522,35 +9136,32 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }, 60);
   };
 
-  /** Candidate Ranking donut/legend → filters the Applicant List by that
-   *  screening status (Perfect for the Job, Fit for other Job, Invalid
-   *  credential, Not fitted to Job) and scrolls it into view. */
+  /** Screening Results legend → filters the Screening Queue by that screening
+   *  status (Perfect for the Job, Fit for other Job, Invalid credential,
+   *  Not fitted to Job) and scrolls the queue table into view. */
   const goToStatus = (status: ApplicantStatus) => {
-    setTab("ranking");
+    setTab("screening");
     setRankingFilter("all");
     setStatusFilter(status);
     setStageFilter("all");
     setPositionFilter("all");
     setSearch("");
     window.setTimeout(() => {
-      applicantListRef.current?.scrollIntoView({
+      screeningQueueRef.current?.scrollIntoView({
         behavior: "smooth",
         block: "start",
       });
     }, 60);
   };
 
-  /** Opens the Interview Pipeline section, focused on today's date — both the
-   *  booking calendar AND the Room Availability & Daily Schedule calendar jump
-   *  to today, and the Pipeline Overview lists every applicant scheduled for
-   *  today. */
+  /** Opens the Interview Pipeline section, focused on today — the booking date
+   *  follows today and the Pipeline Overview lists every applicant scheduled
+   *  for today. */
   const goToTodayInterviews = () => {
     setTab("scheduling");
     setSchedule((s) => ({ ...s, date: TODAY_ISO }));
     const d = new Date(`${TODAY_ISO}T00:00:00`);
     setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-    setCalViewDate(TODAY_ISO);
-    setCalViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
     // Pipeline Overview → only the candidates booked for today.
     setPipelineScheduledDate(TODAY_ISO);
     setPipelineStage("all");
@@ -8558,88 +9169,33 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setPipelineResult("all");
     setPipelineSearch("");
     window.setTimeout(() => {
-      roomAvailabilityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 60);
   };
 
-  /** Metric → "New Applicant": opens the Pipeline Overview filtered to fresh
-   *  Screened applicants (screening done, no hiring decision yet). */
+  /** Metric → "New Applications": opens the Application stage list filtered to
+   *  fresh Screened applicants (screening done, no hiring decision yet). */
   const goToNewApplicants = () => {
-    setTab("scheduling");
-    setPipelineStage("Screened");
-    setPipelineResult("all");
-    setPipelinePosition("all");
-    setPipelineSearch("");
-    setPipelineScheduledDate(null);
+    setTab("ranking");
+    setStageFilter("Screened");
+    setRankingFilter("all");
+    setStatusFilter("all");
+    setPositionFilter("all");
+    setSearch("");
     window.setTimeout(() => {
-      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      applicantListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 60);
   };
 
-  /** Metric → "Perfect for the Job": opens the Pipeline Overview filtered to
+  /** Metric → "Perfect for the Job": opens the Screening Queue filtered to
    *  candidates the screener marked perfect for the job (status = fit). */
-  const goToPerfectForJob = () => {
-    setTab("scheduling");
-    setPipelineStage("all");
-    setPipelinePosition("all");
-    setPipelineSearch("");
-    setPipelineResult("perfect");
-    setPipelineScheduledDate(null);
-    window.setTimeout(() => {
-      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 60);
-  };
+  const goToPerfectForJob = () => goToStatus("fit");
 
-  /** Daily Schedule Preview row → select the applicant in the Pipeline
-   *  Overview (searches their name there) and scrolls the card into view. */
-  const selectInPipeline = (applicantName: string) => {
-    setTab("scheduling");
-    setPipelineStage("all");
-    setPipelinePosition("all");
-    setPipelineResult("all");
-    setPipelineSearch(applicantName);
-    window.setTimeout(() => {
-      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 60);
-  };
-
-  /** Daily Schedule Preview → "View list in Pipeline": shows every applicant
-   *  whose live interview is booked on the previewed day in the Pipeline
-   *  Overview (today's preview therefore lists today's candidates). */
-  const showScheduledInPipeline = (date: string) => {
-    setTab("scheduling");
-    setPipelineScheduledDate(date);
-    setPipelineStage("all");
-    setPipelinePosition("all");
-    setPipelineResult("all");
-    setPipelineSearch("");
-    window.setTimeout(() => {
-      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 60);
-  };
-
-  /** "View scheduled in the calendar" — jumps to the Interview Pipeline and
-   *  points the Room Availability & Daily Schedule calendar at the booked
-   *  interview's date (and reserved room, when one exists). */
+  /** "View interview schedule" — opens the applicant profile panel, where the
+   *  booked interview date, time, interviewer and location are shown. */
   const viewScheduledInCalendar = (a: Applicant) => {
-    const booked =
-      interviews.find((i) => i.applicant === a.name && i.status !== "Cancelled") ??
-      interviews.find((i) => i.applicant === a.name);
-    const date = booked?.date ?? TODAY_ISO;
-    const d = new Date(`${date}T00:00:00`);
     setTab("scheduling");
-    setCalViewDate(date);
-    setSchedule((s) => ({ ...s, date }));
-    if (!Number.isNaN(d.getTime())) {
-      setCalViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-    }
-    const room = booked?.facilityName
-      ? facilities.find((f) => f.name === booked.facilityName)
-      : undefined;
-    if (room) setCalViewFacilityId(room.id);
-    window.setTimeout(() => {
-      roomAvailabilityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 60);
+    setPreviewApplicant(a);
   };
 
   const applicantSort = useSort(filtered, {
@@ -8887,14 +9443,32 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   };
 
   /* Function 2: Move to Specific Stage */
-  const openMoveToStage = (a: Applicant) => {
+  const openMoveToStage = async (a: Applicant) => {
     if (!isSuperAdmin) {
       toast.error("Only a Super Admin may move an applicant across stages.");
       return;
     }
-    setMoveToStageFor(a);
+    // Read the applicant fresh: the list is refreshed in the background, so a
+    // stale row can still say "Screened" after an interview was scheduled.
+    let current = a;
+    if (a.dbId) {
+      try {
+        current = transformApiApplicant(await applicantsApi.get(a.dbId));
+        setRows((prev) => prev.map((r) => (r.dbId === current.dbId ? current : r)));
+      } catch (e) {
+        console.warn("Could not refresh applicant before moving stage:", e);
+      }
+    }
+    setMoveToStageFor(current);
     setMoveToStageReason("");
-    setMoveToStageTarget((a.stage as ReturnTargetStage) || "Screened");
+    // Prefill an option that actually exists in the target list.
+    setMoveToStageTarget(
+      RETURN_TARGET_STAGES.some((s) => s.value === current.stage)
+        ? (current.stage as ReturnTargetStage)
+        : current.stage === "Offer" || current.stage === "Hired"
+          ? "Final Evaluation"
+          : "Screened",
+    );
   };
 
   const confirmMoveToStage = async () => {
@@ -8931,9 +9505,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
     setReopenFor(a);
     setReopenReason("");
-    const allowed = a.allowedReturnStages && a.allowedReturnStages.length > 0
-      ? a.allowedReturnStages
-      : ["Screened", "Accepted"];
+    const allowed =
+      a.allowedReturnStages && a.allowedReturnStages.length > 0
+        ? a.allowedReturnStages
+        : ["Screened", "Accepted"];
     const defaultStage = (allowed[allowed.length - 1] as ReturnTargetStage) || "Screened";
     setReopenTarget(defaultStage);
   };
@@ -9173,7 +9748,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  existing record when confirmed. */
   const rescheduleInterview = (i: Interview) => {
     if (isInterviewLocked(i)) return;
-    const src = rows.find((r) => r.name === i.applicant);
+    const src = rows.find((r) => matchesInterviewApplicant(i, r));
     const dept = src
       ? (displayPositions.find((p) => p.title === src.position)?.department ??
         positions.find((p) => p.title === src.position)?.department ??
@@ -9279,8 +9854,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setEvalResult(null);
     setEvalRemarks("");
     const iv =
-      interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
-      interviews.find((x) => x.applicant === a.name);
+      interviews.find((x) => matchesInterviewApplicant(x, a) && x.status !== "Cancelled") ??
+      interviews.find((x) => matchesInterviewApplicant(x, a));
     setEvalAssessor(loggedInAssessorId || assessorIdForInterviewer(iv?.interviewer));
     setEvalDateTime(isoOf(new Date()));
   };
@@ -9316,8 +9891,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  collapsible interview-notes drawer (persisted to the interview record). */
   const openZoomRoom = (a: Applicant) => {
     const iv =
-      interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
-      interviews.find((x) => x.applicant === a.name);
+      interviews.find((x) => matchesInterviewApplicant(x, a) && x.status !== "Cancelled") ??
+      interviews.find((x) => matchesInterviewApplicant(x, a));
     if (!iv) {
       toast.error("No interview found for this applicant");
       return;
@@ -9599,8 +10174,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           await el.play().catch(() => undefined);
         }
       } catch {
-        if (!cancelled)
-          toast.error("Camera unavailable — you can still join via the Zoom links.");
+        if (!cancelled) toast.error("Camera unavailable — you can still join via the Zoom links.");
       }
     })();
     return () => {
@@ -9620,7 +10194,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    *  applicant stage to Interview Scheduled so confirming the new slot
    *  resumes the pipeline. */
   const rebookInterview = (i: Interview) => {
-    const src = rows.find((r) => r.name === i.applicant);
+    const src = rows.find((r) => matchesInterviewApplicant(i, r));
     const dept = src
       ? (displayPositions.find((p) => p.title === src.position)?.department ??
         positions.find((p) => p.title === src.position)?.department ??
@@ -9732,8 +10306,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // When the applicant already has a live interview booked, this booking acts
     // as a reschedule of that interview instead of blocking the action.
     // Cancelled interviews don't count — they're re-bookable.
+    const schedTargetApplicant = rows.find((a) => a.name === schedule.applicant);
     const existingInterview = interviews.find(
-      (i) => i.applicant === schedule.applicant && i.status !== "Cancelled",
+      (i) =>
+        (schedTargetApplicant
+          ? matchesInterviewApplicant(i, schedTargetApplicant)
+          : i.applicant === schedule.applicant) && i.status !== "Cancelled",
     );
     const updateTarget = rescheduling ?? existingInterview ?? null;
     const taken = interviews.filter(
@@ -9782,6 +10360,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               : (updateTarget.facilityStatus ?? ("Not Required" as FacilityStatus)),
       };
       setInterviews((prev) => prev.map((x) => (x.id === updateTarget.id ? updated : x)));
+      setInterviewWeekAnchor(schedule.date);
       // Re-book / reschedule always (re)activates the applicant into the
       // interview stage — e.g. Cancelled (Screened) or Rejected back to
       // Interview Scheduled so the pipeline resumes.
@@ -9790,7 +10369,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         setStage(srcForStage.id, "Interview Scheduled");
         try {
           if (srcForStage.dbId)
-            applicantsApi.update(srcForStage.dbId, { stage: "Interview Scheduled" });
+            await applicantsApi.update(srcForStage.dbId, { stage: "Interview Scheduled" });
         } catch (e) {
           console.warn("Could not advance applicant stage on database API:", e);
         }
@@ -9842,6 +10421,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       } catch (e) {
         console.warn("Could not persist interview reschedule to database API:", e);
       }
+      // Re-read the saved stage so the pipeline row cannot lag behind the
+      // interview that was just rescheduled.
+      void syncAfterStageChange();
       setRescheduling(null);
       setBookingFocus(false);
       return;
@@ -9893,6 +10475,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const newInt = {
       id: `INT-${300 + interviews.length}`,
       applicant: schedule.applicant,
+      ...(src?.id != null ? { applicantId: src.id } : {}),
+      ...(src?.dbId != null ? { applicantDbId: src.dbId } : {}),
       position: src?.position ?? "—",
       date: schedule.date,
       time: schedule.time,
@@ -9914,6 +10498,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       ...(schedule.mode === "Virtual" ? mockZoomFor(`INT-${300 + interviews.length}`) : {}),
     };
     setInterviews((prev) => [newInt, ...prev]);
+    setInterviewWeekAnchor(schedule.date);
     if (facilityId && facilityId !== "none") {
       setFacilityStatuses((prev) => ({ ...prev, [newInt.id]: "Waiting for Facility Approval" }));
     }
@@ -10004,6 +10589,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         );
       }
     }
+    // The backend advances the applicant to Interview Scheduled on create;
+    // re-read it so the pipeline shows the true stage immediately.
+    void syncAfterStageChange();
     setBookingFocus(false);
   };
 
@@ -10077,9 +10665,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const performCancelInterview = async () => {
     const i = cancelInterview;
     if (!i) return;
-    // Only a truly-done interview (assessment recorded) is uncancellable.
-    // A stale "Completed" without an assessment is still an open booking.
-    if (i.status === "Completed" && assessments.some((x) => x.name === i.applicant)) {
+    // A completed interview is final — it can no longer be cancelled.
+    if (i.status === "Completed") {
       toast.error("Completed interviews can no longer be cancelled.");
       setCancelInterview(null);
       return;
@@ -10087,7 +10674,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // Keep the record, but flag it as Cancelled so it stays visible in the
     // calendar with its label.
     setInterviews((prev) => prev.map((x) => (x.id === i.id ? { ...x, status: "Cancelled" } : x)));
-    const src = rows.find((a) => a.name === i.applicant);
+    const src = rows.find((a) => matchesInterviewApplicant(i, a));
     if (src) setStage(src.id, "Screened");
     addAudit({
       actionType: "Interview Cancelled",
@@ -10177,7 +10764,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const stampedTime = `${String(nowHour % 12 === 0 ? 12 : nowHour % 12).padStart(2, "0")}:${String(
       now.getMinutes(),
     ).padStart(2, "0")} ${nowHour >= 12 ? "PM" : "AM"}`;
-    const completedInterview = interviews.find((i) => i.applicant === evaluating.name);
+    const completedInterview = interviews.find((i) => matchesInterviewApplicant(i, evaluating));
 
     // Persist FIRST: a refused save must never be reported as saved.
     if (evaluating.dbId) {
@@ -10222,7 +10809,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setAssessments((prev) => [
       {
         applicantId: evaluating.id,
-        ...(evaluating.dbId !== undefined ? { dbId: evaluating.dbId } : {}),
+        ...(evaluating.dbId !== undefined
+          ? { applicantDbId: evaluating.dbId, dbId: evaluating.dbId }
+          : {}),
         name: evaluating.name,
         position: evaluating.position,
         scores: evalScores,
@@ -10249,7 +10838,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
     setInterviews((prev) =>
       prev.map((i) =>
-        i.applicant === evaluating.name
+        matchesInterviewApplicant(i, evaluating)
           ? { ...i, time: stampedTime, status: "Completed" as Interview["status"] }
           : i,
       ),
@@ -11168,11 +11757,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             )}
           </div>
 
-          {/* Practical test */}
+          {/* Practical assessment */}
           <div className={cardClass}>
             <div className="flex items-center justify-between gap-2">
               <p className="flex items-center gap-1.5 text-sm font-medium">
-                <GraduationCap className="h-3.5 w-3.5 text-primary" /> Practical Test
+                <GraduationCap className="h-3.5 w-3.5 text-primary" /> Practical Assessment
               </p>
               {info.practicalRequired ? scoreLine(info.practicalScore) : null}
             </div>
@@ -11191,7 +11780,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               </>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Not applied — this position does not require a practical test.
+                Not applied — this position does not require a practical assessment.
               </p>
             )}
           </div>
@@ -11216,8 +11805,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         >
           {recommendation === "Not Recommended" ? (
             <>
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Not passed — recorded as Failed
-              in the Pipeline Overview.
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Not passed — recorded as Failed in
+              the Pipeline Overview.
             </>
           ) : (
             <>
@@ -11262,8 +11851,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         ) : (
           <span>
             Offer declined
-            {a.offerResponseChannel ? ` — replied via ${a.offerResponseChannel}` : ""} —
-            recorded as Failed in the Pipeline Overview.
+            {a.offerResponseChannel ? ` — replied via ${a.offerResponseChannel}` : ""} — recorded as
+            Failed in the Pipeline Overview.
           </span>
         )}
       </div>
@@ -11308,8 +11897,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </div>
         {!enabled ? (
           <p className="text-xs text-warning">
-            Record the HR decision first — Passed / Recommend sends the offer, then the
-            applicant's reply is recorded here.
+            Record the HR decision first — Passed / Recommend sends the offer, then the applicant's
+            reply is recorded here.
           </p>
         ) : null}
       </div>
@@ -11347,7 +11936,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   title: "Acknowledge Document Discrepancy?",
                   description: `${finalizing.name} has ${finalPreview?.blocking_verification_issues} unresolved document verification discrepancy(ies). Do you wish to acknowledge the warning and proceed to mark as Passed / send the offer?`,
                   confirmLabel: "Acknowledge & Send Offer",
-                  onConfirm: () => void saveFinalEvaluation("Recommended for Hire", undefined, true),
+                  onConfirm: () =>
+                    void saveFinalEvaluation("Recommended for Hire", undefined, true),
                 });
               } else {
                 askConfirm({
@@ -11459,7 +12049,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   };
 
   /** Book an Interview — every dropdown/field must be filled before the
-   *  "Request Facility to Scheduled" / "Schedule Interview" button is enabled. */
+   *  "Request facility & schedule" / "Schedule interview" button is enabled. */
   const bookingMissingFields = [
     !schedule.applicant && "Select Applicant",
     !schedule.date && "Interview Date",
@@ -11482,24 +12072,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       return { date, inMonth: date.getMonth() === viewMonth.getMonth() };
     });
   }, [viewMonth]);
-
-  /** Month grid for the full calendar view (same 6x7 layout, own month state). */
-  const calViewCells = useMemo(() => {
-    const first = new Date(calViewMonth.getFullYear(), calViewMonth.getMonth(), 1);
-    const start = new Date(first);
-    start.setDate(first.getDate() - first.getDay());
-    return Array.from({ length: 42 }, (_, i) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + i);
-      return { date, inMonth: date.getMonth() === calViewMonth.getMonth() };
-    });
-  }, [calViewMonth]);
-
-  /** Non-cancelled interviews on the full-calendar selected date. */
-  const calViewDayInterviews = useMemo(
-    () => interviews.filter((i) => i.date === calViewDate && i.status !== "Cancelled"),
-    [interviews, calViewDate],
-  );
 
   const dailySchedule = useMemo(
     () =>
@@ -11527,42 +12099,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     [dailySchedule],
   );
 
-  /** Schedule preview for the full-calendar selected room/meeting + date.
-   *  Supports "all" to show every interview booked on the selected date. */
-  const calViewPreview = useMemo(() => {
-    const showAll = calViewFacilityId === "all";
-    const room = showAll
-      ? {
-          ...facilities[0]!,
-          name: "All rooms",
-          location: "All locations",
-          type: "On-site" as const,
-        }
-      : (facilities.find((f) => f.id === calViewFacilityId) ?? facilities[0]!);
-    const slotIndex = (label: string) => {
-      const idx = dailySchedule.findIndex((s) => s.label === label);
-      return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
-    };
-    const mapped = (
-      showAll
-        ? [...calViewDayInterviews]
-        : calViewDayInterviews.filter((i) => facilityOfInterview(i)?.id === room.id)
-    ).sort((a, b) => slotIndex(a.time) - slotIndex(b.time));
-    const rangeLabel = (label: string, endLabel?: string | null) => {
-      if (endLabel) return `${label} – ${endLabel}`;
-      const slot = dailySchedule.find((s) => s.label === label);
-      return slot ? `${slot.label} — ${slot.endLabel}` : label;
-    };
-    const slotsAvailable = showAll
-      ? Math.max(0, slotsForSelected.length * facilities.length - mapped.length)
-      : Math.max(0, slotsForSelected.length - mapped.length);
-    const unassignedOnSite =
-      showAll || room.type !== "On-site"
-        ? []
-        : calViewDayInterviews.filter((i) => i.mode === "On-site" && !facilityOfInterview(i));
-    return { room, mapped, rangeLabel, slotsAvailable, unassignedOnSite, showAll };
-  }, [calViewDayInterviews, calViewFacilityId, dailySchedule, slotsForSelected]);
-
   /** Maximum concurrent interviews per slot — limited by whichever is scarcer, interviewers or rooms. */
   const capacityPerSlot = Math.max(
     1,
@@ -11585,6 +12121,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // Same-day range, or an overnight range that wraps past midnight.
     return end > start ? start < slot && slot < end : slot > start || slot < end;
   };
+
+  /** Live bookings in one slot on one date — the interview being rescheduled
+   *  is ignored so keeping its own slot is not counted twice. */
+  const bookingsInSlot = (date: string, slotLabel: string) =>
+    interviews.filter(
+      (i) =>
+        i.date === date &&
+        i.status !== "Cancelled" &&
+        i.id !== rescheduling?.id &&
+        interviewCoversSlot(i, slotLabel),
+    ).length;
 
   /** True when the requested facility (room / meeting space) already holds a
    *  live interview in the same date + time slot. The interview currently being
@@ -11609,7 +12156,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       !assessments.some((x) => x.applicantId === a.id) &&
       // An interview that was cancelled must never leave the candidate in the
       // assessment queue — there must be a live (non-cancelled) booking.
-      interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled"),
+      interviews.some((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled"),
   );
 
   type AssessmentRow =
@@ -11642,7 +12189,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           .map((a) => ({
             kind: "ready" as const,
             a,
-            iv: interviews.find((i) => i.applicant === a.name),
+            iv: interviews.find((i) => matchesInterviewApplicant(i, a)),
           }))
       : []),
     ...(assessmentFilter !== "ready"
@@ -11723,8 +12270,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const base = rows;
     return base
       .map((a) => {
-        const live = interviews.find((i) => i.applicant === a.name && i.status !== "Cancelled");
-        const anyInterview = live ?? interviews.find((i) => i.applicant === a.name) ?? undefined;
+        const live = interviews.find(
+          (i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled",
+        );
+        const anyInterview =
+          live ?? interviews.find((i) => matchesInterviewApplicant(i, a)) ?? undefined;
         const assessment = assessments.find((x) => x.applicantId === a.id);
         const test = assessmentTests.find((t) => t.applicantId === a.id);
         const practical = practicalTests.find((t) => t.applicantId === a.id);
@@ -11733,23 +12283,32 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         const requiresTest = requiresAssessment(a.position, a.requiresAssessment);
         const needsSchedule =
           a.stage === "Accepted" &&
-          !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled");
+          !interviews.some((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled");
         const readyForTest =
-          requiresTest && (a.stage === "Assessment Test" || (a.stage === "Assessed" && assessment?.result === "Passed"));
+          requiresTest &&
+          (a.stage === "Assessment Test" ||
+            (a.stage === "Assessed" && assessment?.result === "Passed"));
         const readyForPractical =
           requiresPrac &&
           (a.stage === "Practical Test" ||
             (requiresTest
-              ? (a.stage === "Assessment Test" || a.stage === "Assessed") && test?.result === "Passed"
+              ? (a.stage === "Assessment Test" || a.stage === "Assessed") &&
+                test?.result === "Passed"
               : a.stage === "Assessed" && assessment?.result === "Passed"));
         const readyForFinal =
           ((requiresTest
-            ? (a.stage === "Practical Test" || a.stage === "Assessment Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
+            ? (a.stage === "Practical Test" ||
+                a.stage === "Assessment Test" ||
+                a.stage === "Assessed" ||
+                a.stage === "Final Evaluation") &&
               test?.result === "Passed"
-            : (a.stage === "Assessed" || a.stage === "Final Evaluation") && assessment?.result === "Passed") &&
+            : (a.stage === "Assessed" || a.stage === "Final Evaluation") &&
+              assessment?.result === "Passed") &&
             (!requiresPrac || practical?.result === "Passed")) ||
           (!requiresTest &&
-            (a.stage === "Practical Test" || a.stage === "Assessed" || a.stage === "Final Evaluation") &&
+            (a.stage === "Practical Test" ||
+              a.stage === "Assessed" ||
+              a.stage === "Final Evaluation") &&
             (!requiresPrac || practical?.result === "Passed"));
         return {
           a,
@@ -11770,7 +12329,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       .filter(({ a, interview, liveInterview, assessment, test, practical, final }) => {
         if (showArchivedAndBlocked) {
           if (pipelineResult === "archived" && !a.isArchived) return false;
-          if ((pipelineResult === "blocked" || pipelineResult === "block") && !a.isActiveBlocked) return false;
+          if ((pipelineResult === "blocked" || pipelineResult === "block") && !a.isActiveBlocked)
+            return false;
           if (pipelineResult === "all" && !a.isArchived && !a.isActiveBlocked) return false;
         } else {
           if (a.isArchived || a.isActiveBlocked) return false;
@@ -11851,10 +12411,320 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     final: (r) => r.final?.recommendation ?? null,
   });
 
-  const applicantPage = usePagination(applicantSort.sorted);
+  const [applicantPageSize, setApplicantPageSize] = useState(10);
+  const [pipelinePageSize, setPipelinePageSize] = useState(10);
+  const applicantPage = usePagination(applicantSort.sorted, applicantPageSize);
   const assessmentPage = usePagination(assessmentSort.sorted);
-  const pipelinePage = usePagination(pipelineSort.sorted);
+  const pipelinePage = usePagination(pipelineSort.sorted, pipelinePageSize);
   const auditPage = usePagination(auditSort.sorted);
+
+  /* ------------------------------------------------------------------ */
+  /* Stage board data — Application / Screening / Interview / Assessment */
+  /* / Final Evaluation tabs.                                            */
+  /* ------------------------------------------------------------------ */
+
+  /** Counts shown on the recruitment pipeline tracker. */
+  const pipelineStageCounts = useMemo(
+    () => ({
+      application: rows.length,
+      screening: rows.filter((a) => a.stage === "Screened").length,
+      interview: rows.filter((a) =>
+        ["Accepted", "Interview Scheduled", "Assessed"].includes(a.stage),
+      ).length,
+      assessment: rows.filter((a) => ["Assessment Test", "Practical Test"].includes(a.stage))
+        .length,
+      final: rows.filter((a) => ["Final Evaluation", "Offer"].includes(a.stage)).length,
+    }),
+    [rows],
+  );
+
+  /** Next interviews, soonest first — the Application tab's middle-left card. */
+  /**
+   * Interview verdict per booking. The assessor's assessment record carries the
+   * Passed / Failed result; a booking that only reports "Completed", or an
+   * applicant already holding a downstream record, counts as interviewed.
+   */
+  const interviewOutcomes = useMemo(() => {
+    const outcomes = new Map<string, PassFail | "Completed">();
+    for (const iv of interviews) {
+      const applicant = rows.find((r) => matchesInterviewApplicant(iv, r));
+      const assessment = applicant
+        ? assessments.find((x) => x.applicantId === applicant.id)
+        : assessments.find((x) => x.name === iv.applicant);
+      const movedOn = applicant
+        ? assessmentTests.some((t) => t.applicantId === applicant.id) ||
+          practicalTests.some((t) => t.applicantId === applicant.id) ||
+          finalEvaluations.some((f) => f.applicantId === applicant.id)
+        : false;
+      const outcome =
+        assessment?.result ?? (movedOn || iv.status === "Completed" ? "Completed" : null);
+      if (outcome) outcomes.set(iv.id, outcome);
+    }
+    return outcomes;
+  }, [interviews, rows, assessments, assessmentTests, practicalTests, finalEvaluations]);
+
+  const upcomingInterviews = useMemo(
+    () =>
+      [...interviews]
+        .filter(
+          (i) => i.status !== "Cancelled" && i.date >= TODAY_ISO && !interviewOutcomes.has(i.id),
+        )
+        .sort((a, b) => {
+          const byDate = a.date.localeCompare(b.date);
+          if (byDate !== 0) return byDate;
+          return (
+            (parseInterviewTimeToMinutes(a.time) ?? 0) - (parseInterviewTimeToMinutes(b.time) ?? 0)
+          );
+        })
+        .slice(0, 4),
+    [interviews, interviewOutcomes],
+  );
+
+  /** Monday–Sunday week that contains the selected anchor date — the
+   *  interview week grid. The anchor moves with every booking/reschedule. */
+  const interviewWeek = useMemo(() => {
+    const base = new Date(`${interviewWeekAnchor}T00:00:00`);
+    const monday = new Date(base);
+    monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return { date: d, iso: isoOf(d) };
+    });
+  }, [interviewWeekAnchor]);
+
+  /** Days shown in the month view (6 weeks, Monday-first). */
+  const scheduleMonthCells = useMemo(() => {
+    const base = new Date(`${interviewWeekAnchor}T00:00:00`);
+    const first = new Date(base.getFullYear(), base.getMonth(), 1);
+    const start = new Date(first);
+    start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+    return Array.from({ length: 42 }, (_, i) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
+      return { date, iso: isoOf(date), inMonth: date.getMonth() === first.getMonth() };
+    });
+  }, [interviewWeekAnchor]);
+
+  const interviewOverviewCounts = {
+    scheduled: interviews.filter((i) => i.status === "Scheduled").length,
+    completed: interviews.filter((i) => i.status === "Completed").length,
+    pending: interviews.filter((i) => i.status === "Scheduled" && i.date >= TODAY_ISO).length,
+  };
+
+  const interviewWeekGrid = useMemo(() => {
+    const HOUR_HEIGHT = 52;
+    const MIN_CARD_HEIGHT = 40;
+    const DEFAULT_DURATION = 60;
+    const minutesOf = (time: string) => parseInterviewTimeToMinutes(time) ?? 540;
+    const booked = interviews.filter(
+      (i) => i.status !== "Cancelled" && interviewWeek.some((d) => d.iso === i.date),
+    );
+    // Keep a predictable working-day frame (8 AM – 6 PM) so every hour stays
+    // readable; only stretch when an interview sits outside that window.
+    const startHour = Math.min(8, ...booked.map((i) => Math.floor(minutesOf(i.time) / 60)));
+    const endHour = Math.min(
+      23,
+      Math.max(18, ...booked.map((i) => Math.floor(minutesOf(i.time) / 60) + 1)),
+    );
+    return {
+      startHour,
+      endHour,
+      hourHeight: HOUR_HEIGHT,
+      days: interviewWeek.map((day) => {
+        const scheduled = booked
+          .filter((i) => i.date === day.iso)
+          .map((i) => {
+            const start = minutesOf(i.time);
+            const end = i.endTime ? minutesOf(i.endTime) : start + DEFAULT_DURATION;
+            return { iv: i, start, end: end > start ? end : start + DEFAULT_DURATION };
+          })
+          .sort((a, b) => a.start - b.start || a.end - b.end);
+
+        // Greedy lane assignment keeps overlapping interviews side by side
+        // instead of stacking them on top of each other.
+        const laneEnds: number[] = [];
+        const placed = scheduled.map((item) => {
+          let lane = laneEnds.findIndex((laneEnd) => laneEnd <= item.start);
+          if (lane === -1) {
+            lane = laneEnds.length;
+            laneEnds.push(item.end);
+          } else {
+            laneEnds[lane] = item.end;
+          }
+          return { ...item, lane };
+        });
+
+        return {
+          ...day,
+          items: placed.map((item) => {
+            const overlapping = placed.filter(
+              (other) => other.start < item.end && other.end > item.start,
+            );
+            const laneCount = Math.max(...overlapping.map((other) => other.lane)) + 1;
+            return {
+              iv: item.iv,
+              top: ((item.start - startHour * 60) / 60) * HOUR_HEIGHT,
+              height: Math.max(MIN_CARD_HEIGHT, ((item.end - item.start) / 60) * HOUR_HEIGHT - 2),
+              lane: item.lane,
+              laneCount,
+            };
+          }),
+        };
+      }),
+    };
+  }, [interviews, interviewWeek]);
+
+  /** Aggregate screening requirement match across every applicant, grouped by
+   *  the same four criteria HR configures in Recruitment Management. */
+  const screeningCriteriaMatch = useMemo(() => {
+    type CriteriaKey = "skills" | "experience" | "education" | "certifications";
+    const totals: Record<CriteriaKey, { found: number; total: number }> = {
+      skills: { found: 0, total: 0 },
+      experience: { found: 0, total: 0 },
+      education: { found: 0, total: 0 },
+      certifications: { found: 0, total: 0 },
+    };
+    rows.forEach((a) => {
+      screeningViewModel(a).rows.forEach((r) => {
+        if (!(r.group in totals)) return;
+        const bucket = totals[r.group as CriteriaKey];
+        bucket.total += 1;
+        if (r.state !== "missing") bucket.found += 1;
+      });
+    });
+    return [
+      { key: "skills" as const, label: "Skills", ...totals.skills },
+      { key: "experience" as const, label: "Work experience", ...totals.experience },
+      { key: "education" as const, label: "Education", ...totals.education },
+      { key: "certifications" as const, label: "Certifications", ...totals.certifications },
+    ].map((c) => ({
+      ...c,
+      pct: c.total > 0 ? Math.round((c.found / c.total) * 100) : 0,
+    }));
+  }, [rows]);
+
+  /** Combined assessment + practical queue: one row per applicant. */
+  const assessmentBoardRows = useMemo(() => {
+    return rows
+      .map((a) => {
+        const assessment = assessments.find((x) => x.applicantId === a.id);
+        const test = assessmentTests.find((t) => t.applicantId === a.id);
+        const practical = practicalTests.find((t) => t.applicantId === a.id);
+        const requiresTest = requiresAssessment(a.position, a.requiresAssessment);
+        const requiresPrac = requiresPractical(a.position, a.requiresPractical);
+        const readyForTest =
+          requiresTest &&
+          (a.stage === "Assessment Test" ||
+            (a.stage === "Assessed" && assessment?.result === "Passed"));
+        const readyForPractical =
+          requiresPrac &&
+          (a.stage === "Practical Test" ||
+            (requiresTest
+              ? (a.stage === "Assessment Test" || a.stage === "Assessed") &&
+                test?.result === "Passed"
+              : a.stage === "Assessed" && assessment?.result === "Passed"));
+        return {
+          a,
+          test,
+          practical,
+          requiresTest,
+          requiresPrac,
+          readyForTest,
+          readyForPractical,
+        };
+      })
+      .filter((r) => !!r.test || !!r.practical || r.readyForTest || r.readyForPractical);
+  }, [rows, assessments, assessmentTests, practicalTests]);
+
+  type AssessmentQueueRow = (typeof assessmentBoardRows)[number];
+
+  const assessmentBoardFiltered = useMemo(() => {
+    const q = assessmentSearch.trim().toLowerCase();
+    return assessmentBoardRows.filter((r) => {
+      const dept = deptForPosition(r.a.position);
+      return (
+        (!q || `${r.a.name} ${r.a.position} ${dept} ${r.a.stage}`.toLowerCase().includes(q)) &&
+        (assessmentDept === "all" || dept === assessmentDept)
+      );
+    });
+  }, [assessmentBoardRows, assessmentSearch, assessmentDept]);
+
+  /** Single assessment queue: written and practical progress side by side, so
+   *  one applicant is one row. */
+  const assessmentQueueRows = useMemo(
+    () => [...assessmentBoardFiltered].sort((a, b) => a.a.name.localeCompare(b.a.name)),
+    [assessmentBoardFiltered],
+  );
+
+  const [assessmentBoardPageSize, setAssessmentBoardPageSize] = useState(10);
+  const [finalBoardPageSize, setFinalBoardPageSize] = useState(10);
+  const assessmentQueueSort = useSort(assessmentQueueRows, {
+    name: (r) => r.a.name,
+    position: (r) => r.a.position,
+    test: (r) => r.test?.total ?? null,
+    practical: (r) => r.practical?.total ?? null,
+  });
+  const assessmentQueuePage = usePagination(assessmentQueueSort.sorted, assessmentBoardPageSize);
+
+  /** Final Evaluation queue: every applicant with a whole-process verdict
+   *  (plus candidates already eligible for one). */
+  const finalBoardRows = useMemo(() => {
+    return rows
+      .map((a) => {
+        const assessment = assessments.find((x) => x.applicantId === a.id);
+        const test = assessmentTests.find((t) => t.applicantId === a.id);
+        const practical = practicalTests.find((t) => t.applicantId === a.id);
+        const requiresTest = requiresAssessment(a.position, a.requiresAssessment);
+        const requiresPrac = requiresPractical(a.position, a.requiresPractical);
+        const ready =
+          ((requiresTest
+            ? ["Practical Test", "Assessment Test", "Assessed", "Final Evaluation"].includes(
+                a.stage,
+              ) && test?.result === "Passed"
+            : ["Assessed", "Final Evaluation"].includes(a.stage) &&
+              assessment?.result === "Passed") &&
+            (!requiresPrac || practical?.result === "Passed")) ||
+          (!requiresTest &&
+            ["Practical Test", "Assessed", "Final Evaluation"].includes(a.stage) &&
+            (!requiresPrac || practical?.result === "Passed"));
+        return {
+          a,
+          final: finalEvaluations.find((f) => f.applicantId === a.id),
+          offer: offerStateOf(a),
+          ready,
+        };
+      })
+      .filter(
+        (r) =>
+          !!r.final ||
+          r.ready ||
+          ["Final Evaluation", "Offer", "Hired", "Rejected"].includes(r.a.stage),
+      );
+  }, [rows, assessments, assessmentTests, practicalTests, finalEvaluations]);
+
+  const finalBoardFiltered = useMemo(() => {
+    const q = pipelineSearch.trim().toLowerCase();
+    return finalBoardRows.filter(
+      (r) => !q || `${r.a.name} ${r.a.position}`.toLowerCase().includes(q),
+    );
+  }, [finalBoardRows, pipelineSearch]);
+
+  const finalBoardSort = useSort<
+    (typeof finalBoardRows)[number],
+    "name" | "position" | "score" | "recommendation" | "status"
+  >(
+    finalBoardFiltered,
+    {
+      name: (r) => r.a.name,
+      position: (r) => r.a.position,
+      score: (r) => r.final?.overallScoreRounded ?? r.final?.overallScore ?? null,
+      recommendation: (r) => r.final?.recommendation ?? null,
+      status: (r) => r.offer?.status ?? r.a.stage,
+    },
+    { key: "score", dir: "desc" },
+  );
+  const finalBoardPage = usePagination(finalBoardSort.sorted, finalBoardPageSize);
 
   const auditActionTypes = Array.from(new Set(auditLog.map((e) => e.actionType))).sort();
   const auditActors = Array.from(new Set(auditLog.map((e) => e.actorName))).sort();
@@ -11869,7 +12739,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       a.stage === "Accepted" &&
       // Cancelled interviews don't count as booked — the applicant is
       // selectable again for re-booking.
-      !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled") &&
+      !interviews.some((i) => matchesInterviewApplicant(i, a) && i.status !== "Cancelled") &&
       !["Assessed", "Offer", "Hired", "Rejected"].includes(a.stage) &&
       (scheduleDept === "all" ||
         displayPositions.find((p) => p.title === a.position)?.department === scheduleDept) &&
@@ -11940,113 +12810,35 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     ? (rows.find((r) => r.id === viewingApplicant.id) ?? viewingApplicant)
     : null;
 
+  /** Live applicant for the right-side profile panel. */
+  const previewApplicantLive = previewApplicant
+    ? (rows.find((r) => r.id === previewApplicant.id) ?? previewApplicant)
+    : null;
+  const previewInterview = previewApplicantLive
+    ? (interviews.find(
+        (i) => matchesInterviewApplicant(i, previewApplicantLive) && i.status !== "Cancelled",
+      ) ?? interviews.find((i) => matchesInterviewApplicant(i, previewApplicantLive)))
+    : null;
+  const previewAudit = previewApplicantLive
+    ? auditLog.filter(
+        (e) =>
+          e.target.includes(previewApplicantLive.name) ||
+          e.target.includes(previewApplicantLive.id) ||
+          e.details.includes(previewApplicantLive.name) ||
+          e.details.includes(previewApplicantLive.id),
+      )
+    : [];
+
   return (
     <div>
       {gateDialog}
       {printDialog}
-      <PageHeader
-        title="Applicant Management"
-        description="NER resume screening, candidate ranking, interview scheduling and evaluation."
-        actions={
-          !viewedApplicant ? (
-            <div className="flex items-center gap-2">
-              <ReportMenu
-                size="sm"
-                recordCount={
-                  tab === "history"
-                    ? auditSort.sorted.length || auditFiltered.length
-                    : tab === "scheduling"
-                      ? pipelineSort.sorted.length || pipelineRows.length
-                      : applicantSort.sorted.length || filtered.length
-                }
-                report={() => {
-                  if (tab === "history") return buildAuditReportData();
-                  if (tab === "scheduling")
-                    return buildApplicantReportData(
-                      reportOptions.find((o) => o.id === "interview") ?? reportOptions[0]!,
-                    );
-                  return buildApplicantReportData(
-                    reportOptions.find((o) => o.id === "all") ?? reportOptions[0]!,
-                  );
-                }}
-              />
-              <Button
-                size="icon"
-                variant="outline"
-                aria-label="Re-apply cooldown settings"
-                title="Re-apply cooldown settings"
-                onClick={() => {
-                  setCooldownDraft(String(cooldownDays));
-                  setCooldownOpen(true);
-                }}
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : undefined
-        }
-      />
-
-
-      {/* Re-apply cooldown settings — same gear pattern as Recruitment's Screening setup */}
-      <Dialog open={cooldownOpen} onOpenChange={setCooldownOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Re-apply cooldown</DialogTitle>
-            <DialogDescription>
-              Failed applicants may re-apply for any open position after this many days. Decliners
-              (offer declined) are always welcome back — no waiting period.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="cooldown-days">Waiting period (days)</Label>
-            <Input
-              id="cooldown-days"
-              type="number"
-              min={1}
-              max={365}
-              value={cooldownDraft}
-              onChange={(e) => setCooldownDraft(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCooldownOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={cooldownSaving}
-              onClick={() => {
-                const n = Number(cooldownDraft);
-                if (!Number.isFinite(n) || n < 1 || n > 365) {
-                  toast.error("Enter a waiting period between 1 and 365 days.");
-                  return;
-                }
-                setCooldownSaving(true);
-                settingsApi
-                  .upsert("recruitment.reapply_cooldown_days", n)
-                  .then(() => {
-                    setCooldownDays(n);
-                    setCooldownOpen(false);
-                    toast.success(`Re-apply cooldown set to ${n} day(s).`);
-                  })
-                  .catch((err: any) =>
-                    toast.error(err?.message || "Unable to save the cooldown. Please try again."),
-                  )
-                  .finally(() => setCooldownSaving(false));
-              }}
-            >
-              {cooldownSaving ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {viewedApplicant ? (
         <ApplicantViewScreen
           key={viewedApplicant.id}
           a={viewedApplicant}
           docs={applicantDocs[viewedApplicant.id] ?? []}
-          interviews={interviews.filter((i) => i.applicant === viewedApplicant.name)}
+          interviews={interviews.filter((i) => matchesInterviewApplicant(i, viewedApplicant))}
           assessments={assessments.filter((x) => x.applicantId === viewedApplicant.id)}
           assessmentTests={assessmentTests.filter((t) => t.applicantId === viewedApplicant.id)}
           practicalTests={practicalTests.filter((t) => t.applicantId === viewedApplicant.id)}
@@ -12071,8 +12863,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           onStartInterview={() => {
             const iv =
               interviews.find(
-                (x) => x.applicant === viewedApplicant.name && x.status !== "Cancelled",
-              ) ?? interviews.find((x) => x.applicant === viewedApplicant.name);
+                (x) => matchesInterviewApplicant(x, viewedApplicant) && x.status !== "Cancelled",
+              ) ?? interviews.find((x) => matchesInterviewApplicant(x, viewedApplicant));
             if (iv?.mode === "Virtual") openZoomRoom(viewedApplicant);
             else startInterviewFor(viewedApplicant);
           }}
@@ -12088,18 +12880,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           }}
           showAcceptInterview={
             viewedApplicant.stage === "Screened" &&
-            !interviews.some((i) => i.applicant === viewedApplicant.name) &&
+            !interviews.some((i) => matchesInterviewApplicant(i, viewedApplicant)) &&
             !assessments.some((x) => x.applicantId === viewedApplicant.id)
           }
           showScheduleInterview={
             viewedApplicant.stage === "Accepted" &&
             !interviews.some(
-              (i) => i.applicant === viewedApplicant.name && i.status !== "Cancelled",
+              (i) => matchesInterviewApplicant(i, viewedApplicant) && i.status !== "Cancelled",
             )
           }
           showRescheduleInterview={(() => {
             const live = interviews.find(
-              (i) => i.applicant === viewedApplicant.name && i.status !== "Cancelled",
+              (i) => matchesInterviewApplicant(i, viewedApplicant) && i.status !== "Cancelled",
             );
             return (
               !!live &&
@@ -12134,406 +12926,338 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         />
       ) : (
         <>
-          {loading ? (
-            <div
-              className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4"
-              aria-busy="true"
-              aria-label="Loading metrics"
-            >
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={`skeleton-metric-${i}`} className="h-full [&>*]:h-full">
-                  <Card className="h-full">
-                    <CardContent className="space-y-3 p-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <Skeleton className="h-3 w-28" />
-                        <Skeleton className="h-4 w-4 rounded-full" />
-                      </div>
-                      <Skeleton className="h-9 w-20" />
-                    </CardContent>
-                  </Card>
+          <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-4">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+                  <Users className="h-11 w-11 fill-current" strokeWidth={1.25} />
+                </span>
+                <div>
+                  <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                    Applicant Management
+                  </h1>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    Track and manage your recruitment process efficiently.
+                  </p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="h-full [&>*]:h-full">
-                <StatCard
-                  label="Total Applicants"
-                  value={rows.length}
-                  icon={Users}
-                  tone="primary"
-                  onClick={() => goToApplicants("all")}
-                />
               </div>
-              <div className="h-full [&>*]:h-full">
-                <StatCard
-                  label="New Applicant"
-                  value={rows.filter((a) => a.stage === "Screened").length}
-                  icon={UserPlus}
-                  tone="primary"
-                  onClick={goToNewApplicants}
+              <div className="flex items-center gap-2 self-start">
+                <ReportMenu
+                  size="sm"
+                  label="Generate Report"
+                  reports={[
+                    ...reportOptions.map((option) => ({
+                      id: option.id,
+                      title: option.title,
+                      description: option.description,
+                      recordCount: rows.length,
+                      build: () => buildApplicantReportData(option),
+                    })),
+                    {
+                      id: "audit",
+                      title: "History & Audit",
+                      description: "Every recorded action with actor, module and details.",
+                      recordCount: auditLog.length,
+                      build: () => buildAuditReportData(),
+                    },
+                  ]}
                 />
-              </div>
-              <div className="h-full [&>*]:h-full">
-                {/* Perfect for the Job — same card shape as StatCard, plus a
-                  Today / Week / Month quick range switch for the count. */}
-                <Card
-                  className="group h-full cursor-pointer transition-colors hover:border-primary/40"
-                  onClick={goToPerfectForJob}
+                <Button
+                  size="icon"
+                  variant="outline"
+                  aria-label="Re-apply cooldown settings"
+                  title="Re-apply cooldown settings"
+                  onClick={() => {
+                    setCooldownDraft(String(cooldownDays));
+                    setCooldownOpen(true);
+                  }}
                 >
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="eyebrow">Perfect for the Job</p>
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-                      </div>
-                      <div
-                        className="flex w-fit shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {(["today", "week", "month", "all"] as const).map((r) => (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => setPerfectRange(r)}
-                            className={cn(
-                              "cursor-pointer rounded px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide transition-colors",
-                              perfectRange === r
-                                ? "bg-primary text-primary-foreground"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            {r}
-                          </button>
-                        ))}
-                      </div>
+                  <Settings2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div
+                className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+                aria-busy="true"
+                aria-label="Loading metrics"
+              >
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={`skeleton-metric-${i}`}
+                    className="flex items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5"
+                  >
+                    <Skeleton className="h-12 w-12 rounded-xl" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-5 w-16" />
                     </div>
-                    <p className="mt-2 font-display text-3xl font-semibold text-success">
-                      {
-                        rows.filter(
-                          (a) => a.status === "fit" && isApplicantInPerfectRange(a, perfectRange),
-                        ).length
-                      }
-                    </p>
-                  </CardContent>
-                </Card>
+                  </div>
+                ))}
               </div>
-              <div className="h-full [&>*]:h-full">
-                <StatCard
-                  label="Today Scheduled Interview"
-                  value={
-                    interviews.filter((i) => i.date === TODAY_ISO && i.status !== "Cancelled")
-                      .length
-                  }
-                  icon={CalendarDays}
-                  tone="gold"
-                  onClick={goToTodayInterviews}
-                />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  {
+                    label: "Total Applicants",
+                    value: rows.length,
+                    icon: Users,
+                    onClick: () => goToApplicants("all"),
+                  },
+                  {
+                    label: "New Applications",
+                    value: rows.filter((a) => a.stage === "Screened").length,
+                    icon: UserPlus,
+                    onClick: goToNewApplicants,
+                  },
+                  {
+                    label: "Perfect for the Job",
+                    value: rows.filter((a) => a.status === "fit").length,
+                    icon: Trophy,
+                    onClick: goToPerfectForJob,
+                  },
+                  {
+                    label: "Today's Interviews",
+                    value: interviews.filter(
+                      (i) => i.date === TODAY_ISO && i.status !== "Cancelled",
+                    ).length,
+                    icon: CalendarDays,
+                    onClick: goToTodayInterviews,
+                  },
+                ].map((m) => (
+                  <button
+                    key={m.label}
+                    type="button"
+                    onClick={m.onClick}
+                    className="group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+                  >
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <m.icon className="h-6 w-6" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-medium text-muted-foreground">
+                        {m.label}
+                      </span>
+                      <span className="mt-1 block font-display text-[1.45rem] font-bold leading-none tabular-nums text-foreground">
+                        {m.value.toLocaleString()}
+                      </span>
+                    </span>
+                  </button>
+                ))}
               </div>
-            </div>
-          )}
+            )}
 
-          <Tabs value={tab} onValueChange={setTab} className="mt-6">
-            {/* Sticky sub-header: pinned right below the 64px portal header so
-                the page's top bar (tabs) stays visible while the long ranking
-                and applicant list scrolls. */}
-            <div className="sticky top-16 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-              <TabsList className="py-2">
-                <TabsTrigger
-                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                  value="ranking"
-                >
-                  <Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants
-                </TabsTrigger>
-                <TabsTrigger
-                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                  value="scheduling"
-                >
-                  <CalendarClock className="h-3.5 w-3.5" /> Interview Pipeline
-                </TabsTrigger>
-                <TabsTrigger
-                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                  value="history"
-                >
-                  <History className="h-3.5 w-3.5" /> History &amp; Audit
-                </TabsTrigger>
-              </TabsList>
-            </div>
+            <RecruitmentPipelineTracker
+              counts={pipelineStageCounts}
+              active={
+                tab === "screening"
+                  ? "screening"
+                  : tab === "scheduling"
+                    ? "interview"
+                    : tab === "assessment"
+                      ? "assessment"
+                      : tab === "final"
+                        ? "final"
+                        : "application"
+              }
+              onSelect={(next) => setTab(next)}
+            />
+          </div>
 
+          <Tabs value={tab} onValueChange={setTab}>
             {/* RANKING + TABLE */}
             <TabsContent value="ranking" className=" space-y-6">
-              <div className="grid items-stretch gap-6 xl:grid-cols-[2fr_1fr]">
-                <Card className="border-border/70">
-                  <CardContent className="flex h-full flex-col p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                          <Trophy className="h-5 w-5 text-primary" />
-                          Candidate Ranking
-                        </h2>
-                      </div>
-                      <Select value={positionFilter} onValueChange={setPositionFilter}>
-                        <SelectTrigger className="w-48">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All positions</SelectItem>
-                          {displayPositions.map((p) => (
-                            <SelectItem key={p.id} value={p.title}>
-                              {p.title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+              <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+                {/* Upcoming interviews */}
+                <Card className="flex flex-col border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                  <CardContent className="flex h-full flex-1 flex-col p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                        <CalendarDays className="h-4.5 w-4.5 text-primary" />
+                        Upcoming Interviews
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setTab("scheduling")}
+                        className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                      >
+                        View Calendar <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
                     </div>
 
-                    <div className="mx-auto mt-2 flex w-full max-w-3xl flex-1 flex-wrap items-center justify-center gap-8 py-2">
-                      <div className="relative h-[380px] w-[380px] shrink-0">
-                        {loading ? (
-                          <div className="h-full w-full flex items-center justify-center">
-                            <Skeleton className="h-[380px] w-[380px] rounded-full" />
-                          </div>
-                        ) : (
-                          <>
-                            <PieChart width={380} height={380}>
-                              <Pie
-                                isAnimationActive={false}
-                                data={distribution}
-                                dataKey="value"
-                                nameKey="name"
-                                cx={190}
-                                cy={190}
-                                innerRadius={80}
-                                outerRadius={130}
-                                paddingAngle={2}
-                                labelLine={false}
-                                label={(props: {
-                                  cx?: number;
-                                  cy?: number;
-                                  midAngle?: number;
-                                  innerRadius?: number;
-                                  outerRadius?: number;
-                                  value?: number;
-                                }) => {
-                                  const {
-                                    cx = 0,
-                                    cy = 0,
-                                    midAngle = 0,
-                                    innerRadius = 0,
-                                    outerRadius = 0,
-                                    value = 0,
-                                  } = props;
-                                  const pct = screenedTotal ? (value / screenedTotal) * 100 : 0;
-                                  if (pct < 4) return null;
-                                  const r = innerRadius + (outerRadius - innerRadius) / 2;
-                                  const rad = -midAngle * (Math.PI / 180);
-                                  return (
-                                    <text
-                                      x={cx + r * Math.cos(rad)}
-                                      y={cy + r * Math.sin(rad)}
-                                      textAnchor="middle"
-                                      dominantBaseline="central"
-                                      fill="#fff"
-                                      fontSize={11}
-                                      fontWeight={600}
-                                    >
-                                      {Math.round(pct)}%
-                                    </text>
-                                  );
-                                }}
-                              >
-                                {distribution.map((d) => (
-                                  <Cell
-                                    key={d.key}
-                                    fill={statusChartColor[d.key]}
-                                    className="cursor-pointer"
-                                    onClick={() => goToStatus(d.key)}
-                                  />
-                                ))}
-                              </Pie>
-                              <RTooltip
-                                contentStyle={tooltipStyle}
-                                formatter={(value: number | string) => {
-                                  const n = Number(value);
-                                  const pct = screenedTotal
-                                    ? Math.round((n / screenedTotal) * 100)
-                                    : 0;
-                                  return [`${n} (${pct}%)`, "Resumes"] as [string, string];
-                                }}
-                              />
-                            </PieChart>
-
-                            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                              <span className="font-display text-3xl font-semibold">
-                                {screenedTotal}
-                              </span>
-                              <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">
-                                Resumes
-                              </span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="grid w-full min-w-[16rem] max-w-[24rem] flex-1 grid-cols-1 gap-2">
-                        {loading ? (
-                          <>
-                            {Array.from({ length: 4 }).map((_, i) => (
-                              <div
-                                key={`skeleton-breakdown-${i}`}
-                                className="flex items-center justify-between rounded-md border border-border px-4 py-3"
-                                aria-hidden="true"
-                              >
-                                <span className="flex items-center gap-2">
-                                  <Skeleton className="h-3 w-3 rounded-full" />
-                                  <Skeleton className="h-4 w-28" />
-                                </span>
-                                <Skeleton className="h-5 w-10" />
-                              </div>
-                            ))}
-                          </>
-                        ) : (
-                          distribution.map((d) => (
-                            <button
-                              type="button"
-                              key={d.key}
-                              title={`Show the ${d.name} applicants in the Applicant List`}
-                              onClick={() => goToStatus(d.key)}
-                              className="flex cursor-pointer items-center justify-between rounded-md border border-border px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
+                    <div className="mt-4 flex flex-1 flex-col gap-2.5">
+                      {!loading && upcomingInterviews.length === 0 ? (
+                        <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border/80 px-4 py-8 text-center">
+                          <CalendarClock className="h-7 w-7 text-muted-foreground/60" />
+                          <p className="mt-2 text-sm font-medium text-foreground">
+                            No upcoming interviews
+                          </p>
+                          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                            Accept a screened applicant to book their interview from the Interview
+                            tab.
+                          </p>
+                        </div>
+                      ) : (
+                        upcomingInterviews.slice(0, 3).map((iv, index) => {
+                          const d = new Date(`${iv.date}T00:00:00`);
+                          const valid = !Number.isNaN(d.getTime());
+                          const applicant = rows.find((r) => r.name === iv.applicant);
+                          return (
+                            <div
+                              key={iv.id}
+                              className={cn(
+                                "flex items-center gap-3 rounded-xl border px-3 py-2.5",
+                                index === 0
+                                  ? "border-primary/25 bg-primary/[0.045]"
+                                  : "border-border/60 bg-card",
+                              )}
                             >
-                              <span className="flex items-center gap-2 text-sm">
-                                <span
-                                  className="h-3 w-3 rounded-full"
-                                  style={{ background: statusChartColor[d.key] }}
-                                />
-                                {d.name}
-                              </span>
-                              <span className="font-display text-lg font-semibold">{d.value}</span>
-                            </button>
-                          ))
-                        )}
-                      </div>
+                              <div className="flex w-14 shrink-0 flex-col items-center justify-center rounded-lg bg-primary/10 py-1.5">
+                                <span className="text-[0.62rem] font-bold uppercase leading-none tracking-[0.12em] text-primary">
+                                  {valid
+                                    ? d.toLocaleDateString("en-US", { month: "short" })
+                                    : iv.date}
+                                </span>
+                                <span className="mt-0.5 font-display text-xl font-bold leading-none tabular-nums text-primary">
+                                  {valid ? String(d.getDate()).padStart(2, "0") : "—"}
+                                </span>
+                                <span className="mt-1 text-[0.62rem] font-semibold uppercase leading-none tracking-wide text-primary/75">
+                                  {valid ? d.toLocaleDateString("en-US", { weekday: "short" }) : ""}
+                                </span>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="min-w-0 truncate text-[0.7rem] font-semibold tabular-nums text-muted-foreground">
+                                    {iv.time}
+                                    {iv.endTime ? ` – ${iv.endTime}` : ""}
+                                  </p>
+                                  <span className="shrink-0 rounded-md bg-primary px-2 py-0.5 text-[0.62rem] font-semibold leading-4 text-primary-foreground">
+                                    {iv.mode === "Virtual" ? "Online" : "On-site"}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => applicant && setPreviewApplicant(applicant)}
+                                  disabled={!applicant}
+                                  className="mt-1 block max-w-full cursor-pointer truncate text-left text-sm font-semibold leading-tight text-foreground transition-colors hover:text-primary"
+                                >
+                                  {iv.applicant}
+                                </button>
+                                <p className="truncate text-xs leading-snug text-muted-foreground">
+                                  {iv.position}
+                                </p>
+                                <p className="mt-0.5 truncate text-[0.68rem] leading-snug text-muted-foreground">
+                                  {iv.mode} · {iv.interviewer}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Right — stretches to the row height so its bottom edge lines
-                up with Candidate Ranking, while the list viewport is locked to
-                three candidate cards; candidates 4 and 5 scroll into view. */}
-                <Card className="flex min-h-0 flex-col self-stretch overflow-hidden border-border/70">
-                  <CardContent className="flex min-h-0 flex-1 flex-col p-6">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                        <Trophy className="h-5 w-5 text-gold" /> Top 5 Candidates Today
-                      </h2>
+                {/* Top candidates */}
+                <Card className="flex flex-col border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                  <CardContent className="flex h-full flex-1 flex-col p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="flex items-center gap-2 font-display text-base font-bold">
+                        <Trophy className="h-4.5 w-4.5 text-primary" />
+                        Top 5 Candidates
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setTab("screening")}
+                        className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                      >
+                        View Rankings <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
                     </div>
-                    <ol
-                      ref={setTopFiveList}
-                      style={topFiveViewport ? { maxHeight: `${topFiveViewport}px` } : undefined}
-                      className="mt-4 flex max-h-[33rem] min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
-                    >
+
+                    <ol className="mt-2 flex flex-1 flex-col justify-center divide-y divide-border/50">
                       {loading
-                        ? Array.from({ length: 3 }).map((_, i) => (
-                            <li
-                              key={`skeleton-top5-${i}`}
-                              className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm"
-                            >
-                              <div className="flex items-center gap-3">
-                                <Skeleton className="h-7 w-7 rounded-full" />
-                                <Skeleton className="h-12 w-12 rounded-full" />
-                                <div className="min-w-0 flex-1">
-                                  <Skeleton className="h-5 w-48" />
-                                  <Skeleton className="h-4 w-32 mt-1" />
-                                  <Skeleton className="h-5 w-24 mt-2" />
-                                </div>
-                                <Skeleton className="h-8 w-20 ml-auto" />
+                        ? Array.from({ length: 5 }).map((_, i) => (
+                            <li key={`skeleton-top5-${i}`} className="flex items-center gap-3 py-2">
+                              <Skeleton className="h-5 w-5 rounded-full" />
+                              <Skeleton className="h-8 w-8 rounded-full" />
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <Skeleton className="h-3.5 w-32" />
                               </div>
-                              <Skeleton className="h-9 w-full mt-2" />
+                              <Skeleton className="h-4 w-10" />
                             </li>
                           ))
                         : topFiveToday.map((a, i) => (
                             <li
                               key={a.id}
-                              ref={i === 0 ? setTopFiveCard : undefined}
-                              className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
+                              className="group flex cursor-pointer items-center gap-2.5 py-2"
+                              onClick={() => setPreviewApplicant(a)}
                             >
-                              {/* Row 1: Rank + Avatar + Name/Position */}
-                              <div className="flex items-center gap-3">
-                                <span
-                                  className={cn(
-                                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-display text-xs font-semibold",
-                                    i === 0
-                                      ? "bg-gold text-gold-foreground"
-                                      : "bg-secondary text-secondary-foreground",
-                                  )}
-                                >
-                                  {i + 1}
-                                </span>
-                                <Avatar className="h-12 w-12 shrink-0">
-                                  <AvatarFallback className="bg-secondary text-sm font-medium">
-                                    {initials(a.name)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-base font-semibold">{a.name}</p>
-                                  <p className="truncate text-sm text-muted-foreground">
-                                    {a.position}
-                                  </p>
-                                  {(() => {
-                                    const tier = computeTopCandidateTier(
-                                      a.status,
-                                      applicantDocs[a.id] ?? [],
-                                    );
-                                    return (
-                                      <Badge
-                                        variant="outline"
-                                        className={cn(
-                                          "mt-1 text-[0.65rem]",
-                                          topCandidateTierMeta[tier].className,
-                                        )}
-                                      >
-                                        <Trophy className="mr-1 h-3 w-3" />
-                                        {topCandidateTierMeta[tier].label}
-                                      </Badge>
-                                    );
-                                  })()}
-                                </div>
-                                {/* Score shares the name/badge row — the separate
-                                score row that left a white gap before Review is
-                                gone, and the percent lines up with the badge. */}
-                                <span className="ml-auto shrink-0 self-center font-display text-2xl font-bold text-primary">
-                                  {a.score}%
-                                </span>
-                              </div>
-
-                              {/* Review button — full width, matches photo */}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="w-full"
-                                onClick={() => openReview(a)}
+                              <span
+                                className={cn(
+                                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[0.65rem] font-bold",
+                                  i === 0
+                                    ? "bg-gold text-gold-foreground"
+                                    : i === 1
+                                      ? "bg-muted text-foreground"
+                                      : i === 2
+                                        ? "bg-[#c98a4b] text-white"
+                                        : "text-muted-foreground",
+                                )}
                               >
-                                Review
-                              </Button>
+                                {i + 1}
+                              </span>
+                              <Avatar className="h-8 w-8 shrink-0">
+                                <AvatarFallback className="bg-secondary text-[0.65rem] font-medium text-foreground">
+                                  {initials(a.name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-semibold text-foreground transition-colors group-hover:text-primary">
+                                  {a.name}
+                                </p>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                      className={cn(
+                                        "h-full rounded-full",
+                                        i < 3
+                                          ? "bg-gradient-to-r from-primary to-[#a8322f]"
+                                          : "bg-gradient-to-r from-[#d9852f] to-gold",
+                                      )}
+                                      style={{ width: `${Math.min(100, a.score)}%` }}
+                                    />
+                                  </div>
+                                  <span className="w-11 shrink-0 text-right text-xs font-semibold tabular-nums text-foreground">
+                                    {a.score}%
+                                  </span>
+                                </div>
+                              </div>
                             </li>
                           ))}
+                      {!loading && topFiveToday.length === 0 && (
+                        <li className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground">
+                          No screened candidates yet. New resumes appear here after ranking.
+                        </li>
+                      )}
                     </ol>
                   </CardContent>
                 </Card>
               </div>
 
               <Card ref={applicantListRef} className="scroll-mt-28 border-border/70">
-                <CardContent className="p-4 sm:p-6">
+                <CardContent className="p-4 sm:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                        <Users className="h-5 w-5 text-primary" />
-                        Applicant List
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                        <Users className="h-4.5 w-4.5 text-primary" />
+                        Applicants
                       </h2>
                       {rankingFilter !== "all" && (
                         <Badge
                           variant="outline"
-                          className="mt-1.5 gap-1 border-primary/30 bg-primary/10 text-primary"
+                          className="gap-1 border-primary/30 bg-primary/10 text-primary"
                         >
                           {rankingFilter === "passed" ? "Passed screening" : "Ready to assess"}
                           <button
@@ -12542,24 +13266,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             onClick={() => setRankingFilter("all")}
                             aria-label="Clear quick filter"
                           >
-                            ?
+                            ×
                           </button>
                         </Badge>
                       )}
                     </div>
-                    <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
-                      <Input
-                        placeholder="Search applicant—"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="w-full sm:w-56"
-                      />
+                    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                      <div className="relative min-w-[12rem] flex-1 sm:w-72">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          placeholder="Search by name, email, or position…"
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          className="w-full pl-8"
+                        />
+                      </div>
                       <Select value={positionFilter} onValueChange={setPositionFilter}>
-                        <SelectTrigger className="w-full sm:w-52">
+                        <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-40">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All positions</SelectItem>
+                          <SelectItem value="all">All Positions</SelectItem>
                           {displayPositions.map((p) => (
                             <SelectItem key={p.id} value={p.title}>
                               {p.title}
@@ -12568,11 +13295,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </SelectContent>
                       </Select>
                       <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-full sm:w-52">
+                        <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-36">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="all">All Status</SelectItem>
                           {(Object.keys(statusMeta) as ApplicantStatus[]).map((k) => (
                             <SelectItem key={k} value={k}>
                               {statusMeta[k].label}
@@ -12580,59 +13307,64 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           ))}
                         </SelectContent>
                       </Select>
-                      <Select value={stageFilter} onValueChange={setStageFilter}>
-                        <SelectTrigger className="w-full sm:w-48">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All stages</SelectItem>
-                          {[
-                            "Screened",
-                            "Accepted",
-                            "Interview Scheduled",
-                            "Assessed",
-                            "Offer",
-                            "Hired",
-                            "Rejected",
-                          ].map((s) => (
-                            <SelectItem key={s} value={s}>
-                              {s}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {(search ||
+                        positionFilter !== "all" ||
+                        statusFilter !== "all" ||
+                        rankingFilter !== "all") && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 px-2 text-xs text-muted-foreground"
+                          onClick={() => {
+                            setSearch("");
+                            setPositionFilter("all");
+                            setStatusFilter("all");
+                            setStageFilter("all");
+                            setRankingFilter("all");
+                          }}
+                        >
+                          Clear filters
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant={showArchivedAndBlocked ? "secondary" : "outline"}
+                        className="h-9 gap-1.5 px-3 text-xs"
+                        onClick={() => {
+                          setShowArchivedAndBlocked((v) => !v);
+                          setPipelineResult("all");
+                        }}
+                        title="Toggle between active applicants and archived/blocked applicants"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        {showArchivedAndBlocked
+                          ? "Show Active Applicants"
+                          : "Show Archived & Blocked"}
+                      </Button>
                     </div>
                   </div>
 
-                  <div className="mt-4">
+                  <div className="mt-3">
                     <ListBody>
                       {/* `min-w` keeps every column readable on phones: the shared
                           Table wrapper already scrolls horizontally, so the table
                           slides instead of squeezing the labels together. */}
-                      <Table className="table-fixed text-xs min-w-[840px]">
+                      <Table className="table-fixed text-xs min-w-[860px]">
                         <TableHeader>
-                          <TableRow>
+                          <TableRow className="border-border/50 hover:bg-transparent">
                             <SortHead
                               sortKey="name"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[18%]"
+                              className="w-[26%]"
                             >
                               Applicant
-                            </SortHead>
-                            <SortHead
-                              sortKey="contact"
-                              sort={applicantSort.sort}
-                              onSort={applicantSort.toggle}
-                              className="hidden w-[14%] md:table-cell"
-                            >
-                              Contact
                             </SortHead>
                             <SortHead
                               sortKey="position"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[13%]"
+                              className="w-[20%]"
                             >
                               Position
                             </SortHead>
@@ -12640,163 +13372,408 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="applied"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[10%]"
+                              className="w-[20%]"
                             >
-                              Applied
-                            </SortHead>
-                            <SortHead
-                              sortKey="score"
-                              sort={applicantSort.sort}
-                              onSort={applicantSort.toggle}
-                              className="w-[9%]"
-                            >
-                              Score
-                            </SortHead>
-                            <SortHead
-                              sortKey="status"
-                              sort={applicantSort.sort}
-                              onSort={applicantSort.toggle}
-                              className="w-[11%]"
-                            >
-                              Status
+                              Applied Date
                             </SortHead>
                             <SortHead
                               sortKey="stage"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[9%]"
+                              className="w-[18%]"
                             >
-                              Stage
+                              Status
                             </SortHead>
-                            <TableHead className="w-[16%] text-right">Actions</TableHead>
+                            <TableHead className="w-[16%] text-center">Action</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {loading
                             ? Array.from({ length: 5 }).map((_, i) => (
                                 <TableRow key={`skeleton-${i}`}>
-                                  <TableCell className="max-w-0">
+                                  <TableCell>
                                     <div className="flex min-w-0 items-center gap-2">
                                       <Skeleton className="h-7 w-7 rounded-full" />
-                                      <div className="min-w-0">
-                                        <Skeleton className="h-4 w-48" />
-                                        <Skeleton className="h-3 w-32 mt-1" />
-                                      </div>
+                                      <Skeleton className="h-4 w-40" />
                                     </div>
                                   </TableCell>
-                                  <TableCell className="hidden max-w-0 md:table-cell">
-                                    <Skeleton className="h-4 w-48" />
-                                    <Skeleton className="h-3 w-32 mt-1" />
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate">
-                                    <Skeleton className="h-4 w-36" />
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate text-muted-foreground">
-                                    <Skeleton className="h-4 w-24" />
+                                  <TableCell>
+                                    <Skeleton className="h-4 w-32" />
                                   </TableCell>
                                   <TableCell>
-                                    <Skeleton className="h-5 w-16" />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Skeleton className="h-5 w-24" />
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate">
                                     <Skeleton className="h-4 w-20" />
                                   </TableCell>
                                   <TableCell>
-                                    <Skeleton className="h-7 w-24" />
+                                    <Skeleton className="h-5 w-20 rounded-full" />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Skeleton className="mx-auto h-7 w-16 rounded-full" />
                                   </TableCell>
                                 </TableRow>
                               ))
-                            : applicantPage.pageItems.map((a) => (
-                                <TableRow
-                                  key={a.id}
-                                  data-highlight-id={a.dbId ?? a.id}
-                                  className={highlightRowClass(
-                                    !!highlightId &&
-                                      (String(a.dbId ?? "") === highlightId ||
-                                        a.id === highlightId),
-                                  )}
-                                >
-                                  <TableCell className="max-w-0">
-                                    <div className="flex min-w-0 items-center gap-2">
-                                      <Avatar className="h-7 w-7 shrink-0">
-                                        <AvatarFallback className="bg-secondary text-[0.65rem]">
-                                          {initials(a.name)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <div className="min-w-0">
-                                        <p className="truncate font-medium" title={a.name}>
-                                          {a.name}
-                                        </p>
-                                        <p className="truncate text-muted-foreground">{a.id}</p>
-                                      </div>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="hidden max-w-0 md:table-cell">
-                                    <p className="truncate" title={a.email}>
-                                      {a.email}
-                                    </p>
-                                    <p className="truncate text-muted-foreground">{a.phone}</p>
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate" title={a.position}>
-                                    {a.position}
-                                  </TableCell>
-                                  <TableCell
-                                    className="max-w-0 truncate text-muted-foreground"
-                                    title={displayAppliedAt(a.appliedAt)}
+                            : applicantPage.pageItems.map((a) => {
+                                const pill = stagePillMeta(a.stage);
+                                return (
+                                  <TableRow
+                                    key={a.id}
+                                    data-highlight-id={a.dbId ?? a.id}
+                                    className={highlightRowClass(
+                                      !!highlightId &&
+                                        (String(a.dbId ?? "") === highlightId ||
+                                          a.id === highlightId),
+                                    )}
                                   >
-                                    {displayAppliedAt(a.appliedAt)}
-                                  </TableCell>
-                                  <TableCell>
-                                    <span className="font-display text-sm font-semibold">
-                                      {a.score}%
-                                    </span>
-                                    {(a.docCount ?? 0) > 0 ? (
-                                      <p
-                                        className="truncate text-xs font-medium text-primary"
-                                        title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
-                                      >
-                                        {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
+                                    <TableCell className="max-w-0">
+                                      <div className="flex min-w-0 items-center gap-2.5">
+                                        <Avatar className="h-8 w-8 shrink-0">
+                                          <AvatarFallback className="bg-secondary text-[0.65rem]">
+                                            {initials(a.name)}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <button
+                                          type="button"
+                                          onClick={() => setPreviewApplicant(a)}
+                                          className="truncate text-left font-medium text-foreground hover:text-primary hover:underline"
+                                          title={`${a.name} · ${a.email} · ${a.phone}`}
+                                        >
+                                          {a.name}
+                                        </button>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      <p className="truncate" title={a.position}>
+                                        {a.position}
                                       </p>
-                                    ) : null}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge
-                                      variant="outline"
-                                      className={cn(
-                                        "max-w-full truncate px-1.5 py-0.5",
-                                        statusMeta[a.status].className,
-                                      )}
-                                      title={statusMeta[a.status].label}
+                                    </TableCell>
+                                    <TableCell
+                                      className="whitespace-nowrap text-muted-foreground"
+                                      title={displayAppliedAt(a.appliedAt)}
                                     >
+                                      {formatDisplayDate(a.appliedAt).date}
+                                    </TableCell>
+                                    <TableCell>
                                       <span
                                         className={cn(
-                                          "mr-1 h-1.5 w-1.5 shrink-0 rounded-full",
-                                          statusMeta[a.status].dot,
+                                          "inline-flex whitespace-nowrap rounded-md px-2.5 py-1 text-[0.7rem] font-semibold",
+                                          pill.className,
                                         )}
-                                      />
-                                      <span className="truncate">{statusMeta[a.status].label}</span>
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="max-w-0 truncate" title={a.stage}>
-                                    {a.stage}
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex justify-end gap-1.5">
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 cursor-pointer"
-                                        title="Open applicant view profile"
-                                        onClick={() => setViewingApplicant(a)}
                                       >
-                                        <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
-                                      </Button>
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
+                                        {pill.label}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="flex justify-center">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 cursor-pointer whitespace-nowrap rounded-full border-border/80 bg-card px-2.5 text-[0.7rem]"
+                                          title="Open the full applicant profile"
+                                          onClick={() => setViewingApplicant(a)}
+                                        >
+                                          <Eye className="mr-1 h-3.5 w-3.5" /> View applicants
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                        </TableBody>
+                      </Table>
+                    </ListBody>
+                    <TablePagination
+                      page={applicantPage.page}
+                      pageCount={applicantPage.pageCount}
+                      from={applicantPage.from}
+                      to={applicantPage.to}
+                      total={applicantPage.total}
+                      label="applicants"
+                      showRangeLabel={false}
+                      onPageChange={applicantPage.setPage}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* SCREENING */}
+            <TabsContent value="screening" className="mt-4 space-y-6">
+              <Card className="w-full border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <CardContent className="p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <ScanLine className="h-4.5 w-4.5 text-primary" />
+                      Screening Results
+                    </h2>
+                    <Select value={positionFilter} onValueChange={setPositionFilter}>
+                      <SelectTrigger className="h-8 w-44 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Positions</SelectItem>
+                        {displayPositions.map((p) => (
+                          <SelectItem key={p.id} value={p.title}>
+                            {p.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="mt-4 flex flex-col items-center gap-6 lg:flex-row lg:items-center lg:gap-10">
+                    <div className="relative flex h-[190px] w-[190px] shrink-0 items-center justify-center">
+                      {loading ? (
+                        <Skeleton className="h-[180px] w-[180px] rounded-full" />
+                      ) : (
+                        <>
+                          <PieChart width={190} height={190}>
+                            <Pie
+                              isAnimationActive={false}
+                              data={distribution}
+                              dataKey="value"
+                              nameKey="name"
+                              cx={95}
+                              cy={95}
+                              innerRadius={58}
+                              outerRadius={88}
+                              paddingAngle={3}
+                              cornerRadius={3}
+                              labelLine={false}
+                            >
+                              {distribution.map((d) => (
+                                <Cell
+                                  key={d.key}
+                                  fill={statusChartColor[d.key]}
+                                  className="cursor-pointer transition-opacity hover:opacity-80"
+                                  onClick={() => goToStatus(d.key)}
+                                />
                               ))}
+                            </Pie>
+                            <RTooltip
+                              contentStyle={tooltipStyle}
+                              formatter={(value: number | string) => {
+                                const n = Number(value);
+                                const pct = screenedTotal
+                                  ? Math.round((n / screenedTotal) * 100)
+                                  : 0;
+                                return [`${n} (${pct}%)`, "Resumes"] as [string, string];
+                              }}
+                            />
+                          </PieChart>
+                          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="font-display text-2xl font-bold tracking-tight text-foreground">
+                              {screeningMatchRate}%
+                            </span>
+                            <span className="text-[0.62rem] font-medium text-muted-foreground">
+                              Match Rate
+                            </span>
+                            <span className="mt-0.5 text-[0.6rem] text-muted-foreground/80">
+                              {screenedTotal.toLocaleString()} resumes
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="grid w-full flex-1 gap-x-10 gap-y-2 sm:grid-cols-2">
+                      {distribution.map((d) => {
+                        const pct = screenedTotal ? Math.round((d.value / screenedTotal) * 100) : 0;
+                        return (
+                          <button
+                            type="button"
+                            key={d.key}
+                            title={`Filter by ${d.name}`}
+                            onClick={() => goToStatus(d.key)}
+                            className="group flex cursor-pointer items-center gap-3 rounded-md px-1 py-2 text-left transition-colors hover:bg-muted/40"
+                          >
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ background: statusChartColor[d.key] }}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-baseline justify-between gap-3">
+                                <span className="truncate text-xs font-medium text-foreground">
+                                  {d.name}
+                                </span>
+                                <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                                  {d.value.toLocaleString()}
+                                  <span className="ml-1 font-normal text-muted-foreground">
+                                    / {pct}%
+                                  </span>
+                                </span>
+                              </span>
+                              <span className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-muted">
+                                <span
+                                  className="h-full rounded-full transition-all"
+                                  style={{
+                                    width: `${pct}%`,
+                                    background: statusChartColor[d.key],
+                                  }}
+                                />
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Screening queue */}
+              <Card
+                ref={screeningQueueRef}
+                className="scroll-mt-28 border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]"
+              >
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <ScanLine className="h-4.5 w-4.5 text-primary" />
+                      Screening Queue
+                    </h2>
+                    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                      <div className="relative min-w-[12rem] flex-1 sm:w-64">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          placeholder="Search applicants…"
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          className="w-full pl-8"
+                        />
+                      </div>
+                      <Select value={positionFilter} onValueChange={setPositionFilter}>
+                        <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Positions</SelectItem>
+                          {displayPositions.map((p) => (
+                            <SelectItem key={p.id} value={p.title}>
+                              {p.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-36">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          {(Object.keys(statusMeta) as ApplicantStatus[]).map((k) => (
+                            <SelectItem key={k} value={k}>
+                              {statusMeta[k].label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <ListBody>
+                      <Table className="table-fixed text-xs min-w-[760px]">
+                        <TableHeader>
+                          <TableRow className="border-border/50 hover:bg-transparent">
+                            <SortHead
+                              sortKey="name"
+                              sort={applicantSort.sort}
+                              onSort={applicantSort.toggle}
+                              className="w-[28%]"
+                            >
+                              Applicant
+                            </SortHead>
+                            <SortHead
+                              sortKey="position"
+                              sort={applicantSort.sort}
+                              onSort={applicantSort.toggle}
+                              className="w-[20%]"
+                            >
+                              Position
+                            </SortHead>
+                            <SortHead
+                              sortKey="score"
+                              sort={applicantSort.sort}
+                              onSort={applicantSort.toggle}
+                              className="w-[18%]"
+                            >
+                              Match Score
+                            </SortHead>
+                            <SortHead
+                              sortKey="status"
+                              sort={applicantSort.sort}
+                              onSort={applicantSort.toggle}
+                              className="w-[18%]"
+                            >
+                              Screening Status
+                            </SortHead>
+                            <TableHead className="w-[16%] text-center">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {applicantPage.pageItems.map((a) => (
+                            <TableRow key={a.id}>
+                              <TableCell className="max-w-0">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                  <Avatar className="h-8 w-8 shrink-0">
+                                    <AvatarFallback className="bg-secondary text-[0.65rem]">
+                                      {initials(a.name)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewApplicant(a)}
+                                    className="truncate text-left font-medium text-foreground hover:text-primary hover:underline"
+                                    title={a.name}
+                                  >
+                                    {a.name}
+                                  </button>
+                                </div>
+                              </TableCell>
+                              <TableCell className="max-w-0">
+                                <p className="truncate" title={a.position}>
+                                  {a.position}
+                                </p>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold tabular-nums">
+                                    {a.score}%
+                                  </span>
+                                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                      className={cn(
+                                        "h-full rounded-full",
+                                        a.score >= passing ? "bg-success" : "bg-caution",
+                                      )}
+                                      style={{ width: `${Math.min(100, a.score)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className={cn(
+                                    "inline-flex whitespace-nowrap rounded-md border px-2.5 py-1 text-[0.7rem] font-semibold",
+                                    statusMeta[a.status].className,
+                                  )}
+                                >
+                                  {statusMeta[a.status].label}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex justify-center">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 cursor-pointer whitespace-nowrap rounded-full border-border/80 bg-card px-3 text-[0.7rem]"
+                                    onClick={() => openReview(a, true)}
+                                  >
+                                    <Eye className="mr-1 h-3.5 w-3.5" /> Resume result
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
                         </TableBody>
                       </Table>
                     </ListBody>
@@ -12817,862 +13794,523 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
             {/* SCHEDULING */}
             <TabsContent value="scheduling" className="mt-4 space-y-6">
-              {/* Top row retired — the mini Interview Calendar + top Book an Interview
-              card stay mounted but hidden: the Book card hosts the slot-settings /
-              full-calendar dialogs (portaled overlays, still reachable from below).
-              The visible booking form only appears in booking mode inside the
-              Room Availability card below. */}
-              <div className="hidden">
-                {/* ?? Interview Calendar ??????????????????????????????? */}
-                <Card className="flex h-full flex-col rounded-xl border-border/70 shadow-sm">
-                  <CardContent className="flex flex-1 flex-col p-5">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center text-primary">
-                          <CalendarDays className="h-5 w-5" />
-                        </span>
-                        <div className="min-w-0">
-                          <h2 className="font-display text-2xl font-semibold">
-                            Interview Calendar
-                          </h2>
-                          <p className="text-xs text-muted-foreground">
-                            Pick a date to view availability and interviews.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center justify-end gap-2">
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const today = new Date();
-                              setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-                              setSchedule((s) => ({ ...s, date: isoOf(today) }));
-                            }}
-                          >
-                            Today
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            aria-label="Previous month"
-                            onClick={() =>
-                              setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))
-                            }
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            aria-label="Next month"
-                            onClick={() =>
-                              setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
-                            }
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            aria-label="Full calendar view"
-                            title="Full calendar view"
-                            onClick={() => {
-                              const today = new Date();
-                              setCalViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-                              setCalViewDate(isoOf(today));
-                              setCalViewPanel("calendar");
-                              setCalViewOpen(true);
-                            }}
-                          >
-                            <Maximize2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      </div>
-                    </div>
-
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className="mt-4 inline-flex items-center gap-2 self-start rounded-lg px-2 py-1 font-display text-lg font-semibold transition-colors hover:bg-muted"
-                        >
-                          {viewMonth.toLocaleDateString("en-US", {
-                            month: "long",
-                            year: "numeric",
-                          })}
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" className="w-64 space-y-3 p-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Month</Label>
-                          <Select
-                            value={String(viewMonth.getMonth())}
-                            onValueChange={(v) =>
-                              setViewMonth((m) => new Date(m.getFullYear(), Number(v), 1))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {monthNames.map((name, i) => (
-                                <SelectItem key={name} value={String(i)}>
-                                  {name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Year</Label>
-                          <Select
-                            value={String(viewMonth.getFullYear())}
-                            onValueChange={(v) =>
-                              setViewMonth((m) => new Date(Number(v), m.getMonth(), 1))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {yearOptions.map((y) => (
-                                <SelectItem key={y} value={String(y)}>
-                                  {y}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-
-                    <div className="mt-2 grid grid-cols-7 text-center text-[0.65rem] font-semibold tracking-wide text-muted-foreground">
-                      {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
-                        <span key={d} className="py-1.5">
-                          {d}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="grid flex-1 grid-cols-7 grid-rows-6 overflow-hidden rounded-lg border border-border">
-                      {monthCells.map((cell) => {
-                        const iso = isoOf(cell.date);
-                        // Cancelled bookings don't make a day "Booked/Full".
-                        const count = interviews.filter(
-                          (i) => i.date === iso && i.status !== "Cancelled",
-                        ).length;
-                        // A day is free only if the setter says it is schedulable;
-                        // full once every slot is booked.
-                        const dayName = DAY_NAMES[cell.date.getDay()]!;
-                        const schedulable = schedulableDays.includes(dayName);
-                        const free = count === 0 && schedulable;
-                        const full = count > 0 && schedulable && count >= capacityPerSlot;
-                        const selected = schedule.date === iso;
-                        const isToday = iso === TODAY_ISO;
-                        return (
-                          <button
-                            key={iso}
-                            type="button"
-                            aria-label={cell.date.toDateString()}
-                            aria-pressed={selected}
-                            onClick={() => {
-                              setSchedule((s) => ({ ...s, date: iso }));
-                            }}
-                            className={cn(
-                              "relative min-h-[2.9rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
-                              free &&
-                                !selected &&
-                                "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
-                              full &&
-                                !selected &&
-                                "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
-                              isToday &&
-                                !selected &&
-                                "bg-gold/30 ring-1 ring-inset ring-gold hover:bg-gold/40 hover:shadow-sm",
-                              !selected && !free && !full && "hover:bg-muted/50 hover:shadow-sm",
-                              count === 0 &&
-                                !schedulable &&
-                                (cell.inMonth
-                                  ? "text-muted-foreground/40"
-                                  : "opacity-40 text-muted-foreground/40"),
-                              count > 0 &&
-                                !selected &&
-                                !full &&
-                                "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
-                              selected &&
-                                free &&
-                                "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
-                              selected && full && "bg-red-700 font-semibold text-white",
-                              selected &&
-                                !free &&
-                                !full &&
-                                "bg-primary font-semibold text-primary-foreground",
-                            )}
-                          >
-                            {cell.date.getDate()}
-                            {count > 0 && (
-                              <span
-                                className={cn(
-                                  "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
-                                  selected && full
-                                    ? "bg-red-900"
-                                    : selected && free
-                                      ? "bg-foreground"
-                                      : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
-                                )}
-                              >
-                                {count}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full border border-border bg-card" /> Free
-                        day (schedulable)
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-destructive" /> Full (all slots
-                        booked)
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-[oklch(0.427_0.166_22.5)] dark:bg-primary" />{" "}
-                        Booked
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-gold" /> Today
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-muted-foreground/30" /> Not
-                        schedulable / No availability
-                      </span>
-                    </div>
-
-                    <div className="mt-4 flex flex-none flex-col">
+              <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
+                <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                  <CardContent className="p-4 sm:p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                        <CalendarClock className="h-4.5 w-4.5 text-primary" />
+                        Interview Schedule
+                      </h2>
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-display text-base font-semibold">
-                          Interviews on{" "}
-                          {new Date(`${schedule.date}T00:00:00`).toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </p>
-                        <Badge
-                          variant="outline"
-                          className="border-primary/30 bg-primary/10 text-primary"
+                        <div
+                          role="group"
+                          aria-label="Calendar view"
+                          className="flex items-center rounded-lg border border-border/70 bg-muted/20 p-0.5"
                         >
-                          {interviews.filter((i) => i.date === schedule.date).length}
-                        </Badge>
-                        <div className="ml-auto flex min-w-0 items-center gap-1.5">
-                          <div className="relative w-28">
-                            <Search className="pointer-events-none absolute top-1/2 left-2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                              value={calSearch}
-                              onChange={(e) => setCalSearch(e.target.value)}
-                              placeholder="Search"
-                              className="h-7 pl-6 text-xs"
-                            />
-                          </div>
-                          <Select value={calStatusFilter} onValueChange={setCalStatusFilter}>
-                            <SelectTrigger className="h-7 w-[92px] text-xs">
-                              <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All status</SelectItem>
-                              <SelectItem value="Scheduled">Scheduled</SelectItem>
-                              <SelectItem value="Completed">Completed</SelectItem>
-                              <SelectItem value="Cancelled">Cancelled</SelectItem>
-                              <SelectItem value="No Show">No Show</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          {[
+                            { key: "month" as const, label: "Month", Icon: CalendarDays },
+                            { key: "week" as const, label: "Week", Icon: LayoutGrid },
+                          ].map(({ key, label, Icon }) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => setScheduleView(key)}
+                              aria-pressed={scheduleView === key}
+                              className={cn(
+                                "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[0.68rem] font-semibold transition-colors",
+                                scheduleView === key
+                                  ? "bg-background text-primary shadow-xs"
+                                  : "text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              <Icon className="h-3.5 w-3.5" /> {label}
+                            </button>
+                          ))}
                         </div>
-                      </div>
 
-                      <div className="relative mt-2 h-[10.5rem]">
-                        <div className="absolute inset-0 space-y-2 overflow-y-auto pr-1.5">
-                          {interviews
-                            .filter((i) => i.date === schedule.date)
-                            .filter((i) =>
-                              calStatusFilter === "all" ? true : i.status === calStatusFilter,
-                            )
-                            .filter((i) =>
-                              calSearch
-                                ? `${i.applicant} ${i.position} ${i.interviewer}`
-                                    .toLowerCase()
-                                    .includes(calSearch.toLowerCase())
-                                : true,
-                            )
-                            .map((i) => (
-                              <div
-                                key={i.id}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => toast(`Viewing interview — ${i.applicant}`)}
-                                className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/70 bg-muted/20 p-2.5 text-left transition-colors hover:bg-muted/40"
-                              >
-                                {i.status === "Cancelled" ? (
-                                  <span className="shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs font-semibold text-destructive line-through">
-                                    {i.time}
-                                  </span>
-                                ) : (
-                                  <span className="shrink-0 rounded-md bg-card px-2.5 py-1.5 text-xs font-semibold text-primary shadow-sm">
-                                    {i.time}
-                                  </span>
-                                )}
-                                <span className="grid min-w-0 gap-1 sm:grid-cols-2">
-                                  <span className="min-w-0">
-                                    <span className="block truncate text-sm font-medium">
-                                      {i.applicant}
-                                    </span>
-                                    <span className="block truncate text-xs text-muted-foreground">
-                                      {i.position}
-                                    </span>
-                                  </span>
-                                  <span className="min-w-0">
-                                    <span className="block truncate text-sm font-medium">
-                                      {i.interviewer}
-                                    </span>
-                                    <span className="block truncate text-xs text-muted-foreground">
-                                      {i.mode}
-                                    </span>
-                                  </span>
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  {i.status === "Cancelled" && (
-                                    <Badge
-                                      variant="outline"
-                                      className="shrink-0 border-destructive/40 bg-destructive/10 text-destructive"
-                                    >
-                                      Cancelled
-                                    </Badge>
-                                  )}
-                                  {i.status !== "Cancelled" && (
-                                    <button
-                                      type="button"
-                                      aria-label={`Delete interview for ${i.applicant}`}
-                                      title="Delete interview"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setCancelInterview(
-                                          interviews.find((x) => x.id === i.id) ?? null,
-                                        );
-                                      }}
-                                      className="rounded-md p-1 text-destructive transition-colors hover:bg-destructive/10"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  )}
-                                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                </span>
-                              </div>
-                            ))}
-                          {interviews.filter((i) => i.date === schedule.date).length === 0 && (
-                            <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                              No interviews booked — the whole day is free.
-                            </p>
-                          )}
-                        </div>
-                        {interviews.filter((i) => i.date === schedule.date).length > 3 && (
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-lg bg-gradient-to-t from-card to-transparent" />
-                        )}
+                        <Button
+                          size="sm"
+                          className="h-8 gap-1.5 px-3 text-xs"
+                          onClick={() => setBookingFocus(true)}
+                        >
+                          <CalendarPlus className="h-3.5 w-3.5" /> Schedule Interview
+                        </Button>
                       </div>
+                    </div>
+
+                    <div className="mt-4">
+                      {scheduleView === "month" ? (
+                        <div className="overflow-hidden rounded-lg border border-border/50">
+                          <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/25 px-3 py-2">
+                            <p className="font-display text-sm font-bold text-foreground">
+                              {new Date(`${interviewWeekAnchor}T00:00:00`).toLocaleDateString(
+                                "en-US",
+                                { month: "long", year: "numeric" },
+                              )}
+                            </p>
+                            {interviewWeekAnchor !== TODAY_ISO && (
+                              <button
+                                type="button"
+                                onClick={() => setInterviewWeekAnchor(TODAY_ISO)}
+                                className="cursor-pointer text-[0.65rem] font-semibold text-primary hover:underline"
+                              >
+                                Today
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-7 border-b border-border/50 bg-muted/15">
+                            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+                              <span
+                                key={d}
+                                className="py-1.5 text-center text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground"
+                              >
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-7">
+                            {scheduleMonthCells.map((cell) => {
+                              const selected = cell.iso === interviewWeekAnchor;
+                              const today = cell.iso === TODAY_ISO;
+                              const count = interviews.filter(
+                                (i) => i.status !== "Cancelled" && i.date === cell.iso,
+                              ).length;
+                              return (
+                                <button
+                                  key={cell.iso}
+                                  type="button"
+                                  onClick={() => {
+                                    setInterviewWeekAnchor(cell.iso);
+                                    setScheduleView("week");
+                                  }}
+                                  aria-pressed={selected}
+                                  aria-label={`${cell.date.toLocaleDateString("en-US", {
+                                    month: "long",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })}${count > 0 ? ` — ${count} interview${count === 1 ? "" : "s"}` : ""}`}
+                                  title={
+                                    count > 0
+                                      ? `${count} interview${count === 1 ? "" : "s"}`
+                                      : undefined
+                                  }
+                                  className={cn(
+                                    "relative flex h-12 cursor-pointer flex-col items-center justify-center gap-0.5 border-b border-r border-border/40 text-[0.72rem] tabular-nums transition-colors last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
+                                    selected
+                                      ? "bg-primary font-semibold text-primary-foreground"
+                                      : today
+                                        ? "bg-primary/[0.06] font-semibold text-primary hover:bg-primary/10"
+                                        : cell.inMonth
+                                          ? "text-foreground hover:bg-muted/50"
+                                          : "text-muted-foreground/45 hover:bg-muted/40",
+                                  )}
+                                >
+                                  <span>{cell.date.getDate()}</span>
+                                  {count > 0 && (
+                                    <span
+                                      className={cn(
+                                        "flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.55rem] font-bold leading-none",
+                                        selected
+                                          ? "bg-primary-foreground text-primary"
+                                          : "bg-primary/10 text-primary",
+                                      )}
+                                    >
+                                      {count}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-lg border border-border/50">
+                          <div className="min-w-[620px]">
+                            <div className="max-h-[288px] overflow-y-auto">
+                              <div
+                                className="sticky top-0 z-10 grid border-b border-border/50 bg-muted/25"
+                                style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}
+                              >
+                                <div className="flex items-end justify-end px-2 pb-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Time
+                                </div>
+                                {interviewWeek.map((day) => {
+                                  const isToday = day.iso === TODAY_ISO;
+                                  const hasBooking = interviewWeekGrid.days.find(
+                                    (d) => d.iso === day.iso,
+                                  )?.items.length;
+                                  return (
+                                    <div
+                                      key={day.iso}
+                                      className={cn(
+                                        "flex flex-col items-center gap-0.5 border-l border-border/50 px-1 py-1.5",
+                                        isToday && "bg-primary/[0.06]",
+                                      )}
+                                    >
+                                      <span
+                                        className={cn(
+                                          "text-[0.62rem] font-semibold uppercase tracking-wide",
+                                          isToday ? "text-primary" : "text-muted-foreground",
+                                        )}
+                                      >
+                                        {day.date.toLocaleDateString("en-US", { weekday: "short" })}
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          "flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-bold tabular-nums",
+                                          isToday
+                                            ? "bg-primary text-primary-foreground"
+                                            : "text-foreground",
+                                        )}
+                                      >
+                                        {day.date.getDate()}
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          "h-1 w-1 rounded-full",
+                                          hasBooking ? "bg-primary" : "bg-transparent",
+                                        )}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <div
+                                className="grid"
+                                style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}
+                              >
+                                <div>
+                                  {Array.from(
+                                    {
+                                      length:
+                                        interviewWeekGrid.endHour - interviewWeekGrid.startHour,
+                                    },
+                                    (_, i) => interviewWeekGrid.startHour + i,
+                                  ).map((hour) => (
+                                    <div
+                                      key={hour}
+                                      className="flex items-start justify-end border-b border-border/40 pr-2 pt-1 text-[0.68rem] font-medium tabular-nums text-muted-foreground"
+                                      style={{ height: interviewWeekGrid.hourHeight }}
+                                    >
+                                      {hour > 12
+                                        ? `${hour - 12} PM`
+                                        : hour === 12
+                                          ? "12 PM"
+                                          : `${hour} AM`}
+                                    </div>
+                                  ))}
+                                </div>
+                                {interviewWeekGrid.days.map((day) => {
+                                  const isToday = day.iso === TODAY_ISO;
+                                  return (
+                                    <div
+                                      key={day.iso}
+                                      className={cn(
+                                        "relative border-l border-border/50",
+                                        isToday && "bg-primary/[0.035]",
+                                      )}
+                                      style={{
+                                        height:
+                                          (interviewWeekGrid.endHour -
+                                            interviewWeekGrid.startHour) *
+                                          interviewWeekGrid.hourHeight,
+                                      }}
+                                    >
+                                      {Array.from(
+                                        {
+                                          length:
+                                            interviewWeekGrid.endHour - interviewWeekGrid.startHour,
+                                        },
+                                        (_, i) => (
+                                          <div
+                                            key={i}
+                                            className="border-b border-border/40"
+                                            style={{ height: interviewWeekGrid.hourHeight }}
+                                          />
+                                        ),
+                                      )}
+                                      {day.items.map(({ iv, top, height, lane, laneCount }) => {
+                                        const applicant = rows.find((r) => r.name === iv.applicant);
+                                        const virtual = iv.mode === "Virtual";
+                                        const verdict = interviewOutcomes.get(iv.id);
+                                        return (
+                                          <button
+                                            key={iv.id}
+                                            type="button"
+                                            onClick={() =>
+                                              applicant && setPreviewApplicant(applicant)
+                                            }
+                                            disabled={!applicant}
+                                            title={`${iv.applicant} · ${iv.time}${iv.endTime ? ` – ${iv.endTime}` : ""} · ${iv.mode}${iv.interviewer ? ` · ${iv.interviewer}` : ""}${verdict ? ` · ${verdict}` : ""}`}
+                                            className={cn(
+                                              "absolute cursor-pointer overflow-hidden rounded-md border px-1.5 py-1 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                                              verdict === "Passed"
+                                                ? "border-emerald-300/80 bg-emerald-100/80 dark:border-emerald-900 dark:bg-emerald-950/50"
+                                                : verdict === "Failed"
+                                                  ? "border-destructive/40 bg-destructive/10"
+                                                  : verdict === "Completed"
+                                                    ? "border-border bg-muted/70"
+                                                    : virtual
+                                                      ? "border-primary/30 bg-primary/[0.07]"
+                                                      : "border-sky-300/80 bg-sky-100/70 dark:border-sky-900 dark:bg-sky-950/40",
+                                            )}
+                                            style={{
+                                              top,
+                                              height,
+                                              left: `calc(${(lane / laneCount) * 100}% + 2px)`,
+                                              width: `calc(${100 / laneCount}% - 4px)`,
+                                            }}
+                                          >
+                                            <span className="block truncate text-[0.68rem] font-semibold leading-tight text-foreground">
+                                              {iv.applicant}
+                                            </span>
+                                            <span className="block truncate text-[0.62rem] leading-tight text-muted-foreground">
+                                              {iv.time}
+                                              {iv.endTime ? ` – ${iv.endTime}` : ""}
+                                            </span>
+                                            {height >= 48 && (
+                                              <span
+                                                className={cn(
+                                                  "mt-0.5 block truncate text-[0.6rem] font-medium",
+                                                  verdict === "Passed"
+                                                    ? "text-emerald-700 dark:text-emerald-300"
+                                                    : verdict === "Failed"
+                                                      ? "text-destructive"
+                                                      : "text-primary",
+                                                )}
+                                              >
+                                                {verdict === "Passed"
+                                                  ? "Passed"
+                                                  : verdict === "Failed"
+                                                    ? "Failed"
+                                                    : verdict === "Completed"
+                                                      ? "Interviewed"
+                                                      : virtual
+                                                        ? "Online"
+                                                        : "On-site"}
+                                                {iv.interviewer ? ` · ${iv.interviewer}` : ""}
+                                              </span>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-[0.62rem] text-muted-foreground">
+                              {[
+                                { label: "Scheduled", dot: "bg-sky-300 dark:bg-sky-700" },
+                                { label: "Interviewed", dot: "bg-muted-foreground/50" },
+                                { label: "Passed", dot: "bg-emerald-400" },
+                                { label: "Failed", dot: "bg-destructive" },
+                              ].map((item) => (
+                                <span key={item.label} className="flex items-center gap-1">
+                                  <span className={cn("h-2 w-2 rounded-full", item.dot)} />
+                                  {item.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* ?? Book an Interview — top slot (stays mounted for its dialogs;
-                hidden while bookingFocus shows the shared-state copy below) */}
-                <Card
-                  className={cn(
-                    "flex h-full flex-col rounded-xl border-border/70 shadow-sm",
-                    bookingFocus && "hidden",
-                  )}
-                >
-                  <CardContent className="flex flex-1 flex-col p-5">
-                    <div className="flex items-start gap-2.5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center text-primary">
-                        <CalendarClock className="h-5 w-5" />
-                      </span>
-                      <div className="min-w-0">
-                        <h2 className="font-display text-xl font-semibold">Book an Interview</h2>
-                        <p className="text-xs text-muted-foreground">
-                          Fill in the details to schedule an interview and send an invite.
-                        </p>
+                <div className="flex flex-col gap-4">
+                  <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="flex items-center gap-2 font-display text-sm font-bold">
+                          <BarChart3 className="h-4 w-4 text-primary" />
+                          Interview Overview
+                        </h3>
+                        <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                          All time
+                        </span>
                       </div>
-                    </div>
-
-                    {/* Booking progress removed per user request */ undefined}
-
-                    <div className="mt-3 flex flex-1 flex-col">
-                      <div className="flex-1 space-y-2">
-                        
-
-                        {/* ?? Full calendar view ????????????????????????????? */}
-                        <Dialog open={calViewOpen} onOpenChange={setCalViewOpen}>
-                          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[min(1400px,96vw)]">
-                            <DialogHeader>
-                              <DialogTitle className="flex items-center gap-2 font-display text-2xl">
-                                <CalendarDays className="h-5 w-5 text-primary" /> Interview Calendar
-                              </DialogTitle>
-                            </DialogHeader>
-
-                            {calViewPanel === "calendar" ? (
-                              <>
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <button
-                                        type="button"
-                                        className="inline-flex items-center gap-2 rounded-lg px-2 py-1 font-display text-lg font-semibold transition-colors hover:bg-muted"
-                                      >
-                                        {calViewMonth.toLocaleDateString("en-US", {
-                                          month: "long",
-                                          year: "numeric",
-                                        })}
-                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                      </button>
-                                    </PopoverTrigger>
-                                    <PopoverContent align="start" className="w-64 space-y-3 p-3">
-                                      <div className="space-y-1.5">
-                                        <Label className="text-xs">Month</Label>
-                                        <Select
-                                          value={String(calViewMonth.getMonth())}
-                                          onValueChange={(v) =>
-                                            setCalViewMonth(
-                                              (mo) => new Date(mo.getFullYear(), Number(v), 1),
-                                            )
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {monthNames.map((name, i) => (
-                                              <SelectItem key={name} value={String(i)}>
-                                                {name}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div className="space-y-1.5">
-                                        <Label className="text-xs">Year</Label>
-                                        <Select
-                                          value={String(calViewMonth.getFullYear())}
-                                          onValueChange={(v) =>
-                                            setCalViewMonth(
-                                              (mo) => new Date(Number(v), mo.getMonth(), 1),
-                                            )
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {yearOptions.map((y) => (
-                                              <SelectItem key={y} value={String(y)}>
-                                                {y}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
-                                  <div className="flex items-center gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        const today = new Date();
-                                        setCalViewMonth(
-                                          new Date(today.getFullYear(), today.getMonth(), 1),
-                                        );
-                                        setCalViewDate(isoOf(today));
-                                      }}
-                                    >
-                                      Today
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      aria-label="Previous month"
-                                      onClick={() =>
-                                        setCalViewMonth(
-                                          (mo) => new Date(mo.getFullYear(), mo.getMonth() - 1, 1),
-                                        )
-                                      }
-                                    >
-                                      <ChevronLeft className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      aria-label="Next month"
-                                      onClick={() =>
-                                        setCalViewMonth(
-                                          (mo) => new Date(mo.getFullYear(), mo.getMonth() + 1, 1),
-                                        )
-                                      }
-                                    >
-                                      <ChevronRight className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                <div className="mt-2 grid grid-cols-7 text-center text-[0.65rem] font-semibold tracking-wide text-muted-foreground">
-                                  {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
-                                    <span key={d} className="py-1.5">
-                                      {d}
-                                    </span>
-                                  ))}
-                                </div>
-
-                                <div className="grid grid-cols-7 grid-rows-6 overflow-hidden rounded-lg border border-border">
-                                  {calViewCells.map((cell) => {
-                                    const iso = isoOf(cell.date);
-                                    // Cancelled bookings don't make a day "Booked/Full".
-                                    const count = interviews.filter(
-                                      (i) => i.date === iso && i.status !== "Cancelled",
-                                    ).length;
-                                    const dayName = DAY_NAMES[cell.date.getDay()]!;
-                                    const schedulable = schedulableDays.includes(dayName);
-                                    const free = count === 0 && schedulable;
-                                    const full =
-                                      count > 0 && schedulable && count >= capacityPerSlot;
-                                    const selected = calViewDate === iso;
-                                    const isToday = iso === TODAY_ISO;
-                                    return (
-                                      <button
-                                        key={iso}
-                                        type="button"
-                                        aria-label={cell.date.toDateString()}
-                                        aria-pressed={selected}
-                                        onClick={() => setCalViewDate(iso)}
-                                        onDoubleClick={() => {
-                                          setCalViewDate(iso);
-                                          setCalViewPanel("day");
-                                        }}
-                                        className={cn(
-                                          "relative min-h-[3.5rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
-                                          free &&
-                                            !selected &&
-                                            "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
-                                          full &&
-                                            !selected &&
-                                            "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
-                                          isToday &&
-                                            !selected &&
-                                            "bg-gold/30 ring-1 ring-inset ring-gold hover:bg-gold/40 hover:shadow-sm",
-                                          !selected &&
-                                            !free &&
-                                            !full &&
-                                            "hover:bg-muted/50 hover:shadow-sm",
-                                          count === 0 &&
-                                            !schedulable &&
-                                            (cell.inMonth
-                                              ? "text-muted-foreground/40"
-                                              : "opacity-40 text-muted-foreground/40"),
-                                          count > 0 &&
-                                            !selected &&
-                                            !full &&
-                                            "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
-                                          selected &&
-                                            free &&
-                                            "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
-                                          selected && full && "bg-red-700 font-semibold text-white",
-                                          selected &&
-                                            !free &&
-                                            !full &&
-                                            "bg-primary font-semibold text-primary-foreground",
-                                        )}
-                                      >
-                                        {cell.date.getDate()}
-                                        {count > 0 && (
-                                          <span
-                                            className={cn(
-                                              "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
-                                              selected && full
-                                                ? "bg-red-900"
-                                                : selected && free
-                                                  ? "bg-foreground"
-                                                  : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
-                                            )}
-                                          >
-                                            {count}
-                                          </span>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </>
-                            ) : (
-                              <div className="mt-1">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setCalViewPanel("calendar")}
-                                >
-                                  <ChevronLeft className="h-4 w-4" /> Back to calendar
-                                </Button>
-                              </div>
-                            )}
-
-                            {calViewPanel === "day" &&
-                              (() => {
-                                const [yy, mm, dd] = calViewDate.split("-").map(Number);
-                                const selectedDate = new Date(yy ?? 1970, (mm ?? 1) - 1, dd ?? 1);
-                                const onSiteRooms = facilities.filter((f) => f.type === "On-site");
-                                const virtualRoom =
-                                  facilities.find((f) => f.type === "Virtual") ?? null;
-                                const reservedCount = (id: string) =>
-                                  calViewDayInterviews.filter(
-                                    (i) => facilityOfInterview(i)?.id === id,
-                                  ).length;
-                                const virtualCount = virtualRoom
-                                  ? reservedCount(virtualRoom.id)
-                                  : 0;
-                                return (
-                                  <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
-                                    {/* ?? Places — rooms + virtual for the selected date */}
-                                    <Card className="rounded-xl border-border/70 shadow-sm">
-                                      <CardContent className="p-5">
-                                        <p className="text-xs font-semibold tracking-widest">
-                                          PLACES
-                                        </p>
-                                        <div className="mt-1 flex items-end gap-2">
-                                          <span className="font-display text-5xl font-bold leading-none">
-                                            {selectedDate.getDate()}
-                                          </span>
-                                          <span className="pb-1 text-sm text-muted-foreground">
-                                            {selectedDate.toLocaleDateString("en-US", {
-                                              month: "long",
-                                              year: "numeric",
-                                              weekday: "long",
-                                            })}
-                                          </span>
-                                        </div>
-
-                                        <p className="mt-5 text-center text-xs font-semibold tracking-widest underline underline-offset-4">
-                                          ON-SITE
-                                        </p>
-                                        <div className="mt-3 flex flex-1 items-center justify-center gap-3 px-2 sm:gap-8">
-                                          {onSiteRooms.map((room) => {
-                                            const count = reservedCount(room.id);
-                                            const isSelected = calViewFacilityId === room.id;
-                                            return (
-                                              <button
-                                                key={room.id}
-                                                type="button"
-                                                onClick={() => setCalViewFacilityId(room.id)}
-                                                aria-pressed={isSelected}
-                                                title={`${room.name} — ${count > 0 ? `${count} booked` : "free"}`}
-                                                className={cn(
-                                                  "flex flex-col items-center gap-1.5 rounded-xl p-2 transition-colors hover:bg-muted/60",
-                                                  isSelected &&
-                                                    "bg-muted/60 ring-2 ring-inset ring-primary",
-                                                )}
-                                              >
-                                                <span className="relative">
-                                                  <span
-                                                    className={cn(
-                                                      count > 0
-                                                        ? "text-green-700 dark:text-green-400"
-                                                        : "text-foreground",
-                                                    )}
-                                                  >
-                                                    <DoorIcon highlighted={count > 0} />
-                                                  </span>
-                                                  {count > 0 && (
-                                                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-white">
-                                                      {count}
-                                                    </span>
-                                                  )}
-                                                </span>
-                                                <span className="text-xs font-semibold tracking-wide">
-                                                  {room.name.toUpperCase()}
-                                                </span>
-                                                <span className="text-[0.65rem] text-muted-foreground">
-                                                  {count > 0 ? `${count} booked` : "Free"}
-                                                </span>
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-
-                                        <div className="my-4 border-t border-border/70" />
-
-                                        <p className="text-center text-xs font-semibold tracking-widest underline underline-offset-4">
-                                          VIRTUAL
-                                        </p>
-                                        {virtualRoom && (
-                                          <div className="mt-3 flex justify-center">
-                                            <button
-                                              type="button"
-                                              onClick={() => setCalViewFacilityId(virtualRoom.id)}
-                                              aria-pressed={calViewFacilityId === virtualRoom.id}
-                                              title={`${virtualRoom.name} — ${virtualCount > 0 ? `${virtualCount} booked` : "free"}`}
-                                              className={cn(
-                                                "flex flex-col items-center gap-1.5 rounded-xl p-2 transition-colors hover:bg-muted/60",
-                                                calViewFacilityId === virtualRoom.id &&
-                                                  "bg-muted/60 ring-2 ring-inset ring-primary",
-                                              )}
-                                            >
-                                              <span className="relative">
-                                                <span
-                                                  className={cn(
-                                                    "flex h-16 w-24 items-center justify-center rounded-lg border-2",
-                                                    virtualCount > 0
-                                                      ? "border-green-700 bg-green-700/15 text-green-700 dark:border-green-400/20 dark:bg-green-400/10 dark:text-green-400"
-                                                      : "border-foreground/70 text-foreground",
-                                                  )}
-                                                >
-                                                  <Video className="h-8 w-8" />
-                                                </span>
-                                                {virtualCount > 0 && (
-                                                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-white">
-                                                    {virtualCount}
-                                                  </span>
-                                                )}
-                                              </span>
-                                              <span className="text-xs font-semibold tracking-wide">
-                                                ONLINE INTERVIEW
-                                              </span>
-                                              <span className="text-[0.65rem] text-muted-foreground">
-                                                {virtualCount > 0
-                                                  ? `${virtualCount} booked`
-                                                  : "Free"}
-                                              </span>
-                                            </button>
-                                          </div>
-                                        )}
-                                      </CardContent>
-                                    </Card>
-
-                                    {/* ?? Daily schedule preview for the selected room/meeting */}
-                                    <Card className="rounded-xl border-border/70 shadow-sm">
-                                      <CardContent className="p-5">
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                          <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
-                                            <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE
-                                            PREVIEW
-                                          </p>
-                                          <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
-                                            {calViewPreview.slotsAvailable} slots available
-                                          </span>
-                                        </div>
-                                        <div className="mt-3">
-                                          <Select
-                                            value={calViewFacilityId}
-                                            onValueChange={setCalViewFacilityId}
-                                          >
-                                            <SelectTrigger className="font-display text-lg font-semibold">
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="all">
-                                                Show all — All rooms
-                                              </SelectItem>
-                                              {facilities.map((f) => (
-                                                <SelectItem key={f.id} value={f.id}>
-                                                  {f.name} · {f.type}
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                          <p className="mt-1 text-xs text-muted-foreground">
-                                            {calViewPreview.room.location} ·{" "}
-                                            {selectedDate.toLocaleDateString("en-US", {
-                                              month: "long",
-                                              day: "numeric",
-                                              year: "numeric",
-                                            })}
-                                          </p>
-                                        </div>
-                                        <div className="mt-3 flex-1 space-y-2">
-                                          {calViewPreview.mapped.map((i) => (
-                                            <button
-                                              type="button"
-                                              key={i.id}
-                                              title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
-                                              onClick={() => selectInPipeline(i.applicant)}
-                                              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
-                                            >
-                                              <span className="shrink-0 text-xs font-medium">
-                                                {calViewPreview.rangeLabel(i.time, i.endTime)}
-                                              </span>
-                                              <span className="truncate text-right text-xs font-semibold">
-                                                {i.applicant}
-                                                {calViewPreview.showAll && (
-                                                  <span className="ml-1.5 font-normal text-muted-foreground">
-                                                    · {facilityOfInterview(i)?.name ?? "No room"}
-                                                  </span>
-                                                )}
-                                              </span>
-                                            </button>
-                                          ))}
-                                          {calViewPreview.mapped.length === 0 && (
-                                            <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                                              No interviews booked — the whole day is free.
-                                            </p>
-                                          )}
-                                          {calViewPreview.unassignedOnSite.length > 0 && (
-                                            <p className="text-[0.7rem] text-muted-foreground">
-                                              + {calViewPreview.unassignedOnSite.length} on-site
-                                              interview(s) without a reserved room are not listed
-                                              here.
-                                            </p>
-                                          )}
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  </div>
-                                );
-                              })()}
-                          </DialogContent>
-                        </Dialog>
-
-                        {rescheduling && (
-                          <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
-                            <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            <span>
-                              Rescheduling <b>{rescheduling.applicant}</b> from {rescheduling.date}{" "}
-                              · {rescheduling.time} — confirm to update their existing interview.
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label className="text-sm">Filter by Department</Label>
-                            <Select
-                              value={scheduleDept}
-                              onValueChange={(v) => {
-                                setScheduleDept(v);
-                                setSchedulePosition("all");
-                                setSchedule((p) => ({ ...p, applicant: "" }));
-                                setRescheduling(null);
-                              }}
+                      <div className="mt-2.5 grid grid-cols-3 divide-x divide-border/60">
+                        {[
+                          {
+                            value: interviewOverviewCounts.scheduled,
+                            label: "Scheduled",
+                            className: "text-primary",
+                          },
+                          {
+                            value: interviewOverviewCounts.completed,
+                            label: "Completed",
+                            className: "text-gold",
+                          },
+                          {
+                            value: interviewOverviewCounts.pending,
+                            label: "Pending",
+                            className: "text-primary",
+                          },
+                        ].map((s) => (
+                          <div key={s.label} className="px-1.5 text-center">
+                            <p
+                              className={cn(
+                                "font-display text-xl font-bold leading-none tabular-nums",
+                                s.className,
+                              )}
                             >
-                              <SelectTrigger>
-                                <SelectValue placeholder="All departments" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">All departments</SelectItem>
-                                {displayDepartments.map((d) => (
-                                  <SelectItem key={d.code} value={d.name}>
+                              {s.value}
+                            </p>
+                            <p className="mt-0.5 text-[0.62rem] text-muted-foreground">{s.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="flex flex-1 flex-col border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                    <CardContent className="flex flex-1 flex-col p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="flex items-center gap-2 font-display text-sm font-bold">
+                          <CalendarClock className="h-4 w-4 text-primary" />
+                          Upcoming Interviews
+                        </h3>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[0.6rem] font-semibold tabular-nums text-muted-foreground">
+                          {upcomingInterviews.length}
+                        </span>
+                      </div>
+
+                      {upcomingInterviews.length === 0 ? (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          No upcoming interviews booked.
+                        </p>
+                      ) : (
+                        <ul className="mt-3 space-y-1">
+                          {upcomingInterviews.slice(0, 4).map((iv) => {
+                            const d = new Date(`${iv.date}T00:00:00`);
+                            const valid = !Number.isNaN(d.getTime());
+                            const applicant = rows.find((r) => r.name === iv.applicant);
+                            const virtual = iv.mode === "Virtual";
+                            return (
+                              <li key={iv.id}>
+                                <button
+                                  type="button"
+                                  disabled={!applicant}
+                                  onClick={() => applicant && setPreviewApplicant(applicant)}
+                                  className="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border/60 hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <span className="flex w-9 shrink-0 flex-col items-center rounded-md bg-primary/10 py-1">
+                                    <span className="text-[0.55rem] font-bold uppercase leading-none tracking-wide text-primary">
+                                      {valid
+                                        ? d.toLocaleDateString("en-US", { month: "short" })
+                                        : iv.date}
+                                    </span>
+                                    <span className="mt-0.5 font-display text-sm font-bold leading-none tabular-nums text-primary">
+                                      {valid ? String(d.getDate()).padStart(2, "0") : "—"}
+                                    </span>
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-xs font-semibold text-foreground transition-colors group-hover:text-primary">
+                                      {iv.applicant}
+                                    </span>
+                                    <span className="mt-0.5 block truncate text-[0.65rem] text-muted-foreground">
+                                      {iv.time}
+                                      {iv.endTime ? ` – ${iv.endTime}` : ""} ·{" "}
+                                      {virtual ? "Online" : "On-site"}
+                                    </span>
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              {/* BOOK AN INTERVIEW — modal opened by Schedule Interview, Reschedule,
+              Accept & Schedule and Re-book. Confirm closes it on success. */}
+              <Dialog open={bookingFocus} onOpenChange={setBookingFocus}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 font-display text-2xl">
+                      <CalendarClock className="h-5 w-5 text-primary" /> Book an Interview
+                    </DialogTitle>
+                    <DialogDescription className="sr-only">
+                      Choose the applicant, date, time slot and interviewer for the interview.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  {rescheduling && (
+                    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
+                      <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        Rescheduling <b>{rescheduling.applicant}</b> from {rescheduling.date} ·{" "}
+                        {rescheduling.time} — confirm to update their existing interview.
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="grid gap-x-6 gap-y-4 py-1 sm:grid-cols-2">
+                    <div className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label className="text-sm">Filter by Department</Label>
+                          <Select
+                            value={scheduleDept}
+                            onValueChange={(v) => {
+                              setScheduleDept(v);
+                              setSchedulePosition("all");
+                              setSchedule((p) => ({ ...p, applicant: "" }));
+                              setRescheduling(null);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="All departments" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All departments</SelectItem>
+                              {displayDepartments.map((d) => (
+                                <SelectItem key={d.code} value={d.name}>
+                                  <span className="flex items-center gap-2">
+                                    {d.name}
+                                    {deptHasPosting(d.name) && (
+                                      <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
+                                        Posting
+                                      </span>
+                                    )}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm">Position</Label>
+                          <Select
+                            value={schedulePosition}
+                            onValueChange={(v) => {
+                              setSchedulePosition(v);
+                              setSchedule((p) => ({ ...p, applicant: "" }));
+                              setRescheduling(null);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="All positions" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All positions</SelectItem>
+                              {displayPositions
+                                .filter(
+                                  (p) => scheduleDept === "all" || p.department === scheduleDept,
+                                )
+                                .map((p) => (
+                                  <SelectItem key={p.id} value={p.title}>
                                     <span className="flex items-center gap-2">
-                                      {d.name}
-                                      {deptHasPosting(d.name) && (
+                                      {p.title}
+                                      {activeJobTitles.has(p.title) && (
                                         <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
                                           Posting
                                         </span>
@@ -13680,105 +14318,158 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     </span>
                                   </SelectItem>
                                 ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">Position</Label>
-                            <Select
-                              value={schedulePosition}
-                              onValueChange={(v) => {
-                                setSchedulePosition(v);
-                                setSchedule((p) => ({ ...p, applicant: "" }));
-                                setRescheduling(null);
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="All positions" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">All positions</SelectItem>
-                                {displayPositions
-                                  .filter(
-                                    (p) => scheduleDept === "all" || p.department === scheduleDept,
-                                  )
-                                  .map((p) => (
-                                    <SelectItem key={p.id} value={p.title}>
-                                      <span className="flex items-center gap-2">
-                                        {p.title}
-                                        {activeJobTitles.has(p.title) && (
-                                          <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                            Posting
-                                          </span>
-                                        )}
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label className="text-sm">
-                            <span className="text-primary">1.</span> Select Applicant
-                          </Label>
-                          <Select
-                            value={schedule.applicant}
-                            onValueChange={(v) => {
-                              setSchedule({ ...schedule, applicant: v });
-                              if (v !== rescheduling?.applicant) setRescheduling(null);
-                              if (v) setBookingFocus(true);
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select applicant" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {scheduleApplicants.length === 0 && (
-                                <div className="px-2 py-3 text-xs text-muted-foreground">
-                                  No accepted applicants available in this department.
-                                </div>
-                              )}
-                              {scheduleApplicants.map((a) => (
-                                <SelectItem key={a.id} value={a.name}>
-                                  {a.name}
-                                </SelectItem>
-                              ))}
                             </SelectContent>
                           </Select>
                         </div>
+                      </div>
 
-                        <div className="space-y-2">
-                          <Label className="text-sm">
-                            <span className="text-primary">2.</span> Interview Date
-                          </Label>
+                      <div className="space-y-2">
+                        <Label className="text-sm">Select Applicant</Label>
+                        <Select
+                          value={schedule.applicant}
+                          onValueChange={(v) => {
+                            setSchedule({ ...schedule, applicant: v });
+                            if (v !== rescheduling?.applicant) setRescheduling(null);
+                          }}
+                        >
+                          <SelectTrigger ref={bookSelectRef}>
+                            <SelectValue placeholder="Select applicant" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {scheduleApplicants.length === 0 && (
+                              <div className="px-2 py-3 text-xs text-muted-foreground">
+                                No accepted applicants available in this department.
+                              </div>
+                            )}
+                            {scheduleApplicants.map((a) => (
+                              <SelectItem key={a.id} value={a.name}>
+                                {a.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm">Interview date</Label>
+                        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+                          {Array.from({ length: 14 }, (_, i) => {
+                            const d = new Date();
+                            d.setDate(d.getDate() + i);
+                            const iso = isoOf(d);
+                            const selected = schedule.date === iso;
+                            return (
+                              <button
+                                key={iso}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => {
+                                  setSchedule((p) => ({ ...p, date: iso }));
+                                  setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                                }}
+                                className={cn(
+                                  "flex w-11 shrink-0 cursor-pointer flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 transition-colors",
+                                  selected
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-card text-foreground hover:border-primary/40 hover:bg-primary/5",
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "text-[0.58rem] font-semibold uppercase leading-none tracking-wide",
+                                    selected
+                                      ? "text-primary-foreground/80"
+                                      : "text-muted-foreground",
+                                  )}
+                                >
+                                  {i === 0
+                                    ? "Today"
+                                    : d.toLocaleDateString("en-US", { weekday: "short" })}
+                                </span>
+                                <span className="text-sm font-bold leading-none tabular-nums">
+                                  {d.getDate()}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <details className="group">
+                          <summary className="w-fit cursor-pointer list-none text-[0.7rem] font-semibold text-primary hover:underline">
+                            Pick another date
+                          </summary>
                           <Input
                             type="date"
+                            className="mt-2 w-full sm:w-56"
                             value={schedule.date}
                             onChange={(e) => {
                               const val = e.target.value;
                               if (!val) return;
                               setSchedule((p) => ({ ...p, date: val }));
-                              // Sync calendar view to the selected date
                               const d = new Date(val);
                               if (!isNaN(d.getTime())) {
                                 setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
                               }
                             }}
                           />
-                        </div>
+                        </details>
+                      </div>
+                    </div>
 
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <Label className="text-sm">
-                              <span className="text-primary">3.</span> Select Time Slot
-                            </Label>
-                            <span className="text-[0.7rem] text-muted-foreground">
-                              {slotSettings.slotCount} slots — {capacityPerSlot} applicants each
-                            </span>
-                          </div>
-                          <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <Label className="text-sm">Time slot</Label>
+                          <span className="text-[0.68rem] text-muted-foreground">
+                            {capacityPerSlot} per slot
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                          {slotsForSelected.map((label) => {
+                            const taken = bookingsInSlot(schedule.date, label);
+                            const full = taken >= capacityPerSlot;
+                            const selected = schedule.time === label;
+                            return (
+                              <button
+                                key={label}
+                                type="button"
+                                disabled={full}
+                                aria-pressed={selected}
+                                onClick={() => {
+                                  const startMins = parseInterviewTimeToMinutes(label);
+                                  if (startMins == null) return;
+                                  applyCustomRange("start", minutesToInputTime(startMins));
+                                }}
+                                className={cn(
+                                  "flex cursor-pointer flex-col items-start rounded-lg border px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                                  selected
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-card text-foreground hover:border-primary/40 hover:bg-primary/5",
+                                )}
+                              >
+                                <span className="text-[0.72rem] font-semibold tabular-nums">
+                                  {label}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-[0.6rem] leading-tight",
+                                    selected
+                                      ? "text-primary-foreground/75"
+                                      : full
+                                        ? "text-destructive"
+                                        : "text-muted-foreground",
+                                  )}
+                                >
+                                  {full ? "Full" : `${Math.max(0, capacityPerSlot - taken)} open`}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <details className="group">
+                          <summary className="w-fit cursor-pointer list-none text-[0.7rem] font-semibold text-primary hover:underline">
+                            Use a custom time
+                          </summary>
+                          <div className="mt-2 grid items-center gap-2 sm:grid-cols-[1fr_auto_1fr]">
                             <Input
                               type="time"
                               aria-label="Custom start time"
@@ -13798,1034 +14489,162 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           {((customEnd && !schedule.endTime) ||
                             (customTime && schedule.endTime) ||
                             !customTime) && (
-                            <p className="text-[0.7rem] text-muted-foreground">
-                              {customEnd && !schedule.endTime ? (
-                                <span className="text-destructive">
-                                  {customTime
-                                    ? "End time can't equal the start time."
-                                    : "Enter a start time first."}
-                                </span>
-                              ) : customTime && schedule.endTime ? (
-                                `Using ${schedule.time} – ${schedule.endTime}.`
-                              ) : (
-                                "Pick a start time — e.g. 10:00."
-                              )}
+                            <p className="mt-1.5 text-[0.7rem] text-destructive">
+                              {customEnd && !schedule.endTime
+                                ? customTime
+                                  ? "End time can't equal the start time."
+                                  : "Enter a start time first."
+                                : !customTime
+                                  ? "Pick a start time first."
+                                  : ""}
                             </p>
                           )}
-                        </div>
+                        </details>
+                      </div>
 
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <Label className="text-sm">
-                              <span className="text-primary">4.</span> Interview Details
-                            </Label>
-                            <Select
-                              value={schedule.mode}
-                              onValueChange={(v) =>
-                                setSchedule({
-                                  ...schedule,
-                                  mode: v,
-                                  // Virtual needs no room — drop any picked facility.
-                                  facilityId: v === "Virtual" ? "" : schedule.facilityId,
-                                })
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="On-site">On-site</SelectItem>
-                                <SelectItem value="Virtual">Virtual</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">
-                              <span className="text-primary">5.</span> Interviewer
-                            </Label>
-                            <Select
-                              value={schedule.interviewer}
-                              onValueChange={(v) => setSchedule({ ...schedule, interviewer: v })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select interviewer" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {scheduleInterviewers.map((s) => (
-                                  <SelectItem key={s.id} value={s.name}>
-                                    {s.name} — {s.role}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">
-                              <span className="text-primary">6.</span>{" "}
-                              {schedule.mode === "On-site" ? "Request Facility" : "Facility"}
-                            </Label>
-                            {schedule.mode === "On-site" ? (
-                              <Select
-                                value={schedule.facilityId}
-                                onValueChange={(v) => setSchedule({ ...schedule, facilityId: v })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select facility" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {facilities
-                                    .filter((f) => f.type === schedule.mode)
-                                    .map((f) => (
-                                      <SelectItem key={f.id} value={f.id}>
-                                        {f.name} · {f.type} — cap. {f.capacity}
-                                      </SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
-                                <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                <span>
-                                  No facility request needed — Virtual interviews are held over
-                                  Zoom. The applicant is emailed the <b>1st Join link</b>,{" "}
-                                  <b>2nd Continue link</b>, password and interviewer name.
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label className="text-sm">Interview mode</Label>
+                          <Select
+                            value={schedule.mode}
+                            onValueChange={(v) =>
+                              setSchedule({
+                                ...schedule,
+                                mode: v,
+                                facilityId: v === "Virtual" ? "" : schedule.facilityId,
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="On-site">On-site</SelectItem>
+                              <SelectItem value="Virtual">Virtual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm">Interviewer</Label>
+                          <Select
+                            value={schedule.interviewer}
+                            onValueChange={(v) => setSchedule({ ...schedule, interviewer: v })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select interviewer" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {scheduleInterviewers.map((s) => (
+                                <SelectItem key={s.id} value={s.name}>
+                                  {s.name} — {s.role}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
-                      <div className="mt-2 space-y-2 border-t border-border/30 pt-2">
-                        <Button
-                          className="w-full"
-                          size="lg"
-                          disabled={bookingMissingFields.length > 0}
-                          onClick={confirmSchedule}
-                          title={
-                            bookingMissingFields.length > 0
-                              ? `Please fill in: ${bookingMissingFields.join(", ")}`
-                              : undefined
-                          }
-                        >
-                          <Mail className="mr-2 h-4 w-4" />{" "}
-                          {schedule.mode === "On-site"
-                            ? "Request Facility to Scheduled"
-                            : "Schedule Interview"}
-                        </Button>
-                        {bookingMissingFields.length > 0 && (
-                          <p className="text-center text-xs text-muted-foreground">
-                            Fill in:{" "}
-                            <span className="font-medium">{bookingMissingFields.join(", ")}</span>{" "}
-                            to enable.
-                          </p>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm">
+                          {schedule.mode === "On-site" ? "Interview room" : "Facility"}
+                        </Label>
+                        {schedule.mode === "On-site" ? (
+                          <>
+                            <Select
+                              value={schedule.facilityId}
+                              onValueChange={(v) => setSchedule({ ...schedule, facilityId: v })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select facility" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {facilities
+                                  .filter((f) => f.type === schedule.mode)
+                                  .map((f) => {
+                                    const booked = facilityBookedInSlot(
+                                      f.id,
+                                      schedule.date,
+                                      schedule.time,
+                                    );
+                                    return (
+                                      <SelectItem key={f.id} value={f.id} disabled={booked}>
+                                        <span className="flex items-center gap-2">
+                                          {f.name}
+                                          <span className="text-[0.65rem] text-muted-foreground">
+                                            {booked ? "Booked at this slot" : f.location}
+                                          </span>
+                                        </span>
+                                      </SelectItem>
+                                    );
+                                  })}
+                              </SelectContent>
+                            </Select>
+                            {(() => {
+                              const picked = facilities.find((f) => f.id === schedule.facilityId);
+                              return picked ? (
+                                <p className="text-[0.68rem] leading-relaxed text-muted-foreground">
+                                  {picked.location}
+                                  {picked.description ? ` · ${picked.description}` : ""}
+                                </p>
+                              ) : (
+                                <p className="text-[0.68rem] text-muted-foreground">
+                                  Pick a room that is free at the selected slot.
+                                </p>
+                              );
+                            })()}
+                          </>
+                        ) : (
+                          <div className="flex items-start gap-2 rounded-lg border border-primary/25 bg-primary/[0.045] p-3 text-xs text-foreground">
+                            <Video className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                            <span>
+                              Held over Zoom. The applicant is emailed both join links, the password
+                              and the interviewer name.
+                            </span>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Merged full-calendar + day detail — always visible (Image 1 + Image 2).
-              Left: calendar on top with PLACES stretched horizontally below.
-              Right: DAILY SCHEDULE PREVIEW. The day detail shows immediately
-              for the selected date — no click needed. */}
-              <Card ref={roomAvailabilityRef} className="scroll-mt-4 border-border/70">
-                <CardContent className="p-5 sm:p-6">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                        <CalendarDays className="h-5 w-5 text-primary" />
-                        Room Availability & Daily Schedule
-                      </h2>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {bookingFocus ? (
-                        <Button size="sm" variant="outline" onClick={() => setBookingFocus(false)}>
-                          <ChevronLeft className="mr-2 h-4 w-4" /> Back to overview
-                        </Button>
-                      ) : (
-                        <Button size="sm" onClick={() => setBookingFocus(true)}>
-                          <CalendarPlus className="mr-2 h-4 w-4" /> Book an Interview
-                        </Button>
-                      )}
                     </div>
                   </div>
 
-                  {(() => {
-                    const [yy, mm, dd] = calViewDate.split("-").map(Number);
-                    const selectedDate = new Date(yy ?? 1970, (mm ?? 1) - 1, dd ?? 1);
-                    const onSiteRooms = facilities.filter((f) => f.type === "On-site");
-                    const virtualRoom = facilities.find((f) => f.type === "Virtual") ?? null;
-                    const reservedCount = (id: string) =>
-                      calViewDayInterviews.filter((i) => facilityOfInterview(i)?.id === id).length;
-                    const virtualCount = virtualRoom ? reservedCount(virtualRoom.id) : 0;
-                    return (
-                      <div className="mt-4 grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-                        {/* LEFT — calendar on top, PLACES stretched horizontally below.
-                        No h-full here: the grid's items-stretch sizes this column,
-                        and a percentage height would cancel the stretch. */}
-                        <div className="flex min-h-0 min-w-0 flex-col space-y-4">
-                          <div className="min-w-0 rounded-xl border border-border/70 bg-card p-4 shadow-sm">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="inline-flex items-center gap-2 rounded-lg px-2 py-1 font-display text-lg font-semibold transition-colors hover:bg-muted"
-                                  >
-                                    {calViewMonth.toLocaleDateString("en-US", {
-                                      month: "long",
-                                      year: "numeric",
-                                    })}
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                  </button>
-                                </PopoverTrigger>
-                                <PopoverContent align="start" className="w-64 space-y-3 p-3">
-                                  <div className="space-y-1.5">
-                                    <Label className="text-xs">Month</Label>
-                                    <Select
-                                      value={String(calViewMonth.getMonth())}
-                                      onValueChange={(v) =>
-                                        setCalViewMonth(
-                                          (mo) => new Date(mo.getFullYear(), Number(v), 1),
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {monthNames.map((name, i) => (
-                                          <SelectItem key={name} value={String(i)}>
-                                            {name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="space-y-1.5">
-                                    <Label className="text-xs">Year</Label>
-                                    <Select
-                                      value={String(calViewMonth.getFullYear())}
-                                      onValueChange={(v) =>
-                                        setCalViewMonth(
-                                          (mo) => new Date(Number(v), mo.getMonth(), 1),
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {yearOptions.map((y) => (
-                                          <SelectItem key={y} value={String(y)}>
-                                            {y}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    const today = new Date();
-                                    setCalViewMonth(
-                                      new Date(today.getFullYear(), today.getMonth(), 1),
-                                    );
-                                    setCalViewDate(isoOf(today));
-                                    setSchedule((s) => ({ ...s, date: isoOf(today) }));
-                                    setViewMonth(
-                                      new Date(today.getFullYear(), today.getMonth(), 1),
-                                    );
-                                  }}
-                                >
-                                  Today
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  aria-label="Previous month"
-                                  onClick={() =>
-                                    setCalViewMonth(
-                                      (mo) => new Date(mo.getFullYear(), mo.getMonth() - 1, 1),
-                                    )
-                                  }
-                                >
-                                  <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  aria-label="Next month"
-                                  onClick={() =>
-                                    setCalViewMonth(
-                                      (mo) => new Date(mo.getFullYear(), mo.getMonth() + 1, 1),
-                                    )
-                                  }
-                                >
-                                  <ChevronRight className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="mt-2 grid grid-cols-7 text-center text-[0.65rem] font-semibold tracking-wide text-muted-foreground">
-                              {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
-                                <span key={d} className="py-1.5">
-                                  {d}
-                                </span>
-                              ))}
-                            </div>
-
-                            <div className="grid grid-cols-7 grid-rows-6 overflow-hidden rounded-lg border border-border">
-                              {calViewCells.map((cell) => {
-                                const iso = isoOf(cell.date);
-                                const count = interviews.filter(
-                                  (i) => i.date === iso && i.status !== "Cancelled",
-                                ).length;
-                                const dayName = DAY_NAMES[cell.date.getDay()]!;
-                                const schedulable = schedulableDays.includes(dayName);
-                                const free = count === 0 && schedulable;
-                                const full = count > 0 && schedulable && count >= capacityPerSlot;
-                                const selected = calViewDate === iso;
-                                const isToday = iso === TODAY_ISO;
-                                return (
-                                  <button
-                                    key={iso}
-                                    type="button"
-                                    aria-label={cell.date.toDateString()}
-                                    aria-pressed={selected}
-                                    onClick={() => {
-                                      setCalViewDate(iso);
-                                      setSchedule((s) => ({ ...s, date: iso }));
-                                      setViewMonth(
-                                        new Date(cell.date.getFullYear(), cell.date.getMonth(), 1),
-                                      );
-                                    }}
-                                    className={cn(
-                                      "relative min-h-[4.5rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
-                                      free &&
-                                        !selected &&
-                                        "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
-                                      full &&
-                                        !selected &&
-                                        "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
-                                      isToday &&
-                                        !selected &&
-                                        "bg-gold/30 ring-1 ring-inset ring-gold hover:bg-gold/40 hover:shadow-sm",
-                                      !selected &&
-                                        !free &&
-                                        !full &&
-                                        "hover:bg-muted/50 hover:shadow-sm",
-                                      count === 0 &&
-                                        !schedulable &&
-                                        (cell.inMonth
-                                          ? "text-muted-foreground/40"
-                                          : "opacity-40 text-muted-foreground/40"),
-                                      count > 0 &&
-                                        !selected &&
-                                        !full &&
-                                        "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
-                                      selected &&
-                                        free &&
-                                        "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
-                                      selected && full && "bg-red-700 font-semibold text-white",
-                                      selected &&
-                                        !free &&
-                                        !full &&
-                                        "bg-primary font-semibold text-primary-foreground",
-                                    )}
-                                  >
-                                    {cell.date.getDate()}
-                                    {count > 0 && (
-                                      <span
-                                        className={cn(
-                                          "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
-                                          selected && full
-                                            ? "bg-red-900"
-                                            : selected && free
-                                              ? "bg-foreground"
-                                              : "bg-[oklch(0.427_0.166_22.5)] dark:bg-primary",
-                                        )}
-                                      >
-                                        {count}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          {bookingFocus && (
-                            /* DAILY SCHEDULE PREVIEW — booking-mode copy under the calendar
-                         (shared state with the right-column copy above PLACES).
-                         flex-1 fills the stretched left column so this card's bottom
-                         edge always lines up with the Book an Interview card. */
-                            <Card className="flex min-h-0 flex-1 flex-col rounded-xl border-border/70 shadow-sm">
-                              <CardContent className="flex min-h-0 flex-1 flex-col p-5">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
-                                    <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE PREVIEW
-                                  </p>
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
-                                      {calViewPreview.slotsAvailable} slots available
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-6 cursor-pointer gap-1 px-2 text-[0.65rem]"
-                                      title={`Show every applicant scheduled on ${calViewDate} in the Pipeline Overview`}
-                                      onClick={() => showScheduledInPipeline(calViewDate)}
-                                    >
-                                      <Eye className="h-3 w-3" /> View list in Pipeline
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="mt-3">
-                                  <Select
-                                    value={calViewFacilityId}
-                                    onValueChange={setCalViewFacilityId}
-                                  >
-                                    <SelectTrigger className="font-display text-lg font-semibold">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="all">Show all — All rooms</SelectItem>
-                                      {facilities.map((f) => (
-                                        <SelectItem key={f.id} value={f.id}>
-                                          {f.name} · {f.type}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <p className="mt-1 text-xs text-muted-foreground">
-                                    {calViewPreview.room.location} ·{" "}
-                                    {selectedDate.toLocaleDateString("en-US", {
-                                      month: "long",
-                                      day: "numeric",
-                                      year: "numeric",
-                                    })}
-                                  </p>
-                                </div>
-                                {/* Flexible list: fills the stretched card (flex-1) so the card
-                              bottom stays aligned with Book an Interview even with few
-                              items; caps + scrolls once it exceeds ~5 rows. */}
-                                <div className="mt-3 flex max-h-72 min-h-[10rem] flex-1 flex-col space-y-2 overflow-y-auto pr-1">
-                                  {calViewPreview.mapped.map((i) => (
-                                    <button
-                                      type="button"
-                                      key={i.id}
-                                      title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
-                                      onClick={() => selectInPipeline(i.applicant)}
-                                      className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
-                                    >
-                                      <span className="shrink-0 text-xs font-medium">
-                                        {calViewPreview.rangeLabel(i.time, i.endTime)}
-                                      </span>
-                                      <span className="truncate text-right text-xs font-semibold">
-                                        {i.applicant}
-                                        {calViewPreview.showAll && (
-                                          <span className="ml-1.5 font-normal text-muted-foreground">
-                                            · {facilityOfInterview(i)?.name ?? "No room"}
-                                          </span>
-                                        )}
-                                      </span>
-                                    </button>
-                                  ))}
-                                  {calViewPreview.mapped.length === 0 && (
-                                    <p className="flex w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                                      No interviews booked — the whole day is free.
-                                    </p>
-                                  )}
-                                  {calViewPreview.unassignedOnSite.length > 0 && (
-                                    <p className="text-[0.7rem] text-muted-foreground">
-                                      + {calViewPreview.unassignedOnSite.length} on-site
-                                      interview(s) without a reserved room are not listed here.
-                                    </p>
-                                  )}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          )}
-
-                          {/* PLACES — compact strip stretched horizontally below the calendar.
-                          Content height only (same full column width); the taller
-                          calendar cells above take the freed space. */}
-                          <Card
-                            className={cn(
-                              "flex flex-col rounded-xl border-border/70 shadow-sm",
-                              bookingFocus && "hidden",
-                            )}
-                          >
-                            <CardContent className="flex flex-col px-6 py-4">
-                              <div className="flex flex-wrap items-end justify-between gap-2">
-                                <div>
-                                  <p className="text-xs font-semibold tracking-widest">PLACES</p>
-                                  <div className="mt-1 flex items-end gap-2">
-                                    <span className="font-display text-3xl font-bold leading-none">
-                                      {selectedDate.getDate()}
-                                    </span>
-                                    <span className="pb-1 text-sm text-muted-foreground">
-                                      {selectedDate.toLocaleDateString("en-US", {
-                                        month: "long",
-                                        year: "numeric",
-                                        weekday: "long",
-                                      })}
-                                    </span>
-                                  </div>
-                                </div>
-                                <p className="text-[0.7rem] text-muted-foreground">
-                                  Select a room to preview its schedule
-                                </p>
-                              </div>
-
-                              <div className="mt-2 flex flex-col justify-center gap-4 py-2 sm:flex-row sm:items-stretch">
-                                <div className="flex min-w-0 flex-1 flex-col justify-center">
-                                  <p className="text-center text-xs font-semibold tracking-widest underline underline-offset-4">
-                                    ON-SITE
-                                  </p>
-                                  <div className="mt-2 flex items-start justify-center gap-2 sm:gap-6">
-                                    {onSiteRooms.map((room) => {
-                                      const count = reservedCount(room.id);
-                                      const isSelected = calViewFacilityId === room.id;
-                                      return (
-                                        <button
-                                          key={room.id}
-                                          type="button"
-                                          onClick={() => setCalViewFacilityId(room.id)}
-                                          aria-pressed={isSelected}
-                                          title={`${room.name} — ${count > 0 ? `${count} booked` : "free"}`}
-                                          className={cn(
-                                            "flex flex-col items-center gap-1 rounded-xl p-1.5 transition-colors hover:bg-muted/60",
-                                            isSelected &&
-                                              "bg-muted/60 ring-2 ring-inset ring-primary",
-                                          )}
-                                        >
-                                          <span className="relative">
-                                            <span
-                                              className={cn(
-                                                count > 0
-                                                  ? "text-green-700 dark:text-green-400"
-                                                  : "text-foreground",
-                                              )}
-                                            >
-                                              <DoorIcon
-                                                highlighted={count > 0}
-                                                className="h-12 w-9"
-                                              />
-                                            </span>
-                                            {count > 0 && (
-                                              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-white">
-                                                {count}
-                                              </span>
-                                            )}
-                                          </span>
-                                          <span className="text-xs font-semibold tracking-wide">
-                                            {room.name.toUpperCase()}
-                                          </span>
-                                          <span className="text-[0.65rem] text-muted-foreground">
-                                            {count > 0 ? `${count} booked` : "Free"}
-                                          </span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-
-                                <div
-                                  className="w-px self-stretch bg-border/70 max-sm:hidden"
-                                  aria-hidden="true"
-                                />
-                                <div
-                                  className="border-t border-border/70 sm:hidden"
-                                  aria-hidden="true"
-                                />
-
-                                <div className="flex min-w-0 flex-col justify-center sm:w-56 sm:shrink-0">
-                                  <p className="text-center text-xs font-semibold tracking-widest underline underline-offset-4">
-                                    VIRTUAL
-                                  </p>
-                                  {virtualRoom && (
-                                    <div className="mt-2 flex items-center justify-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => setCalViewFacilityId(virtualRoom.id)}
-                                        aria-pressed={calViewFacilityId === virtualRoom.id}
-                                        title={`${virtualRoom.name} — ${virtualCount > 0 ? `${virtualCount} booked` : "free"}`}
-                                        className={cn(
-                                          "flex flex-col items-center gap-1 rounded-xl p-1.5 transition-colors hover:bg-muted/60",
-                                          calViewFacilityId === virtualRoom.id &&
-                                            "bg-muted/60 ring-2 ring-inset ring-primary",
-                                        )}
-                                      >
-                                        <span className="relative">
-                                          <span
-                                            className={cn(
-                                              "flex h-12 w-20 items-center justify-center rounded-lg border-2",
-                                              virtualCount > 0
-                                                ? "border-green-700 bg-green-700/15 text-green-700 dark:border-green-400/20 dark:bg-green-400/10 dark:text-green-400"
-                                                : "border-foreground/70 text-foreground",
-                                            )}
-                                          >
-                                            <Video className="h-6 w-6" />
-                                          </span>
-                                          {virtualCount > 0 && (
-                                            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-white">
-                                              {virtualCount}
-                                            </span>
-                                          )}
-                                        </span>
-                                        <span className="text-xs font-semibold tracking-wide">
-                                          ONLINE INTERVIEW
-                                        </span>
-                                        <span className="text-[0.65rem] text-muted-foreground">
-                                          {virtualCount > 0 ? `${virtualCount} booked` : "Free"}
-                                        </span>
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </div>
-
-                        {bookingFocus && (
-                          /* BOOK AN INTERVIEW — booking-mode copy in the preview slot.
-                       Shared state with the top card (its dialogs stay mounted
-                       there); keep the two copies in sync when editing.
-                       No h-full: self-stretch (with auto height) is what makes
-                       this card fill the row so its bottom edge aligns with the
-                       DAILY SCHEDULE PREVIEW card. */
-                          <Card className="flex min-h-0 flex-col self-stretch rounded-xl border-border/70 shadow-sm">
-                            <CardContent className="flex min-h-0 flex-1 flex-col p-4">
-                              <div className="flex items-start gap-2.5">
-                                <span className="flex h-9 w-9 shrink-0 items-center justify-center text-primary">
-                                  <CalendarClock className="h-5 w-5" />
-                                </span>
-                                <div className="min-w-0">
-                                  <h2 className="font-display text-xl font-semibold">
-                                    Book an Interview
-                                  </h2>
-                                  <p className="text-xs text-muted-foreground">
-                                    Fill in the details to schedule an interview and send an invite.
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="mt-3 flex flex-1 flex-col">
-                                <div className="flex-1 space-y-2">
-                                  {rescheduling && (
-                                    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
-                                      <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                      <span>
-                                        Rescheduling <b>{rescheduling.applicant}</b> from{" "}
-                                        {rescheduling.date} · {rescheduling.time} — confirm to
-                                        update their existing interview.
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <Label className="text-sm">Filter by Department</Label>
-                                      <Select
-                                        value={scheduleDept}
-                                        onValueChange={(v) => {
-                                          setScheduleDept(v);
-                                          setSchedulePosition("all");
-                                          setSchedule((p) => ({ ...p, applicant: "" }));
-                                          setRescheduling(null);
-                                        }}
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="All departments" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="all">All departments</SelectItem>
-                                          {displayDepartments.map((d) => (
-                                            <SelectItem key={d.code} value={d.name}>
-                                              <span className="flex items-center gap-2">
-                                                {d.name}
-                                                {deptHasPosting(d.name) && (
-                                                  <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                                    Posting
-                                                  </span>
-                                                )}
-                                              </span>
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label className="text-sm">Position</Label>
-                                      <Select
-                                        value={schedulePosition}
-                                        onValueChange={(v) => {
-                                          setSchedulePosition(v);
-                                          setSchedule((p) => ({ ...p, applicant: "" }));
-                                          setRescheduling(null);
-                                        }}
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="All positions" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="all">All positions</SelectItem>
-                                          {displayPositions
-                                            .filter(
-                                              (p) =>
-                                                scheduleDept === "all" ||
-                                                p.department === scheduleDept,
-                                            )
-                                            .map((p) => (
-                                              <SelectItem key={p.id} value={p.title}>
-                                                <span className="flex items-center gap-2">
-                                                  {p.title}
-                                                  {activeJobTitles.has(p.title) && (
-                                                    <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                                      Posting
-                                                    </span>
-                                                  )}
-                                                </span>
-                                              </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label className="text-sm">
-                                      <span className="text-primary">1.</span> Select Applicant
-                                    </Label>
-                                    <Select
-                                      value={schedule.applicant}
-                                      onValueChange={(v) => {
-                                        setSchedule({ ...schedule, applicant: v });
-                                        if (v !== rescheduling?.applicant) setRescheduling(null);
-                                        if (v) setBookingFocus(true);
-                                      }}
-                                    >
-                                      <SelectTrigger ref={bookSelectRef}>
-                                        <SelectValue placeholder="Select applicant" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {scheduleApplicants.length === 0 && (
-                                          <div className="px-2 py-3 text-xs text-muted-foreground">
-                                            No accepted applicants available in this department.
-                                          </div>
-                                        )}
-                                        {scheduleApplicants.map((a) => (
-                                          <SelectItem key={a.id} value={a.name}>
-                                            {a.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label className="text-sm">
-                                      <span className="text-primary">2.</span> Interview Date
-                                    </Label>
-                                    <Input
-                                      type="date"
-                                      value={schedule.date}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (!val) return;
-                                        setSchedule((p) => ({ ...p, date: val }));
-                                        // Sync calendar view to the selected date
-                                        const d = new Date(val);
-                                        if (!isNaN(d.getTime())) {
-                                          setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-                                        }
-                                      }}
-                                    />
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                      <Label className="text-sm">
-                                        <span className="text-primary">3.</span> Select Time Slot
-                                      </Label>
-                                      <span className="text-[0.7rem] text-muted-foreground">
-                                        {slotSettings.slotCount} slots — {capacityPerSlot}{" "}
-                                        applicants each
-                                      </span>
-                                    </div>
-                                    <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                                      <Input
-                                        type="time"
-                                        aria-label="Custom start time"
-                                        className="h-9 w-full"
-                                        value={customTime}
-                                        onChange={(e) => applyCustomRange("start", e.target.value)}
-                                      />
-                                      <span className="text-center text-xs text-muted-foreground">
-                                        to
-                                      </span>
-                                      <Input
-                                        type="time"
-                                        aria-label="Custom end time"
-                                        className="h-9 w-full"
-                                        value={customEnd}
-                                        onChange={(e) => applyCustomRange("end", e.target.value)}
-                                      />
-                                    </div>
-                                    {((customEnd && !schedule.endTime) ||
-                                      (customTime && schedule.endTime) ||
-                                      !customTime) && (
-                                      <p className="text-[0.7rem] text-muted-foreground">
-                                        {customEnd && !schedule.endTime ? (
-                                          <span className="text-destructive">
-                                            {customTime
-                                              ? "End time can't equal the start time."
-                                              : "Enter a start time first."}
-                                          </span>
-                                        ) : customTime && schedule.endTime ? (
-                                          `Using ${schedule.time} – ${schedule.endTime}.`
-                                        ) : (
-                                          "Pick a start time — e.g. 10:00."
-                                        )}
-                                      </p>
-                                    )}
-                                  </div>
-
-                                  <div className="space-y-3">
-                                    <div className="space-y-2">
-                                      <Label className="text-sm">
-                                        <span className="text-primary">4.</span> Interview Details
-                                      </Label>
-                                      <Select
-                                        value={schedule.mode}
-                                        onValueChange={(v) =>
-                                          setSchedule({
-                                            ...schedule,
-                                            mode: v,
-                                            // Virtual needs no room — drop any picked facility.
-                                            facilityId: v === "Virtual" ? "" : schedule.facilityId,
-                                          })
-                                        }
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="On-site">On-site</SelectItem>
-                                          <SelectItem value="Virtual">Virtual</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label className="text-sm">
-                                        <span className="text-primary">5.</span> Interviewer
-                                      </Label>
-                                      <Select
-                                        value={schedule.interviewer}
-                                        onValueChange={(v) =>
-                                          setSchedule({ ...schedule, interviewer: v })
-                                        }
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Select interviewer" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {scheduleInterviewers.map((s) => (
-                                            <SelectItem key={s.id} value={s.name}>
-                                              {s.name} — {s.role}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label className="text-sm">
-                                        <span className="text-primary">6.</span>{" "}
-                                        {schedule.mode === "On-site"
-                                          ? "Request Facility"
-                                          : "Facility"}
-                                      </Label>
-                                      {schedule.mode === "On-site" ? (
-                                        <Select
-                                          value={schedule.facilityId}
-                                          onValueChange={(v) =>
-                                            setSchedule({ ...schedule, facilityId: v })
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="Select facility" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {facilities
-                                              .filter((f) => f.type === schedule.mode)
-                                              .map((f) => (
-                                                <SelectItem key={f.id} value={f.id}>
-                                                  {f.name} · {f.type} — cap. {f.capacity}
-                                                </SelectItem>
-                                              ))}
-                                          </SelectContent>
-                                        </Select>
-                                      ) : (
-                                        <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
-                                          <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                          <span>
-                                            No facility request needed — Virtual interviews are
-                                            held over Zoom. The applicant is emailed the{" "}
-                                            <b>1st Join link</b>, <b>2nd Continue link</b>, password
-                                            and interviewer name.
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="mt-2 space-y-2 border-t border-border/30 pt-2">
-                                  <Button
-                                    className="w-full"
-                                    size="lg"
-                                    disabled={bookingMissingFields.length > 0}
-                                    onClick={confirmSchedule}
-                                    title={
-                                      bookingMissingFields.length > 0
-                                        ? `Please fill in: ${bookingMissingFields.join(", ")}`
-                                        : undefined
-                                    }
-                                  >
-                                    <Mail className="mr-2 h-4 w-4" />{" "}
-                                    {schedule.mode === "On-site"
-                                      ? "Request Facility to Scheduled"
-                                      : "Schedule Interview"}
-                                  </Button>
-                                  {bookingMissingFields.length > 0 && (
-                                    <p className="text-center text-xs text-muted-foreground">
-                                      Fill in:{" "}
-                                      <span className="font-medium">
-                                        {bookingMissingFields.join(", ")}
-                                      </span>{" "}
-                                      to enable.
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* RIGHT — DAILY SCHEDULE PREVIEW in normal mode;
-                        hidden while bookingFocus (a copy sits under the calendar
-                        and Book an Interview takes this slot) */}
-                        <Card
-                          className={cn(
-                            "flex min-h-0 flex-col self-stretch rounded-xl border-border/70 shadow-sm",
-                            bookingFocus && "hidden",
-                          )}
-                        >
-                          <CardContent className="flex min-h-0 flex-1 flex-col p-5">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
-                                <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE PREVIEW
-                              </p>
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
-                                  {calViewPreview.slotsAvailable} slots available
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-6 cursor-pointer gap-1 px-2 text-[0.65rem]"
-                                  title={`Show every applicant scheduled on ${calViewDate} in the Pipeline Overview`}
-                                  onClick={() => showScheduledInPipeline(calViewDate)}
-                                >
-                                  <Eye className="h-3 w-3" /> View list in Pipeline
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="mt-3">
-                              <Select
-                                value={calViewFacilityId}
-                                onValueChange={setCalViewFacilityId}
-                              >
-                                <SelectTrigger className="font-display text-lg font-semibold">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Show all — All rooms</SelectItem>
-                                  {facilities.map((f) => (
-                                    <SelectItem key={f.id} value={f.id}>
-                                      {f.name} · {f.type}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {calViewPreview.room.location} ·{" "}
-                                {selectedDate.toLocaleDateString("en-US", {
-                                  month: "long",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })}
-                              </p>
-                            </div>
-                            <div className="mt-3 flex min-h-0 flex-1 flex-col space-y-2">
-                              {calViewPreview.mapped.map((i) => (
-                                <button
-                                  type="button"
-                                  key={i.id}
-                                  title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
-                                  onClick={() => selectInPipeline(i.applicant)}
-                                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
-                                >
-                                  <span className="shrink-0 text-xs font-medium">
-                                    {calViewPreview.rangeLabel(i.time, i.endTime)}
-                                  </span>
-                                  <span className="truncate text-right text-xs font-semibold">
-                                    {i.applicant}
-                                    {calViewPreview.showAll && (
-                                      <span className="ml-1.5 font-normal text-muted-foreground">
-                                        · {facilityOfInterview(i)?.name ?? "No room"}
-                                      </span>
-                                    )}
-                                  </span>
-                                </button>
-                              ))}
-                              {calViewPreview.mapped.length === 0 && (
-                                <p className="flex w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                                  No interviews booked — the whole day is free.
-                                </p>
-                              )}
-                              {calViewPreview.unassignedOnSite.length > 0 && (
-                                <p className="text-[0.7rem] text-muted-foreground">
-                                  + {calViewPreview.unassignedOnSite.length} on-site interview(s)
-                                  without a reserved room are not listed here.
-                                </p>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
+                  <DialogFooter className="flex-col gap-2 sm:flex-col">
+                    {bookingMissingFields.length > 0 && (
+                      <p className="text-center text-xs text-muted-foreground">
+                        Fill in:{" "}
+                        <span className="font-medium">{bookingMissingFields.join(", ")}</span> to
+                        enable.
+                      </p>
+                    )}
+                    <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button variant="outline" onClick={() => setBookingFocus(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        disabled={bookingMissingFields.length > 0}
+                        onClick={confirmSchedule}
+                        title={
+                          bookingMissingFields.length > 0
+                            ? `Please fill in: ${bookingMissingFields.join(", ")}`
+                            : undefined
+                        }
+                      >
+                        <Mail className="mr-2 h-4 w-4" />{" "}
+                        {schedule.mode === "On-site"
+                          ? "Request facility & schedule"
+                          : "Schedule interview"}
+                      </Button>
+                    </div>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               {/* Pipeline Overview list — schedule + pipeline actions live here */}
               <Card ref={pipelineListRef} className="scroll-mt-4 border-border/70">
                 <CardContent className="p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                        <ClipboardCheck className="h-5 w-5 text-primary" />
-                        Pipeline Overview
-                      </h2>
-                    </div>
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <CalendarClock className="h-4.5 w-4.5 text-primary" />
+                      Interview schedule
+                    </h2>
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="relative">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -14959,26 +14778,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <X className="mr-1 h-3.5 w-3.5" /> Clear
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant={showArchivedAndBlocked ? "secondary" : "outline"}
-                        className="h-9 gap-1.5 px-3 text-xs"
-                        onClick={() => {
-                          setShowArchivedAndBlocked((v) => !v);
-                          setPipelineResult("all");
-                        }}
-                        title="Toggle between active pipeline and archived/blocked applicants"
-                      >
-                        <Archive className="h-3.5 w-3.5" />
-                        {showArchivedAndBlocked ? "Show Active Pipeline" : "Show Archived & Blocked"}
-                      </Button>
                     </div>
                   </div>
-                  <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
+                  <div className="mt-4 [&_td]:align-top">
                     <ListBody>
-                      <Table className="table-fixed text-xs min-w-[980px]">
+                      <Table className="table-fixed text-xs min-w-[920px]">
                         <TableHeader>
-                          <TableRow>
+                          <TableRow className="border-border/50 hover:bg-transparent">
                             <SortHead
                               sortKey="applicant"
                               sort={pipelineSort.sort}
@@ -14988,66 +14794,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               Applicant
                             </SortHead>
                             <SortHead
-                              sortKey="applied"
-                              sort={pipelineSort.sort}
-                              onSort={pipelineSort.toggle}
-                              className="w-[8%]"
-                            >
-                              Applied
-                            </SortHead>
-                            <SortHead
-                              sortKey="stage"
-                              sort={pipelineSort.sort}
-                              onSort={pipelineSort.toggle}
-                              className="w-[9%]"
-                            >
-                              Current Stage
-                            </SortHead>
-                            <SortHead
-                              sortKey="screening"
-                              sort={pipelineSort.sort}
-                              onSort={pipelineSort.toggle}
-                              className="w-[7%]"
-                            >
-                              Screening
-                            </SortHead>
-                            <SortHead
                               sortKey="interview"
                               sort={pipelineSort.sort}
                               onSort={pipelineSort.toggle}
-                              className="w-[12%]"
+                              className="w-[26%]"
                             >
-                              Interview
+                              Schedule
                             </SortHead>
                             <SortHead
                               sortKey="assessment"
                               sort={pipelineSort.sort}
                               onSort={pipelineSort.toggle}
-                              className="w-[10%]"
+                              className="w-[18%]"
                             >
-                              Assessment
+                              Result
                             </SortHead>
-                            <SortHead
-                              sortKey="practical"
-                              sort={pipelineSort.sort}
-                              onSort={pipelineSort.toggle}
-                              className="w-[9%]"
-                            >
-                              Practical
-                            </SortHead>
-                            <SortHead
-                              sortKey="final"
-                              sort={pipelineSort.sort}
-                              onSort={pipelineSort.toggle}
-                              className="w-[9%]"
-                            >
-                              Final
-                            </SortHead>
-                            <TableHead className="w-[12%]">Actions</TableHead>
+                            <TableHead className="w-[32%] text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {loading && <TableRowsSkeleton cols={9} rows={5} />}
+                          {loading && <TableRowsSkeleton cols={4} rows={5} />}
                           {!loading &&
                             pipelinePage.pageItems.map(
                               ({
@@ -15089,12 +14855,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   interview.status === "Cancelled";
                                 const showRebookRejected = isRejected && !isHired && !assessment;
                                 const showRebook = showRebookCancelled || showRebookRejected;
-                                const showStart =
-                                  !!interview &&
-                                  !assessment &&
-                                  canProgress &&
-                                  interview.status !== "Cancelled" &&
-                                  !isRejected;
                                 // Facility verification gate — mirrors the Interview
                                 // Scheduling rule that a booking is only confirmed once
                                 // its facility request is approved: while approval is
@@ -15108,82 +14868,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   (facilityStatuses[bookingForFacility.id] ??
                                     bookingForFacility.facilityStatus) ===
                                     "Waiting for Facility Approval";
-                                // 2 · Reschedule — any live booking that is not done
-                                // yet (no assessment record) can be moved to a new
-                                // slot. A stale "Completed" without an assessment
-                                // counts as still open.
+                                // 2 · Reschedule — only a still-open booking can
+                                // move to a new slot. A completed interview is
+                                // final; the assessment test comes next.
                                 const showReschedule =
                                   !!liveInterview &&
                                   !assessment &&
                                   canProgress &&
                                   liveInterview.status !== "Cancelled" &&
                                   !isInterviewLocked(liveInterview);
-                                // Cancel — only while still Scheduled (or stale
-                                // "Completed" with no assessment) and not yet
-                                // interviewed. Cancelled / No Show / truly-done
-                                // rows never show Cancel.
-                                const showCancel =
-                                  !!liveInterview &&
+                                /** Interview Schedule action: only pre-interview
+                                 *  applicants (or a re-bookable cancelled one). */
+                                const canSchedule =
+                                  canProgress &&
+                                  !assessment &&
+                                  (showAccept || showSchedule || showRebook);
+                                /** Start Interview — only for a confirmed booking whose day
+                                 *  has arrived (or passed) and whose facility is approved. */
+                                const canStartInterview =
+                                  !!interview &&
                                   !assessment &&
                                   canProgress &&
-                                  (liveInterview.status === "Scheduled" ||
-                                    liveInterview.status === "Completed") &&
-                                  !isInterviewLocked(liveInterview);
-                                const startWindow = showStart
-                                  ? getInterviewWindow(
-                                      liveInterview?.date ?? interview?.date ?? "",
-                                      liveInterview?.time ?? interview?.time ?? "",
-                                      interviewDurationMinutes(
-                                        liveInterview?.time ?? interview?.time ?? "",
-                                        liveInterview?.endTime ?? interview?.endTime,
-                                        slotSettings.intervalMinutes,
-                                      ),
-                                      new Date(nowMs),
-                                    )
-                                  : "past-day";
-                                // Startable only inside the slot window
-                                // ([start, start + duration)) — not the whole day.
-                                const startToday = startWindow === "live";
-                                const showStartTest = !test && readyForTest && canProgress;
-                                const showStartPractical =
-                                  requiresPrac && !practical && readyForPractical && canProgress;
-                                const showCompleteFinal = !final && readyForFinal && canProgress;
-                                const decided = isHired || isRejected;
-                                // Offer workflow — the 7-day response window and
-                                // the HR-recorded reply drive the Final
-                                // Evaluation column and the offer actions.
-                                const offer = offerStateOf(a);
-                                const offerAnswered =
-                                  offer !== null &&
-                                  (offer.status === "Accepted" ||
-                                    offer.status === "Declined" ||
-                                    offer.expired);
-                                const canAcceptApplicant =
-                                  !!final &&
-                                  final.recommendation !== "Not Recommended" &&
-                                  !decided &&
-                                  !offerAnswered;
-                                const canDeclineApplicant =
-                                  !!final && !isHired && offer?.status !== "Declined";
-                                const showSendOffer =
-                                  !!final &&
-                                  final.recommendation !== "Not Recommended" &&
-                                  !decided &&
-                                  (offer === null ||
-                                    (offer.status === "Pending" && !offer.expired));
-                                const hasStageActions =
-                                  showAccept ||
-                                  showSchedule ||
-                                  showStart ||
-                                  showRebook ||
-                                  showReschedule ||
-                                  showCancel ||
-                                  showStartTest ||
-                                  showStartPractical ||
-                                  showCompleteFinal ||
-                                  showSendOffer;
-                                const hasViews = !!assessment || !!test || !!practical || !!final;
-                                const hasMore = hasStageActions || hasViews;
+                                  !facilityPending &&
+                                  interview.status !== "Cancelled" &&
+                                  interview.status !== "No Show" &&
+                                  interview.date <= TODAY_ISO;
                                 return (
                                   <TableRow
                                     key={a.id}
@@ -15203,9 +14912,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         </Avatar>
                                         <div className="min-w-0 flex-1">
                                           <div className="flex items-center gap-1.5 flex-wrap">
-                                            <p className="truncate font-medium" title={a.name}>
+                                            <button
+                                              type="button"
+                                              onClick={() => setPreviewApplicant(a)}
+                                              className="truncate text-left font-medium text-foreground hover:text-primary hover:underline"
+                                              title={a.name}
+                                            >
                                               {a.name}
-                                            </p>
+                                            </button>
                                             {a.isActiveBlocked && (
                                               <Badge
                                                 variant="destructive"
@@ -15229,118 +14943,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           >
                                             {a.id} · {a.position}
                                           </p>
-                                          {a.email ? (
-                                            <p
-                                              className="truncate text-muted-foreground"
-                                              title={a.email}
-                                            >
-                                              {a.email}
-                                            </p>
-                                          ) : null}
-                                          {a.phone ? (
-                                            <p
-                                              className="truncate text-muted-foreground"
-                                              title={a.phone}
-                                            >
-                                              {a.phone}
-                                            </p>
-                                          ) : null}
                                         </div>
                                       </div>
                                     </TableCell>
                                     <TableCell className="max-w-0">
-                                      {(() => {
-                                        const shown = displayAppliedAt(a.appliedAt);
-                                        const [d, ...rest] = shown.split(" ");
-                                        const t = rest.join(" ");
-                                        return (
-                                          <>
-                                            <p className="truncate font-medium" title={shown}>
-                                              {d || "—"}
-                                            </p>
-                                            {t ? (
-                                              <p className="truncate text-muted-foreground">{t}</p>
-                                            ) : null}
-                                          </>
-                                        );
-                                      })()}
-                                    </TableCell>
-                                    <TableCell className="max-w-0">
-                                      {(() => {
-                                        const step = pipelineStepOf(a.stage);
-                                        return step ? (
-                                          <>
-                                            <p className="truncate font-medium" title={a.stage}>
-                                              {a.stage}
-                                            </p>
-                                            <p className="truncate text-muted-foreground">{step}</p>
-                                          </>
-                                        ) : (
-                                          <p className="truncate font-medium" title={a.stage}>
-                                            {a.stage}
-                                          </p>
-                                        );
-                                      })()}
-                                    </TableCell>
-                                    <TableCell className="max-w-0">
-                                      <p className="font-display text-sm font-semibold">
-                                        {a.score}%
-                                      </p>
-                                      <p
-                                        className={cn(
-                                          "truncate text-xs font-semibold",
-                                          a.stage === "Rejected"
-                                            ? "text-destructive"
-                                            : a.score >= passing
-                                              ? "text-success"
-                                              : "text-caution",
-                                        )}
-                                      >
-                                        {a.stage === "Rejected"
-                                          ? "Rejected"
-                                          : a.score >= passing
-                                            ? "Passed"
-                                            : "Below passing"}
-                                      </p>
-                                      {(a.docCount ?? 0) > 0 ? (
-                                        <p
-                                          className="truncate text-xs font-medium text-primary"
-                                          title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
-                                        >
-                                          {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
-                                        </p>
-                                      ) : null}
-                                      {/* Screening verdict — below the supporting
-                                        documents, or right below Passed / Below
-                                        passing when no documents were uploaded. */}
-                                      <p
-                                        className={cn(
-                                          "mt-1 inline-flex rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold",
-                                          statusMeta[a.status].className,
-                                        )}
-                                        title={statusMeta[a.status].label}
-                                      >
-                                        {statusMeta[a.status].label}
-                                      </p>
-                                    </TableCell>
-                                    <TableCell className="max-w-0">
-                                      {needsSchedule &&
-                                      a.stage !== "Hired" &&
-                                      a.stage !== "Rejected" ? (
-                                        <>
-                                          <p className="truncate text-muted-foreground">
-                                            Accepted — no date yet
-                                          </p>
-                                        </>
-                                      ) : !interview ? (
-                                        <p className="truncate text-muted-foreground">
-                                          {a.stage === "Rejected"
-                                            ? "Rejected"
-                                            : a.stage === "Hired"
-                                              ? "Hired"
-                                              : "Need to Schedule"}
-                                        </p>
-                                      ) : (
+                                      {interview ? (
                                         <>
                                           <p
                                             className="truncate font-medium"
@@ -15351,500 +14958,196 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           <p className="truncate text-muted-foreground">
                                             {interview.mode} · {interview.interviewer}
                                           </p>
-                                          {interview.interview_notes &&
-                                            interview.interview_notes.trim() !== "" && (
-                                              <p
-                                                className="mt-0.5 flex items-center gap-1 truncate text-[0.7rem] font-medium text-primary"
-                                                title={`Interview notes: ${interview.interview_notes}`}
-                                              >
-                                                <FileText className="h-3 w-3 shrink-0" /> Notes
-                                                saved
+                                          {interview.facilityName ? (
+                                            <p className="truncate text-muted-foreground">
+                                              {interview.facilityName}
+                                            </p>
+                                          ) : null}
+                                          {facilityPending &&
+                                          !assessment &&
+                                          interview.status !== "Cancelled" ? (
+                                            <p
+                                              className="truncate text-[0.7rem] font-medium text-caution"
+                                              title="The facility request for this booking is still awaiting approval — the schedule is confirmed once approved"
+                                            >
+                                              Awaiting facility approval
+                                            </p>
+                                          ) : null}
+                                        </>
+                                      ) : (
+                                        <p className="truncate text-muted-foreground">
+                                          {needsSchedule && canProgress
+                                            ? "Accepted — no date yet"
+                                            : a.stage === "Rejected"
+                                              ? "Rejected"
+                                              : a.stage === "Hired"
+                                                ? "Hired"
+                                                : "Need to schedule"}
+                                        </p>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="max-w-0">
+                                      {(() => {
+                                        const verdict = interview
+                                          ? interviewOutcomes.get(interview.id)
+                                          : undefined;
+                                        const label = verdict
+                                          ? verdict === "Completed"
+                                            ? "Interviewed"
+                                            : verdict
+                                          : !interview
+                                            ? "No interview"
+                                            : interview.status === "Cancelled"
+                                              ? "Cancelled"
+                                              : interview.status === "No Show"
+                                                ? "No Show"
+                                                : interview.status === "Completed"
+                                                  ? "Completed"
+                                                  : interview.date === TODAY_ISO
+                                                    ? "Scheduled today"
+                                                    : "Scheduled";
+                                        return (
+                                          <>
+                                            <span
+                                              className={cn(
+                                                "inline-flex rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold",
+                                                verdict === "Passed"
+                                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                                  : verdict === "Failed" ||
+                                                      interview?.status === "Cancelled" ||
+                                                      interview?.status === "No Show"
+                                                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                                                    : verdict === "Completed"
+                                                      ? "border-border bg-muted/60 text-muted-foreground"
+                                                      : "border-primary/40 bg-primary/10 text-primary",
+                                              )}
+                                            >
+                                              {label}
+                                            </span>
+                                            {assessment ? (
+                                              <p className="mt-1 truncate text-muted-foreground">
+                                                {assessment.total}% · {assessment.date}
+                                              </p>
+                                            ) : (
+                                              <p className="mt-1 truncate text-muted-foreground">
+                                                {interview?.status === "Scheduled"
+                                                  ? "Awaiting evaluation"
+                                                  : (interview?.status ?? "Not booked yet")}
                                               </p>
                                             )}
-                                          {(() => {
-                                            // An interview only counts as done when its
-                                            // assessment record exists. A stale
-                                            // "Completed" without assessment is still an
-                                            // open booking → Scheduled colors.
-                                            const done = !!assessment;
-                                            const liveDay = liveInterview?.date ?? interview.date;
-                                            const isToday = liveDay === TODAY_ISO;
-                                            const label = done
-                                              ? `${assessment.result} · ${assessment.total}%`
-                                              : interview.status === "Cancelled"
-                                                ? "Cancelled"
-                                                : interview.status === "No Show"
-                                                  ? "No Show"
-                                                  : isToday
-                                                    ? "Scheduled Today"
-                                                    : "Scheduled";
-                                            const tone = done
-                                              ? assessment.result === "Passed"
-                                                ? "text-success"
-                                                : "text-destructive"
-                                              : interview.status === "Cancelled" ||
-                                                  interview.status === "No Show"
-                                                ? "text-destructive"
-                                                : "text-primary";
-                                            return (
-                                              <>
-                                                <p
-                                                  className={cn(
-                                                    "truncate text-xs font-semibold",
-                                                    tone,
-                                                  )}
-                                                >
-                                                  {label}
-                                                </p>
-                                                {facilityPending &&
-                                                !done &&
-                                                interview.status !== "Cancelled" &&
-                                                interview.status !== "No Show" ? (
-                                                  <p
-                                                    className="truncate text-[0.7rem] font-medium text-caution"
-                                                    title="The facility request for this booking is still awaiting approval — the schedule is confirmed once approved"
-                                                  >
-                                                    Awaiting facility approval
-                                                  </p>
-                                                ) : null}
-                                              </>
-                                            );
-                                          })()}
-                                        </>
-                                      )}
-                                    </TableCell>
-                                    <TableCell className="max-w-0">
-                                      {!requiresTest ? (
-                                        /* Roles that skip the assessment test: the stage reads
-                                         as completed (green) once the interview is passed. */
-                                        <p
-                                          className={cn(
-                                            "truncate",
-                                            assessment?.result === "Passed" ||
-                                              milestoneIndexOf(a) > 2
-                                              ? "text-xs font-semibold text-success"
-                                              : "text-muted-foreground",
-                                          )}
-                                          title="This position skips the assessment test (Core HCM)"
-                                        >
-                                          {assessment?.result === "Passed" ||
-                                          milestoneIndexOf(a) > 2
-                                            ? "Not required — Completed"
-                                            : "Not required"}
-                                        </p>
-                                      ) : test ? (
-                                        <>
-                                          <p className="font-display text-sm font-semibold">
-                                            {test.total}%
-                                          </p>
-                                          <p
-                                            className={cn(
-                                              "truncate text-xs font-semibold",
-                                              test.result === "Passed"
-                                                ? "text-success"
-                                                : "text-destructive",
-                                            )}
-                                          >
-                                            {test.result}
-                                          </p>
-                                          <p
-                                            className="truncate text-muted-foreground"
-                                            title={test.title}
-                                          >
-                                            {test.title}
-                                          </p>
-                                        </>
-                                      ) : readyForTest &&
-                                        a.stage !== "Hired" &&
-                                        a.stage !== "Rejected" ? (
-                                        <>
-                                          <p className="truncate text-muted-foreground">
-                                            Ready for test — link emailed, or resend from Actions
-                                          </p>
-                                        </>
-                                      ) : a.stage === "Rejected" ? (
-                                        <p className="truncate text-xs font-semibold text-destructive">
-                                          Rejected
-                                        </p>
-                                      ) : a.stage === "Hired" ? (
-                                        <p className="truncate text-muted-foreground">Hired</p>
-                                      ) : (
-                                        <p className="truncate text-muted-foreground">
-                                          Waiting for interview
-                                        </p>
-                                      )}
-                                    </TableCell>
-                                    <TableCell className="max-w-0">
-                                      {!requiresPrac ? (
-                                        /* Roles that skip the practical: the stage reads
-                                         as completed (green) once the applicant has
-                                         moved past it — the assessment test is the
-                                         step right before it there. */
-                                        <p
-                                          className={cn(
-                                            "truncate",
-                                            test?.result === "Passed" || milestoneIndexOf(a) > 3
-                                              ? "text-xs font-semibold text-success"
-                                              : "text-muted-foreground",
-                                          )}
-                                          title="This position skips the practical stage"
-                                        >
-                                          {test?.result === "Passed" || milestoneIndexOf(a) > 3
-                                            ? "Not required — Completed"
-                                            : "Not required"}
-                                        </p>
-                                      ) : practical ? (
-                                        <>
-                                          <p className="font-display text-sm font-semibold">
-                                            {practical.total}%
-                                          </p>
-                                          <p
-                                            className={cn(
-                                              "truncate text-xs font-semibold",
-                                              practical.result === "Passed"
-                                                ? "text-success"
-                                                : "text-destructive",
-                                            )}
-                                          >
-                                            {practical.result}
-                                          </p>
-                                          <p
-                                            className="truncate text-muted-foreground"
-                                            title={practical.taskTitle}
-                                          >
-                                            {practical.taskTitle}
-                                          </p>
-                                        </>
-                                      ) : readyForPractical &&
-                                        a.stage !== "Hired" &&
-                                        a.stage !== "Rejected" ? (
-                                        <>
-                                          <p className="truncate text-muted-foreground">
-                                            Ready for practical — start from Actions
-                                          </p>
-                                        </>
-                                      ) : a.stage === "Rejected" ? (
-                                        <p className="truncate text-xs font-semibold text-destructive">
-                                          Rejected
-                                        </p>
-                                      ) : a.stage === "Hired" ? (
-                                        <p className="truncate text-muted-foreground">Hired</p>
-                                      ) : (
-                                        <p className="truncate text-muted-foreground">
-                                          {test?.result === "Passed"
-                                            ? "Up next — record it"
-                                            : "Waiting for assessment"}
-                                        </p>
-                                      )}
-                                    </TableCell>
-                                    <TableCell className="max-w-0">
-                                      {final ? (
-                                        <>
-                                          <p
-                                            className={cn(
-                                              "truncate text-xs font-semibold",
-                                              final.recommendation === "Recommended for Hire"
-                                                ? "text-success"
-                                                : final.recommendation === "For Another Position"
-                                                  ? "text-warning"
-                                                  : "text-destructive",
-                                            )}
-                                            title={final.recommendation}
-                                          >
-                                            {final.recommendation}
-                                          </p>
-                                          <p className="truncate text-muted-foreground">
-                                            {final.date}
-                                          </p>
-                                          <p
-                                            className={cn(
-                                              "truncate text-xs font-semibold",
-                                              offer === null
-                                                ? final.recommendation === "Not Recommended"
-                                                  ? "text-destructive"
-                                                  : "text-warning"
-                                                : offer.status === "Accepted"
-                                                  ? "text-success"
-                                                  : offer.status === "Pending" && !offer.expired
-                                                    ? "text-warning"
-                                                    : "text-destructive",
-                                            )}
-                                            title={
-                                              offer
-                                                ? offerStateLabel(offer)
-                                                : final.recommendation === "Not Recommended"
-                                                  ? "Not passed — recorded as Failed in the pipeline"
-                                                  : "No offer email sent yet — use Actions → Send offer email"
-                                            }
-                                          >
-                                            {offer
-                                              ? offerStateLabel(offer)
-                                              : final.recommendation === "Not Recommended"
-                                                ? "Failed — not passed"
-                                                : "Offer not sent"}
-                                          </p>
-                                        </>
-                                      ) : readyForFinal &&
-                                        a.stage !== "Hired" &&
-                                        a.stage !== "Rejected" ? (
-                                        <>
-                                          <p className="truncate text-muted-foreground">
-                                            Ready to evaluate — start from Actions
-                                          </p>
-                                        </>
-                                      ) : a.stage === "Rejected" ? (
-                                        <p className="truncate text-muted-foreground">Rejected</p>
-                                      ) : a.stage === "Hired" ? (
-                                        <p className="truncate text-muted-foreground">Hired</p>
-                                      ) : (
-                                        <p className="truncate text-muted-foreground">
-                                          Waiting for earlier stages
-                                        </p>
-                                      )}
+                                          </>
+                                        );
+                                      })()}
                                     </TableCell>
                                     <TableCell>
-                                      <div className="flex flex-nowrap items-center justify-start gap-1.5">
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              className="h-7 w-7 shrink-0 cursor-pointer px-0"
-                                              title="Stage actions"
-                                            >
-                                              <MoreHorizontal className="h-3.5 w-3.5" />
-                                            </Button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="end" className="w-52">
-                                            {showAccept ? (
-                                              <DropdownMenuItem onClick={() => openReview(a)}>
-                                                Accept &amp; schedule
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {showSchedule ? (
-                                              <DropdownMenuItem onClick={() => openReview(a)}>
-                                                Schedule interview
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {showRebook ? (
-                                              <DropdownMenuItem
-                                                onClick={() =>
-                                                  interview
-                                                    ? rebookInterview(interview)
-                                                    : rebookRejectedApplicant(a)
-                                                }
-                                              >
-                                                Re-book interview
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {showStart && interview ? (
-                                              // Wrapper carries the tooltip: a disabled menu item
-                                              // has pointer-events disabled, so a `title` on the
-                                              // item itself would never surface on hover.
-                                              <span
-                                                className="block"
-                                                title={
-                                                  facilityPending
-                                                    ? "Waiting for facility approval — the interview can start once the facility request is approved"
-                                                    : startWindow === "live"
-                                                      ? undefined
-                                                      : startWindow === "upcoming"
-                                                        ? `Starts at ${liveInterview?.time ?? interview?.time} (${interviewDurationMinutes(
-                                                            liveInterview?.time ??
-                                                              interview?.time ??
-                                                              "",
-                                                            liveInterview?.endTime ??
-                                                              interview?.endTime,
-                                                            slotSettings.intervalMinutes,
-                                                          )} min)`
-                                                        : startWindow === "future-day"
-                                                          ? "Available on interview day"
-                                                          : "Interview window has passed"
-                                                }
-                                              >
-                                                <DropdownMenuItem
-                                                  disabled={!startToday || facilityPending}
-                                                  onClick={
-                                                    startToday && !facilityPending
-                                                      ? () =>
-                                                          interview?.mode === "Virtual"
-                                                            ? openZoomRoom(a)
-                                                            : startInterviewFor(a)
-                                                      : undefined
-                                                  }
-                                                >
-                                                  {interview?.mode === "Virtual" ? (
-                                                    <span className="flex items-center gap-1.5">
-                                                      <Video className="h-3.5 w-3.5" /> Start Zoom
-                                                      interview
-                                                    </span>
-                                                  ) : (
-                                                    "Start interview"
-                                                  )}
-                                                </DropdownMenuItem>
-                                              </span>
-                                            ) : null}
-                                            {showReschedule && liveInterview ? (
-                                              <DropdownMenuItem
-                                                onClick={() => rescheduleInterview(liveInterview)}
-                                              >
-                                                Reschedule interview
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {showCancel && liveInterview ? (
-                                              <DropdownMenuItem
-                                                className="text-destructive focus:text-destructive"
-                                                onClick={() =>
-                                                  setCancelInterview(
-                                                    interviews.find(
-                                                      (x) => x.id === liveInterview.id,
-                                                    ) ?? liveInterview,
-                                                  )
-                                                }
-                                              >
-                                                <X className="mr-2 h-3.5 w-3.5" /> Cancel interview
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {showStartTest ? (
-                                              <DropdownMenuItem
-                                                disabled={inviteBusyId === a.id}
-                                                onClick={() => void copyApplicantTestLink(a)}
-                                              >
-                                                Email applicant test link
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {showStartPractical ? (
-                                              <DropdownMenuItem onClick={() => openPractical(a)}>
-                                                Start practical test
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {showCompleteFinal ? (
-                                              <DropdownMenuItem
-                                                onClick={() => openFinalEvaluation(a)}
-                                              >
-                                                Complete final evaluation
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {showSendOffer ? (
-                                              <DropdownMenuItem
-                                                onClick={() => void sendOfferEmail(a)}
-                                              >
-                                                {offer?.status === "Pending"
-                                                  ? "Resend offer email"
-                                                  : "Send offer email"}
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {canAcceptApplicant ? (
-                                              <DropdownMenuItem onClick={() => openAcceptOffer(a)}>
-                                                Record acceptance
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {canDeclineApplicant ? (
-                                              <DropdownMenuItem onClick={() => openDeclineOffer(a)}>
-                                                Record decline
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {hasStageActions && hasViews ? (
-                                              <DropdownMenuSeparator />
-                                            ) : null}
-                                            <DropdownMenuItem onClick={() => openReview(a, true)}>
-                                              <FileText className="mr-2 h-3.5 w-3.5" /> Review
-                                              screening
-                                            </DropdownMenuItem>
-                                            {assessment ? (
-                                              <DropdownMenuItem
-                                                onClick={() => setViewingInterview(assessment)}
-                                              >
-                                                <Eye className="mr-2 h-3.5 w-3.5" /> View interview
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {test ? (
-                                              <DropdownMenuItem
-                                                onClick={() => setViewingAssessmentTest(test)}
-                                              >
-                                                <Eye className="mr-2 h-3.5 w-3.5" /> View assessment
-                                                test
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {practical ? (
-                                              <DropdownMenuItem
-                                                onClick={() => setViewingPractical(practical)}
-                                              >
-                                                <Eye className="mr-2 h-3.5 w-3.5" /> View practical
-                                                test
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {final ? (
-                                              <DropdownMenuItem
-                                                onClick={() => setViewingFinal(final)}
-                                              >
-                                                <Eye className="mr-2 h-3.5 w-3.5" /> View final
-                                                evaluation
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {/* Last item of the View section. */}
-                                            {interview ? (
-                                              <DropdownMenuItem
-                                                onClick={() => viewScheduledInCalendar(a)}
-                                              >
-                                                <CalendarDays className="mr-2 h-3.5 w-3.5" /> View
-                                                scheduled in calendar
-                                              </DropdownMenuItem>
-                                            ) : null}
-                                            {/* Administrative Actions */}
-                                            <DropdownMenuSeparator />
-                                            {isSuperAdmin && (
-                                              <>
-                                                {a.stage !== "Rejected" ? (
-                                                  <DropdownMenuItem onClick={() => openMoveToStage(a)}>
-                                                    <ArrowRightCircle className="mr-2 h-3.5 w-3.5 text-primary" /> Move to stage...
-                                                  </DropdownMenuItem>
-                                                ) : (
-                                                  <DropdownMenuItem onClick={() => openReopen(a)}>
-                                                    <RotateCcw className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Reopen application
-                                                  </DropdownMenuItem>
-                                                )}
-                                                {(a.stage === "Hired" || a.stage === "Offer" || (a.status as string) === "hired") && (
-                                                  <DropdownMenuItem onClick={() => openCorrectHiring(a)}>
-                                                    <ShieldAlert className="mr-2 h-3.5 w-3.5 text-amber-600" /> Correct hiring decision
-                                                  </DropdownMenuItem>
-                                                )}
-                                              </>
-                                            )}
-                                            {!a.isArchived ? (
-                                              <DropdownMenuItem onClick={() => openArchive(a)}>
-                                                <Archive className="mr-2 h-3.5 w-3.5" /> Archive applicant
-                                              </DropdownMenuItem>
+                                      <div className="flex justify-end">
+                                        <div className="grid w-full grid-cols-5 gap-1">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 w-full cursor-pointer justify-center gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-1 text-[0.6rem]"
+                                            disabled={!assessment}
+                                            title={
+                                              assessment
+                                                ? "View interview result"
+                                                : "No interview result recorded yet"
+                                            }
+                                            aria-label="View interview result"
+                                            onClick={() =>
+                                              assessment && setViewingInterview(assessment)
+                                            }
+                                          >
+                                            <Eye className="h-3 w-3 shrink-0" /> Result
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            className="h-7 w-full cursor-pointer justify-center gap-1 whitespace-nowrap rounded-full px-1 text-[0.6rem]"
+                                            disabled={!canStartInterview}
+                                            title={
+                                              canStartInterview
+                                                ? interview?.mode === "Virtual"
+                                                  ? "Start the Zoom interview"
+                                                  : "Start the interview"
+                                                : "Available on the interview day"
+                                            }
+                                            aria-label="Start interview"
+                                            onClick={() => {
+                                              if (!canStartInterview) return;
+                                              if (interview?.mode === "Virtual") openZoomRoom(a);
+                                              else startInterviewFor(a);
+                                            }}
+                                          >
+                                            {interview?.mode === "Virtual" ? (
+                                              <Video className="h-3 w-3 shrink-0" />
                                             ) : (
-                                              <DropdownMenuItem onClick={() => openRestore(a)}>
-                                                <ArchiveRestore className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Restore applicant
-                                              </DropdownMenuItem>
+                                              <Play className="h-3 w-3 shrink-0" />
                                             )}
-                                            {isSuperAdmin && (
-                                              !a.isActiveBlocked ? (
-                                                <DropdownMenuItem
-                                                  className="text-destructive focus:text-destructive"
-                                                  onClick={() => openBlock(a)}
-                                                >
-                                                  <Ban className="mr-2 h-3.5 w-3.5" /> Block applicant
-                                                </DropdownMenuItem>
-                                              ) : (
-                                                <DropdownMenuItem onClick={() => openUnblock(a)}>
-                                                  <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Lift block restriction
-                                                </DropdownMenuItem>
-                                              )
-                                            )}
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-7 shrink-0 cursor-pointer whitespace-nowrap px-2"
-                                          title="Open this applicant's View screen — interview, tests and evaluation"
-                                          onClick={() => setViewingApplicant(a)}
-                                        >
-                                          <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
-                                        </Button>
+                                            {interview?.mode === "Virtual" ? "Start Zoom" : "Start"}
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 w-full cursor-pointer justify-center gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-1 text-[0.6rem]"
+                                            disabled={!interview}
+                                            title={
+                                              interview
+                                                ? "View the scheduled interview in the calendar"
+                                                : "No interview scheduled yet"
+                                            }
+                                            aria-label="View interview scheduled in the calendar"
+                                            onClick={() => viewScheduledInCalendar(a)}
+                                          >
+                                            <CalendarDays className="h-3 w-3 shrink-0" /> Calendar
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 w-full cursor-pointer justify-center gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-1 text-[0.6rem]"
+                                            disabled={
+                                              !(showReschedule && liveInterview) &&
+                                              !showRebookCancelled
+                                            }
+                                            title={
+                                              showReschedule && liveInterview
+                                                ? "Reschedule interview"
+                                                : showRebookCancelled && interview
+                                                  ? "Re-book the cancelled interview"
+                                                  : "No open interview to reschedule"
+                                            }
+                                            aria-label="Reschedule interview"
+                                            onClick={() => {
+                                              if (showReschedule && liveInterview)
+                                                rescheduleInterview(liveInterview);
+                                              else if (showRebookCancelled && interview)
+                                                rebookInterview(interview);
+                                            }}
+                                          >
+                                            <Repeat2 className="h-3 w-3 shrink-0" /> Reschedule
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 w-full cursor-pointer justify-center gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-1 text-[0.6rem]"
+                                            disabled={!canSchedule}
+                                            title={
+                                              canSchedule
+                                                ? a.stage === "Rejected" ||
+                                                  interview?.status === "Cancelled"
+                                                  ? "Re-book interview"
+                                                  : "Schedule interview"
+                                                : "Scheduling is not available for this applicant yet"
+                                            }
+                                            aria-label="Schedule interview"
+                                            onClick={() => {
+                                              if (showRebook && interview)
+                                                rebookInterview(interview);
+                                              else if (showRebook) rebookRejectedApplicant(a);
+                                              else openReview(a);
+                                            }}
+                                          >
+                                            <CalendarPlus className="h-3 w-3 shrink-0" /> Schedule
+                                          </Button>
+                                        </div>
                                       </div>
                                     </TableCell>
                                   </TableRow>
@@ -15853,7 +15156,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             )}
                           {!loading && pipelinePage.pageItems.length === 0 && (
                             <TableRow>
-                              <TableCell colSpan={9} className="py-10 text-center">
+                              <TableCell colSpan={4} className="py-10 text-center">
                                 <div className="mx-auto max-w-xs space-y-1.5">
                                   <ClipboardCheck className="mx-auto h-6 w-6 text-muted-foreground" />
                                   <p className="text-sm font-semibold">No applicants found</p>
@@ -15882,20 +15185,513 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               </Card>
             </TabsContent>
 
+            {/* ASSESSMENT */}
+            <TabsContent value="assessment" className="mt-4 space-y-6">
+              <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <ClipboardCheck className="h-4.5 w-4.5 text-primary" />
+                      Assessment Queue
+                    </h2>
+                    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                      <div className="relative min-w-[12rem] flex-1 sm:w-64">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          placeholder="Search applicants…"
+                          value={assessmentSearch}
+                          onChange={(e) => setAssessmentSearch(e.target.value)}
+                          className="w-full pl-8"
+                        />
+                      </div>
+                      <Select value={assessmentDept} onValueChange={setAssessmentDept}>
+                        <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-44">
+                          <SelectValue placeholder="All departments" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Positions</SelectItem>
+                          {displayDepartments.map((d) => (
+                            <SelectItem key={d.code} value={d.name}>
+                              {d.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <ListBody>
+                      <Table className="table-fixed text-xs min-w-[880px]">
+                        <TableHeader>
+                          <TableRow className="border-border/50 hover:bg-transparent">
+                            <SortHead
+                              sortKey="name"
+                              sort={assessmentQueueSort.sort}
+                              onSort={assessmentQueueSort.toggle}
+                              className="w-[24%]"
+                            >
+                              Applicant
+                            </SortHead>
+                            <SortHead
+                              sortKey="position"
+                              sort={assessmentQueueSort.sort}
+                              onSort={assessmentQueueSort.toggle}
+                              className="w-[17%]"
+                            >
+                              Position
+                            </SortHead>
+                            <SortHead
+                              sortKey="test"
+                              sort={assessmentQueueSort.sort}
+                              onSort={assessmentQueueSort.toggle}
+                              className="w-[14%]"
+                            >
+                              Assessment test
+                            </SortHead>
+                            <SortHead
+                              sortKey="practical"
+                              sort={assessmentQueueSort.sort}
+                              onSort={assessmentQueueSort.toggle}
+                              className="w-[14%]"
+                            >
+                              Practical assessment
+                            </SortHead>
+                            <TableHead className="w-[31%] text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {assessmentQueuePage.pageItems.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={5} className="py-10 text-center">
+                                <ClipboardCheck className="mx-auto h-7 w-7 text-muted-foreground/50" />
+                                <p className="mt-2 text-sm font-medium">
+                                  No candidates in the assessment queue
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Candidates appear here once they pass the interview assessment.
+                                </p>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            assessmentQueuePage.pageItems.map((r) => {
+                              const test = r.test;
+                              const practical = r.practical;
+                              const actionClass =
+                                "h-7 cursor-pointer whitespace-nowrap rounded-full border-border/80 bg-card px-2.5 text-[0.65rem]";
+                              // Filled primary, matching "Start"/"Start Zoom" in the
+                              // interview schedule so the next action stands out.
+                              const primaryActionClass =
+                                "h-7 cursor-pointer whitespace-nowrap rounded-full px-2.5 text-[0.65rem]";
+                              return (
+                                <TableRow key={r.a.id}>
+                                  <TableCell className="max-w-0">
+                                    <div className="flex min-w-0 items-center gap-2.5">
+                                      <Avatar className="h-7 w-7 shrink-0">
+                                        <AvatarFallback className="bg-secondary text-[0.6rem]">
+                                          {initials(r.a.name)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewApplicant(r.a)}
+                                        className="truncate text-left font-medium text-foreground hover:text-primary hover:underline"
+                                        title={r.a.name}
+                                      >
+                                        {r.a.name}
+                                      </button>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="max-w-0">
+                                    <p className="truncate" title={r.a.position}>
+                                      {r.a.position}
+                                    </p>
+                                  </TableCell>
+                                  <TableCell>
+                                    {test ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-semibold tabular-nums">
+                                          {test.total}%
+                                        </span>
+                                        <span
+                                          className={cn(
+                                            "rounded-md px-1.5 py-0.5 text-[0.6rem] font-semibold",
+                                            test.result === "Failed"
+                                              ? "bg-destructive/10 text-destructive"
+                                              : "bg-success/15 text-success",
+                                          )}
+                                        >
+                                          {test.result}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted-foreground">Not taken</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {practical ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-semibold tabular-nums">
+                                          {practical.total}%
+                                        </span>
+                                        <span
+                                          className={cn(
+                                            "rounded-md px-1.5 py-0.5 text-[0.6rem] font-semibold",
+                                            practical.result === "Failed"
+                                              ? "bg-destructive/10 text-destructive"
+                                              : "bg-success/15 text-success",
+                                          )}
+                                        >
+                                          {practical.result}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted-foreground">Not taken</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-wrap justify-end gap-1">
+                                      {test ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className={actionClass}
+                                          onClick={() => setViewingAssessmentTest(test)}
+                                        >
+                                          <Eye className="h-3 w-3" /> Test result
+                                        </Button>
+                                      ) : r.requiresTest ? (
+                                        <Button
+                                          size="sm"
+                                          className={primaryActionClass}
+                                          disabled={!r.readyForTest || inviteBusyId === r.a.id}
+                                          title={
+                                            r.readyForTest
+                                              ? "Email a no-login test link the applicant opens to answer the test themselves"
+                                              : "Not available yet"
+                                          }
+                                          onClick={() => void copyApplicantTestLink(r.a)}
+                                        >
+                                          {inviteBusyId === r.a.id ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <Link2 className="h-3 w-3" />
+                                          )}{" "}
+                                          Email applicant test link
+                                        </Button>
+                                      ) : null}
+                                      {practical ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className={actionClass}
+                                          onClick={() => setViewingPractical(practical)}
+                                        >
+                                          <Eye className="h-3 w-3" /> Practical result
+                                        </Button>
+                                      ) : r.requiresPrac ? (
+                                        <Button
+                                          size="sm"
+                                          className={primaryActionClass}
+                                          disabled={!r.readyForPractical}
+                                          title={
+                                            r.readyForPractical
+                                              ? "Record the practical assessment"
+                                              : "Not available yet"
+                                          }
+                                          onClick={() => openPractical(r.a)}
+                                        >
+                                          <ClipboardCheck className="h-3 w-3" /> Record practical
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </ListBody>
+                    <TablePagination
+                      page={assessmentQueuePage.page}
+                      pageCount={assessmentQueuePage.pageCount}
+                      from={assessmentQueuePage.from}
+                      to={assessmentQueuePage.to}
+                      total={assessmentQueuePage.total}
+                      label="candidates"
+                      showRangeLabel={false}
+                      onPageChange={assessmentQueuePage.setPage}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* FINAL EVALUATION */}
+            <TabsContent value="final" className="mt-4 space-y-6">
+              <Card className="border-border/60 bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <Award className="h-4.5 w-4.5 text-primary" />
+                      Final Evaluation Queue
+                    </h2>
+                    <div className="relative w-full sm:w-64">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search applicants…"
+                        value={pipelineSearch}
+                        onChange={(e) => setPipelineSearch(e.target.value)}
+                        className="w-full pl-8"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <ListBody>
+                      <Table className="table-fixed text-xs min-w-[900px]">
+                        <TableHeader>
+                          <TableRow className="border-border/50 hover:bg-transparent">
+                            <SortHead
+                              sortKey="name"
+                              sort={finalBoardSort.sort}
+                              onSort={finalBoardSort.toggle}
+                              className="w-[24%]"
+                            >
+                              Applicant
+                            </SortHead>
+                            <SortHead
+                              sortKey="position"
+                              sort={finalBoardSort.sort}
+                              onSort={finalBoardSort.toggle}
+                              className="w-[15%]"
+                            >
+                              Position
+                            </SortHead>
+                            <SortHead
+                              sortKey="score"
+                              sort={finalBoardSort.sort}
+                              onSort={finalBoardSort.toggle}
+                              className="w-[11%]"
+                            >
+                              Overall Score
+                            </SortHead>
+                            <SortHead
+                              sortKey="recommendation"
+                              sort={finalBoardSort.sort}
+                              onSort={finalBoardSort.toggle}
+                              className="w-[15%]"
+                            >
+                              Recommendation
+                            </SortHead>
+                            <SortHead
+                              sortKey="status"
+                              sort={finalBoardSort.sort}
+                              onSort={finalBoardSort.toggle}
+                              className="w-[13%]"
+                            >
+                              Approval
+                            </SortHead>
+                            <TableHead className="w-[22%] text-center">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {finalBoardPage.pageItems.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6} className="py-10 text-center">
+                                <Award className="mx-auto h-8 w-8 text-muted-foreground/50" />
+                                <p className="mt-2 text-sm font-medium">No final evaluations yet</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Candidates appear here once they finish the assessment stage.
+                                </p>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            finalBoardPage.pageItems.map((r) => {
+                              const score =
+                                r.final?.overallScoreRounded ?? r.final?.overallScore ?? null;
+                              const approved = r.final?.recommendation === "Recommended for Hire";
+                              const notRecommended = r.final?.recommendation === "Not Recommended";
+                              const canSendOffer =
+                                !!r.final &&
+                                !notRecommended &&
+                                r.offer === null &&
+                                !["Hired", "Rejected"].includes(r.a.stage);
+                              const canRespond = r.offer?.status === "Pending" && !r.offer.expired;
+                              return (
+                                <TableRow key={r.a.id}>
+                                  <TableCell className="max-w-0">
+                                    <div className="flex min-w-0 items-center gap-2.5">
+                                      <Avatar className="h-8 w-8 shrink-0">
+                                        <AvatarFallback className="bg-secondary text-[0.65rem]">
+                                          {initials(r.a.name)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewApplicant(r.a)}
+                                        className="truncate text-left font-medium text-foreground hover:text-primary hover:underline"
+                                        title={r.a.name}
+                                      >
+                                        {r.a.name}
+                                      </button>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="max-w-0">
+                                    <p className="truncate" title={r.a.position}>
+                                      {r.a.position}
+                                    </p>
+                                  </TableCell>
+                                  <TableCell className="text-xs font-semibold tabular-nums">
+                                    {score != null ? `${score}%` : "—"}
+                                  </TableCell>
+                                  <TableCell className="max-w-0 truncate text-[0.72rem] text-muted-foreground">
+                                    {r.final ? r.final.recommendation : "Pending"}
+                                  </TableCell>
+                                  <TableCell>
+                                    <span
+                                      className={cn(
+                                        "inline-block max-w-full truncate rounded-md px-2.5 py-1 text-[0.7rem] font-semibold",
+                                        r.offer?.status === "Accepted"
+                                          ? "bg-success/15 text-success"
+                                          : r.offer?.status === "Declined" || r.offer?.expired
+                                            ? "bg-destructive/10 text-destructive"
+                                            : notRecommended
+                                              ? "bg-destructive/10 text-destructive"
+                                              : r.offer?.status === "Pending"
+                                                ? "bg-gold-soft text-gold"
+                                                : "bg-muted text-muted-foreground",
+                                      )}
+                                      title={
+                                        r.offer
+                                          ? offerStateLabel(r.offer)
+                                          : notRecommended
+                                            ? "Not passed — recorded as failed"
+                                            : r.final
+                                              ? "Awaiting offer"
+                                              : "Awaiting evaluation"
+                                      }
+                                    >
+                                      {r.offer
+                                        ? r.offer.status === "Accepted"
+                                          ? "Accepted"
+                                          : r.offer.status === "Declined"
+                                            ? "Declined"
+                                            : r.offer.expired
+                                              ? "No Response"
+                                              : "Awaiting Applicant"
+                                        : notRecommended
+                                          ? "Not Passed"
+                                          : r.final
+                                            ? "Awaiting Offer"
+                                            : "Pending"}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-wrap justify-end gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 cursor-pointer gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-2.5 text-[0.65rem]"
+                                        disabled={!r.final}
+                                        title={
+                                          r.final
+                                            ? "View final evaluation result"
+                                            : "No final evaluation recorded yet"
+                                        }
+                                        onClick={() => {
+                                          if (r.final) setViewingFinal(r.final);
+                                        }}
+                                      >
+                                        <Eye className="h-3 w-3" /> View result
+                                      </Button>
+
+                                      {canRespond ? (
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="h-7 cursor-pointer gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-2.5 text-[0.65rem]"
+                                              title="Record the applicant's reply"
+                                            >
+                                              Applicant Decision
+                                              <ChevronDown className="h-3 w-3" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end" className="w-48">
+                                            <DropdownMenuItem onClick={() => openAcceptOffer(r.a)}>
+                                              <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-success" />
+                                              Accept offer
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              className="text-destructive focus:text-destructive"
+                                              onClick={() => openDeclineOffer(r.a)}
+                                            >
+                                              <XCircle className="mr-2 h-3.5 w-3.5" />
+                                              Decline offer
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      ) : !r.final ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 cursor-pointer gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-2.5 text-[0.65rem]"
+                                          disabled={!r.ready}
+                                          title={
+                                            r.ready
+                                              ? "Complete the final evaluation"
+                                              : "Assessment stage is not finished yet"
+                                          }
+                                          onClick={() => openFinalEvaluation(r.a)}
+                                        >
+                                          <ClipboardCheck className="h-3 w-3" /> Complete evaluation
+                                        </Button>
+                                      ) : canSendOffer ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 cursor-pointer gap-1 whitespace-nowrap rounded-full border-border/80 bg-card px-2.5 text-[0.65rem]"
+                                          title="Send the offer email to the applicant"
+                                          onClick={() => void sendOfferEmail(r.a)}
+                                        >
+                                          <Send className="h-3 w-3" /> Send offer
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </ListBody>
+                    <TablePagination
+                      page={finalBoardPage.page}
+                      pageCount={finalBoardPage.pageCount}
+                      from={finalBoardPage.from}
+                      to={finalBoardPage.to}
+                      total={finalBoardPage.total}
+                      label="applicants"
+                      showRangeLabel={false}
+                      onPageChange={finalBoardPage.setPage}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {/* HISTORY & AUDIT */}
             <TabsContent value="history" className="mt-4 space-y-6">
               <Card className="border-border/70">
                 <CardContent className="p-6">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                        <History className="h-5 w-5 text-primary" /> History &amp; Audit
-                      </h2>
-                      <p className="text-xs text-muted-foreground">
-                        Complete trail of applicant activity — screening, transfers, interview
-                        booking, completion and cancellation, assessments and hiring decisions.
-                      </p>
-                    </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                      <History className="h-4.5 w-4.5 text-primary" /> History &amp; Audit
+                    </h2>
 
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <div className="relative">
@@ -15946,56 +15742,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           ))}
                         </SelectContent>
                       </Select>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" className="gap-2">
-                            <Download className="h-4 w-4" /> Generate Report
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-64">
-                          <DropdownMenuItem onClick={() => handleExportAuditReport("pdf")}>
-                            <FileText className="mr-2 h-4 w-4" />
-                            <span className="flex items-center gap-1.5">
-                              Export as PDF
-                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                            </span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExportAuditReport("docx")}>
-                            <FileText className="mr-2 h-4 w-4" />
-                            <span className="flex items-center gap-1.5">
-                              Export as DOCX
-                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                            </span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExportAuditReport("excel")}>
-                            <FileText className="mr-2 h-4 w-4" />
-                            <span className="flex items-center gap-1.5">
-                              Export as Excel
-                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                            </span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExportAuditReport("csv")}>
-                            <FileText className="mr-2 h-4 w-4" />
-                            <span className="flex items-center gap-1.5">
-                              Export as CSV
-                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                            </span>
-                          </DropdownMenuItem>
-                          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                            Every file is sealed in a password-protected ZIP (AES-256). You will be
-                            asked for a file password.
-                          </p>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => {
-                              const data = buildAuditReportData();
-                              gateSensitive({ sensitive: true }, () => requestPrint(data));
-                            }}
-                          >
-                            <Printer className="mr-2 h-4 w-4" /> Print…
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                       {(auditSearch ||
                         auditActionFilter !== "all" ||
                         auditDeptFilter !== "all" ||
@@ -16159,6 +15905,869 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </>
       )}
 
+      {/* Re-apply cooldown settings — same gear pattern as Recruitment's Screening setup */}
+      <Dialog open={cooldownOpen} onOpenChange={setCooldownOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Re-apply cooldown</DialogTitle>
+            <DialogDescription>
+              Failed applicants may re-apply for any open position after this many days. Decliners
+              (offer declined) are always welcome back — no waiting period.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="cooldown-days">Waiting period (days)</Label>
+            <Input
+              id="cooldown-days"
+              type="number"
+              min={1}
+              max={365}
+              value={cooldownDraft}
+              onChange={(e) => setCooldownDraft(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCooldownOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={cooldownSaving}
+              onClick={() => {
+                const n = Number(cooldownDraft);
+                if (!Number.isFinite(n) || n < 1 || n > 365) {
+                  toast.error("Enter a waiting period between 1 and 365 days.");
+                  return;
+                }
+                setCooldownSaving(true);
+                settingsApi
+                  .upsert("recruitment.reapply_cooldown_days", n)
+                  .then(() => {
+                    setCooldownDays(n);
+                    setCooldownOpen(false);
+                    toast.success(`Re-apply cooldown set to ${n} day(s).`);
+                  })
+                  .catch((err: unknown) =>
+                    toast.error(
+                      (err as { message?: string })?.message ||
+                        "Unable to save the cooldown. Please try again.",
+                    ),
+                  )
+                  .finally(() => setCooldownSaving(false));
+              }}
+            >
+              {cooldownSaving ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* APPLICANT PROFILE — right-side drawer opened by clicking any applicant
+          name in a stage table. Maroon header, identity + match score, a
+          clickable five-stage rail (current stage selected first) and
+          Stage / Documents / Activity tabs. "View" still opens the whole record. */}
+      <Dialog
+        open={!!previewApplicantLive}
+        onOpenChange={(open) => {
+          if (!open) setPreviewApplicant(null);
+        }}
+      >
+        <DialogContent className="left-auto right-0 top-0 flex h-full max-h-full w-full max-w-[460px] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-l p-0 duration-200 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-[460px] [&>button]:hidden">
+          {previewApplicantLive &&
+            (() => {
+              const a = previewApplicantLive;
+              const iv = previewInterview;
+              const stageIndex = Math.min(applicantProfileStageIndex(a), 3);
+              const activeStage = profileStage ?? stageIndex;
+              const assessment = assessments.find((x) => x.applicantId === a.id);
+              const test = assessmentTests.find((t) => t.applicantId === a.id);
+              const practical = practicalTests.find((t) => t.applicantId === a.id);
+              const final = finalEvaluations.find((f) => f.applicantId === a.id);
+              const requiresTest = requiresAssessment(a.position, a.requiresAssessment);
+              const requiresPrac = requiresPractical(a.position, a.requiresPractical);
+              const readyForTest =
+                requiresTest &&
+                (a.stage === "Assessment Test" ||
+                  (a.stage === "Assessed" && assessment?.result === "Passed"));
+              const readyForPractical =
+                requiresPrac &&
+                (a.stage === "Practical Test" ||
+                  (requiresTest
+                    ? (a.stage === "Assessment Test" || a.stage === "Assessed") &&
+                      test?.result === "Passed"
+                    : a.stage === "Assessed" && assessment?.result === "Passed"));
+              const readyForFinal =
+                ((requiresTest
+                  ? ["Practical Test", "Assessment Test", "Assessed", "Final Evaluation"].includes(
+                      a.stage,
+                    ) && test?.result === "Passed"
+                  : ["Assessed", "Final Evaluation"].includes(a.stage) &&
+                    assessment?.result === "Passed") &&
+                  (!requiresPrac || practical?.result === "Passed")) ||
+                (!requiresTest &&
+                  ["Practical Test", "Assessed", "Final Evaluation"].includes(a.stage) &&
+                  (!requiresPrac || practical?.result === "Passed"));
+              const stageTitles = APPLICANT_PROFILE_STEPS.map((s) => s.label);
+              const qualification =
+                a.status === "fit"
+                  ? "Qualified"
+                  : a.status === "other-role"
+                    ? "Other Role"
+                    : a.status === "credential"
+                      ? "Credential Issue"
+                      : "Not Fit";
+              const interviewDate = iv
+                ? (() => {
+                    const d = new Date(`${iv.date}T00:00:00`);
+                    return Number.isNaN(d.getTime())
+                      ? iv.date
+                      : d.toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        });
+                  })()
+                : null;
+              return (
+                <>
+                  <div className="flex items-center justify-between gap-3 bg-primary px-5 py-3.5 text-primary-foreground">
+                    <DialogTitle className="font-display text-xl font-semibold tracking-wide text-primary-foreground">
+                      Applicant Profile
+                    </DialogTitle>
+                    <DialogDescription className="sr-only">
+                      Applicant profile for {a.name}
+                    </DialogDescription>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewingApplicant(a);
+                          setPreviewApplicant(null);
+                        }}
+                        aria-label="Open full applicant profile"
+                        title="Open full applicant profile"
+                        className="flex cursor-pointer items-center gap-1 rounded-md bg-primary-foreground/15 px-2 py-1 text-[0.68rem] font-semibold text-primary-foreground transition-colors hover:bg-primary-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
+                      >
+                        <Maximize2 className="h-3.5 w-3.5" /> Full view
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewApplicant(null)}
+                        aria-label="Close applicant panel"
+                        className="shrink-0 cursor-pointer rounded-md p-1 text-primary-foreground/85 transition-colors hover:bg-primary-foreground/15 hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto bg-muted/15">
+                    <div className="flex items-center gap-3.5 px-5 pt-5">
+                      <Avatar className="h-16 w-16 shrink-0 border-2 border-card shadow-sm">
+                        <AvatarFallback className="bg-secondary font-display text-lg font-semibold text-secondary-foreground">
+                          {initials(a.name)}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-display text-lg font-bold leading-tight text-foreground">
+                          {a.name}
+                        </p>
+                        <p className="mt-0.5 truncate text-[0.72rem] text-muted-foreground">
+                          {a.position} · {a.id}
+                        </p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold",
+                              statusMeta[a.status].className,
+                            )}
+                          >
+                            {qualification}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="w-[92px] shrink-0 rounded-xl border border-gold/30 bg-gold-soft/40 px-2.5 py-2 text-center">
+                        <p className="flex items-center justify-center gap-1 text-[0.58rem] font-semibold text-muted-foreground">
+                          <Target className="h-3 w-3 text-gold" /> Match
+                        </p>
+                        <p
+                          className={cn(
+                            "mt-0.5 font-display text-2xl font-bold leading-none tabular-nums",
+                            a.score >= passing ? "text-success" : "text-caution",
+                          )}
+                        >
+                          {a.score}%
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Administrative actions — same applicant-wide strip as the
+                        full profile, so both profile surfaces stay in sync. */}
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2.5 border-y border-border/60 bg-muted/20 px-4 py-2.5">
+                      <span className="flex items-center gap-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Sliders className="h-3.5 w-3.5 text-primary" /> Administrative Actions
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {isSuperAdmin && a.stage !== "Rejected" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs cursor-pointer"
+                            onClick={() => void openMoveToStage(a)}
+                          >
+                            <ArrowRightCircle className="h-3.5 w-3.5 text-primary" /> Move stage
+                          </Button>
+                        )}
+                        {isSuperAdmin && a.stage === "Rejected" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                            onClick={() => openReopen(a)}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" /> Reopen application
+                          </Button>
+                        )}
+                        {isSuperAdmin &&
+                          (a.stage === "Hired" ||
+                            a.stage === "Offer" ||
+                            (a.status as string) === "hired") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1.5 text-xs text-amber-600 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                              onClick={() => openCorrectHiring(a)}
+                            >
+                              <ShieldAlert className="h-3.5 w-3.5" /> Correct hiring
+                            </Button>
+                          )}
+                        {!a.isArchived ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs text-muted-foreground cursor-pointer"
+                            onClick={() => openArchive(a)}
+                          >
+                            <Archive className="h-3.5 w-3.5" /> Archive
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1.5 text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                            onClick={() => openRestore(a)}
+                          >
+                            <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+                          </Button>
+                        )}
+                        {isSuperAdmin &&
+                          (!a.isActiveBlocked ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10 cursor-pointer"
+                              onClick={() => openBlock(a)}
+                            >
+                              <Ban className="h-3.5 w-3.5" /> Block
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1.5 text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                              onClick={() => openUnblock(a)}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Lift restriction
+                            </Button>
+                          ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 px-4">
+                      <ProfileStageRail
+                        stageIndex={stageIndex}
+                        activeStage={activeStage}
+                        onSelect={setProfileStage}
+                      />
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-3 gap-1 px-4">
+                      {[
+                        { key: "stage" as const, label: "Stage", icon: CalendarDays },
+                        { key: "documents" as const, label: "Profile", icon: FileText },
+                        { key: "activity" as const, label: "Activity", icon: History },
+                      ].map((tab) => {
+                        const TabIcon = tab.icon;
+                        const active = profileTab === tab.key;
+                        return (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setProfileTab(tab.key)}
+                            aria-pressed={active}
+                            className={cn(
+                              "flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[0.7rem] font-semibold transition-colors",
+                              active
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-card text-foreground hover:bg-muted/60",
+                            )}
+                          >
+                            <TabIcon className="h-3.5 w-3.5" />
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {profileTab === "stage" && (
+                      <div className="mt-4 space-y-3 px-4 pb-6">
+                        <div className="flex items-center justify-between gap-2 px-1">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            {stageTitles[activeStage]}
+                          </p>
+                          {activeStage === stageIndex ? (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[0.6rem] font-semibold text-primary">
+                              Current stage
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setProfileStage(null)}
+                              className="cursor-pointer text-[0.62rem] font-semibold text-primary hover:underline"
+                            >
+                              Back to current
+                            </button>
+                          )}
+                        </div>
+
+                        {activeStage === 0 && (
+                          <div className="rounded-xl border border-border/70 bg-card p-4">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                  <ScanLine className="h-4 w-4" />
+                                </span>
+                                Screening result
+                              </p>
+                              <span
+                                className={cn(
+                                  "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold",
+                                  statusMeta[a.status].className,
+                                )}
+                              >
+                                {statusMeta[a.status].label}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 flex items-end justify-between gap-3">
+                              <p className="font-display text-3xl font-bold leading-none tabular-nums text-foreground">
+                                {a.score}%
+                              </p>
+                              <p className="pb-1 text-[0.68rem] text-muted-foreground">
+                                Score to job requirements
+                              </p>
+                            </div>
+
+                            {a.breakdown.length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {a.breakdown.slice(0, 4).map((b, i) => (
+                                  <div key={`${b.criterion}-${i}`}>
+                                    <div className="flex items-baseline justify-between gap-3 text-[0.68rem]">
+                                      <span className="truncate text-muted-foreground">
+                                        {b.criterion}
+                                      </span>
+                                      <span className="font-semibold tabular-nums text-foreground">
+                                        {b.score}%
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                                      <div
+                                        className="h-full rounded-full bg-primary"
+                                        style={{
+                                          width: `${Math.min(100, Math.max(0, b.score))}%`,
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-3 rounded-lg border border-dashed border-border p-3 text-center text-[0.7rem] text-muted-foreground">
+                                No criteria breakdown recorded.
+                              </p>
+                            )}
+
+                            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-border/60 pt-2 text-[0.68rem] text-muted-foreground">
+                              <span>
+                                Applied{" "}
+                                <b className="font-semibold text-foreground">
+                                  {formatDisplayDate(a.appliedAt).date}
+                                </b>
+                              </span>
+                              <span>
+                                Source <b className="font-semibold text-foreground">{a.source}</b>
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {activeStage === 1 && (
+                          <>
+                            {iv ? (
+                              <div className="rounded-xl border border-border/70 bg-card p-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                      <Users className="h-4 w-4" />
+                                    </span>
+                                    Interview
+                                  </p>
+                                  <span className="rounded-full bg-gold-soft px-2.5 py-0.5 text-[0.62rem] font-semibold text-gold">
+                                    {iv.status}
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 flex items-center gap-2 rounded-lg bg-primary/[0.045] px-3 py-2.5">
+                                  <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {interviewDate} · {iv.time}
+                                  </p>
+                                </div>
+
+                                <dl className="mt-2 space-y-1.5 text-[0.68rem]">
+                                  <div className="flex justify-between gap-3">
+                                    <dt className="text-muted-foreground">Interviewer</dt>
+                                    <dd className="truncate font-medium text-foreground">
+                                      {iv.interviewer}
+                                    </dd>
+                                  </div>
+                                  <div className="flex justify-between gap-3">
+                                    <dt className="text-muted-foreground">Mode</dt>
+                                    <dd className="font-medium text-foreground">{iv.mode}</dd>
+                                  </div>
+                                  <div className="flex justify-between gap-3">
+                                    <dt className="text-muted-foreground">Location</dt>
+                                    <dd className="truncate font-medium text-foreground">
+                                      {iv.mode === "Virtual"
+                                        ? "Online meeting"
+                                        : (iv.facilityName ?? "To be assigned")}
+                                    </dd>
+                                  </div>
+                                </dl>
+
+                                <div className="mt-3 grid gap-2">
+                                  {iv.mode === "Virtual" && iv.zoomJoinUrl && (
+                                    <Button asChild className="w-full">
+                                      <a href={iv.zoomJoinUrl} target="_blank" rel="noreferrer">
+                                        <Video className="h-4 w-4" /> Join Meeting
+                                      </a>
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    className="w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
+                                    disabled={isInterviewLocked(iv)}
+                                    onClick={() => {
+                                      rescheduleInterview(iv);
+                                      setPreviewApplicant(null);
+                                    }}
+                                  >
+                                    <CalendarPlus className="h-4 w-4" /> Reschedule Interview
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-dashed border-border bg-card p-4 text-center">
+                                <CalendarDays className="mx-auto h-6 w-6 text-muted-foreground/60" />
+                                <p className="mt-2 text-sm font-semibold text-foreground">
+                                  No interview scheduled
+                                </p>
+                                <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                                  {applicantNextStep(a, false)}
+                                </p>
+                                {(a.stage === "Screened" || a.stage === "Accepted") && (
+                                  <Button
+                                    className="mt-3 w-full"
+                                    onClick={() => {
+                                      setPreviewApplicant(null);
+                                      if (a.stage === "Screened") openReview(a);
+                                      else acceptAndSchedule(a);
+                                    }}
+                                  >
+                                    <CalendarPlus className="h-4 w-4" /> Schedule Interview
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+
+                            {assessment && (
+                              <div className="rounded-xl border border-border/70 bg-card p-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                      <ClipboardCheck className="h-4 w-4" />
+                                    </span>
+                                    Interview result
+                                  </p>
+                                  <span
+                                    className={cn(
+                                      "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold",
+                                      assessment.result === "Passed"
+                                        ? "bg-success/15 text-success"
+                                        : "bg-destructive/10 text-destructive",
+                                    )}
+                                  >
+                                    {assessment.result}
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 flex items-end justify-between gap-3">
+                                  <p className="font-display text-3xl font-bold leading-none tabular-nums text-foreground">
+                                    {assessment.total}%
+                                  </p>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 gap-1.5 text-xs"
+                                    onClick={() => {
+                                      setViewingInterview(assessment);
+                                      setPreviewApplicant(null);
+                                    }}
+                                  >
+                                    <Eye className="h-3.5 w-3.5" /> View result
+                                  </Button>
+                                </div>
+
+                                {assessment.remarks && (
+                                  <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-[0.68rem] leading-relaxed text-muted-foreground">
+                                    {assessment.remarks}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {activeStage === 2 && (
+                          <div className="space-y-3">
+                            {[
+                              {
+                                key: "test" as const,
+                                label: "Assessment test",
+                                icon: ClipboardCheck,
+                                required: requiresTest,
+                                ready: readyForTest,
+                                score: test?.total ?? null,
+                                result: test?.result ?? null,
+                                lockedHint: "Unlocks once the interview assessment is passed.",
+                                onView: test
+                                  ? () => {
+                                      setViewingAssessmentTest(test);
+                                      setPreviewApplicant(null);
+                                    }
+                                  : null,
+                                onRecord: () => {
+                                  setPreviewApplicant(null);
+                                  openAssessmentTest(a);
+                                },
+                                onSendLink: () => void copyApplicantTestLink(a),
+                              },
+                              {
+                                key: "practical" as const,
+                                label: "Practical assessment",
+                                icon: Wrench,
+                                required: requiresPrac,
+                                ready: readyForPractical,
+                                score: practical?.total ?? null,
+                                result: practical?.result ?? null,
+                                lockedHint: requiresTest
+                                  ? "Unlocks once the assessment test is passed."
+                                  : "Unlocks once the interview assessment is passed.",
+                                onView: practical
+                                  ? () => {
+                                      setViewingPractical(practical);
+                                      setPreviewApplicant(null);
+                                    }
+                                  : null,
+                                onRecord: () => {
+                                  setPreviewApplicant(null);
+                                  openPractical(a);
+                                },
+                                onSendLink: null,
+                              },
+                            ].map((row) => {
+                              const RowIcon = row.icon;
+                              const recorded = row.score != null;
+                              return (
+                                <div
+                                  key={row.key}
+                                  className="rounded-xl border border-border/70 bg-card p-4"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                        <RowIcon className="h-4 w-4" />
+                                      </span>
+                                      {row.label}
+                                    </p>
+                                    <span
+                                      className={cn(
+                                        "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold",
+                                        row.result === "Passed"
+                                          ? "bg-success/15 text-success"
+                                          : row.result === "Failed"
+                                            ? "bg-destructive/10 text-destructive"
+                                            : !row.required
+                                              ? "bg-muted text-muted-foreground"
+                                              : row.ready
+                                                ? "bg-gold-soft text-gold"
+                                                : "bg-muted text-muted-foreground",
+                                      )}
+                                    >
+                                      {row.result ??
+                                        (!row.required
+                                          ? "Not required"
+                                          : row.ready
+                                            ? "Ready"
+                                            : "Locked")}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-3 flex items-end justify-between gap-3">
+                                    <p
+                                      className={cn(
+                                        "font-display text-3xl font-bold leading-none tabular-nums",
+                                        row.result === "Failed"
+                                          ? "text-destructive"
+                                          : "text-foreground",
+                                      )}
+                                    >
+                                      {recorded ? `${row.score}%` : "—"}
+                                    </p>
+                                    <p className="pb-1 text-[0.68rem] text-muted-foreground">
+                                      {recorded ? "Score" : "Not recorded"}
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-3 grid gap-2">
+                                    {recorded && row.onView && (
+                                      <Button
+                                        variant="outline"
+                                        className="w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
+                                        onClick={row.onView}
+                                      >
+                                        <Eye className="h-4 w-4" /> View result
+                                      </Button>
+                                    )}
+                                    {!recorded &&
+                                      row.required &&
+                                      row.ready &&
+                                      row.key !== "test" && (
+                                        <Button className="w-full" onClick={row.onRecord}>
+                                          <RowIcon className="h-4 w-4" /> Record practical
+                                          assessment
+                                        </Button>
+                                      )}
+                                    {!recorded && row.required && row.ready && row.onSendLink && (
+                                      <Button
+                                        variant="outline"
+                                        className="w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
+                                        disabled={inviteBusyId === a.id}
+                                        onClick={row.onSendLink}
+                                        title="Email a no-login test link the applicant opens to answer the test themselves (also copies it)"
+                                      >
+                                        {inviteBusyId === a.id ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Link2 className="h-4 w-4" />
+                                        )}
+                                        Email applicant test link
+                                      </Button>
+                                    )}
+                                    {!recorded && (!row.required || !row.ready) && (
+                                      <p className="rounded-lg border border-dashed border-border px-3 py-2 text-center text-[0.68rem] leading-relaxed text-muted-foreground">
+                                        {row.required
+                                          ? row.lockedHint
+                                          : `Not required for ${a.position}.`}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {activeStage === 3 && (
+                          <>
+                            {final ? (
+                              <div className="rounded-xl border border-border/70 bg-card p-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gold-soft text-gold">
+                                      <Award className="h-4 w-4" />
+                                    </span>
+                                    Final evaluation
+                                  </p>
+                                  <span
+                                    className={cn(
+                                      "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold",
+                                      final.recommendation === "Recommended for Hire"
+                                        ? "bg-primary/10 text-primary"
+                                        : final.recommendation === "For Another Position"
+                                          ? "bg-gold-soft text-gold"
+                                          : "bg-destructive/10 text-destructive",
+                                    )}
+                                  >
+                                    {final.recommendation}
+                                  </span>
+                                </div>
+
+                                {final.overallRemarks && (
+                                  <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-[0.68rem] leading-relaxed text-muted-foreground">
+                                    {final.overallRemarks}
+                                  </p>
+                                )}
+                                <p className="mt-2 text-[0.68rem] text-muted-foreground">
+                                  Evaluated {final.date}
+                                </p>
+                              </div>
+                            ) : readyForFinal ? (
+                              <div className="rounded-xl border border-border/70 bg-card p-4">
+                                <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gold-soft text-gold">
+                                    <Award className="h-4 w-4" />
+                                  </span>
+                                  Final evaluation
+                                </p>
+                                <p className="mt-2 text-[0.7rem] leading-relaxed text-muted-foreground">
+                                  Every required stage is complete. Record the whole-process verdict
+                                  and the hiring recommendation.
+                                </p>
+                                <Button
+                                  className="mt-3 w-full"
+                                  onClick={() => {
+                                    setPreviewApplicant(null);
+                                    openFinalEvaluation(a);
+                                  }}
+                                >
+                                  <ClipboardCheck className="h-4 w-4" /> Complete final evaluation
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-dashed border-border bg-card p-4 text-center">
+                                <Award className="mx-auto h-6 w-6 text-muted-foreground/60" />
+                                <p className="mt-2 text-sm font-semibold text-foreground">
+                                  No final evaluation yet
+                                </p>
+                                <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                                  {applicantNextStep(a, !!iv)}
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {profileTab === "documents" && (
+                      <div className="mt-4 space-y-4 px-4 pb-6">
+                        <div className="rounded-xl border border-border/70 bg-card p-4">
+                          <p className="text-xs font-semibold text-foreground">Contact</p>
+                          <dl className="mt-2 space-y-2 text-[0.72rem]">
+                            {[
+                              { icon: User, label: "Full Name", value: a.name },
+                              { icon: Mail, label: "Email", value: a.email },
+                              { icon: Phone, label: "Phone", value: a.phone },
+                              {
+                                icon: MapPin,
+                                label: "Address",
+                                value: a.address ?? "Not provided",
+                              },
+                              {
+                                icon: CalendarDays,
+                                label: "Applied",
+                                value: formatDisplayDate(a.appliedAt).date,
+                              },
+                              { icon: Briefcase, label: "Source", value: a.source },
+                            ].map((row) => {
+                              const RowIcon = row.icon;
+                              return (
+                                <div key={row.label} className="flex items-start gap-2.5">
+                                  <RowIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                  <dt className="w-16 shrink-0 text-muted-foreground">
+                                    {row.label}
+                                  </dt>
+                                  <dd className="min-w-0 flex-1 break-words font-medium text-foreground">
+                                    {row.value}
+                                  </dd>
+                                </div>
+                              );
+                            })}
+                          </dl>
+                        </div>
+
+                        <ApplicantDocumentsCard
+                          docs={previewDocs}
+                          loading={previewDocsLoading}
+                          resumeUrl={a.resumeUrl}
+                        />
+                      </div>
+                    )}
+
+                    {profileTab === "activity" && (
+                      <div className="mt-4 space-y-4 px-4 pb-6">
+                        <ApplicationHistorySection
+                          history={previewHistory}
+                          loading={previewHistoryLoading}
+                        />
+
+                        <div className="border-t border-border/60 pt-4">
+                          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            <Clock className="h-3.5 w-3.5 text-primary" /> Activity Timeline
+                          </p>
+                        </div>
+
+                        <ol className="relative space-y-3 border-l border-border/70 pl-4">
+                          <li className="relative">
+                            <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
+                            <p className="text-xs font-semibold text-foreground">
+                              Application submitted
+                            </p>
+                            <p className="mt-0.5 text-[0.66rem] text-muted-foreground">
+                              {formatDisplayDate(a.appliedAt).date} · {a.source}
+                            </p>
+                          </li>
+                          {previewAudit.slice(0, 8).map((entry) => (
+                            <li key={entry.id} className="relative">
+                              <span className="absolute -left-[21px] top-1 h-2 w-2 rounded-full bg-border ring-2 ring-background" />
+                              <p className="text-xs font-semibold text-foreground">
+                                {entry.actionType}
+                              </p>
+                              <p className="mt-0.5 text-[0.66rem] text-muted-foreground">
+                                {entry.date} · {entry.time} · {entry.actorName}
+                              </p>
+                              <p className="mt-1 line-clamp-3 text-[0.68rem] leading-relaxed text-muted-foreground">
+                                {entry.details}
+                              </p>
+                            </li>
+                          ))}
+                        </ol>
+                        {previewAudit.length === 0 && (
+                          <p className="mt-3 rounded-lg border border-dashed border-border p-4 text-center text-[0.7rem] text-muted-foreground">
+                            No recorded activity after the application was submitted.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+        </DialogContent>
+      </Dialog>
+
       {/* REPORTS DIALOG — predefined reports now export directly from the header
           MultiReportMenu dropdown (same secure function as Export org chart). The
           History tab's audit export below keeps its own password gate. */}
@@ -16202,8 +16811,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   Recommend to another position
                 </DialogTitle>
                 <DialogDescription>
-                  {recommendFor.name} will be evaluated as "For Another Position" — the offer
-                  email is sent for the chosen position and the applicant has 7 days to respond.
+                  {recommendFor.name} will be evaluated as "For Another Position" — the offer email
+                  is sent for the chosen position and the applicant has 7 days to respond.
                 </DialogDescription>
               </DialogHeader>
               <div className="max-h-[50vh] space-y-2 overflow-y-auto">
@@ -16366,8 +16975,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <p className="font-display text-lg font-semibold leading-tight">
                       {review.name}
                     </p>
-                    <Badge variant="outline" className={statusMeta[review.status].className}>
-                      {statusMeta[review.status].label}
+                    <Badge variant="outline" className={statusMeta[review.status]?.className}>
+                      {statusMeta[review.status]?.label ?? review.status}
                     </Badge>
                   </div>
                   <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -16417,6 +17026,43 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 {(() => {
                   const vm = screeningViewModel(review);
                   const detail = vm.detail;
+                  const verification = vm.verification;
+                  const docsChecked =
+                    (verification?.verified_count ?? 0) +
+                    (verification?.discrepancy_count ?? 0) +
+                    (verification?.unable_count ?? 0);
+                  const stages = [
+                    {
+                      value: "extraction",
+                      label: "Extraction",
+                      result: detail ? "Parsed" : "Not run",
+                      ok: Boolean(detail),
+                    },
+                    {
+                      value: "recognition",
+                      label: "Recognition",
+                      result: `${vm.skills.length} skills · ${vm.recognizedRoles.length} roles`,
+                      ok:
+                        vm.skills.length > 0 &&
+                        vm.unrecognizedRoles.length === 0 &&
+                        vm.unrecognizedCertifications.length === 0,
+                    },
+                    {
+                      value: "matching",
+                      label: "Matching",
+                      result: `${vm.matched.length}/${vm.rows.length}`,
+                      ok: vm.rows.length > 0 && vm.missing.length === 0,
+                    },
+                    {
+                      value: "documents",
+                      label: "Documents",
+                      result:
+                        docsChecked > 0
+                          ? `${verification?.verified_count ?? 0}/${docsChecked}`
+                          : "None",
+                      ok: docsChecked > 0 && (verification?.discrepancy_count ?? 0) === 0,
+                    },
+                  ];
 
                   return (
                     <>
@@ -16428,108 +17074,157 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         yearsExperience={vm.yearsExperience}
                         educationLabel={vm.educationLabel}
                       />
+                      <Tabs
+                        defaultValue="extraction"
+                        value={reviewTab}
+                        onValueChange={(v) => setReviewTab(v as any)}
+                        className="w-full space-y-4"
+                      >
+                        <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-4">
+                          {stages.map((stage, i) => (
+                            <TabsTrigger
+                              key={stage.value}
+                              value={stage.value}
+                              className="flex h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal rounded-lg border border-border bg-card px-2.5 py-2 text-left shadow-none data-[state=active]:border-primary/40 data-[state=active]:bg-primary/5 data-[state=active]:shadow-none cursor-pointer"
+                            >
+                              <span className="flex items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                                <span
+                                  className={cn(
+                                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[0.6rem] font-bold tabular-nums",
+                                    stage.ok
+                                      ? "bg-success text-success-foreground"
+                                      : "bg-muted-foreground/20 text-muted-foreground",
+                                  )}
+                                >
+                                  {i + 1}
+                                </span>
+                                {stage.label}
+                              </span>
+                              <span
+                                className={cn(
+                                  "w-full truncate text-xs font-semibold",
+                                  stage.ok ? "text-success" : "text-foreground",
+                                )}
+                                title={stage.result}
+                              >
+                                {stage.result}
+                              </span>
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
 
-                      {/* Resume screening + supporting-document verification =
-                          the ranking percentage this candidate is ordered by. */}
-                      <ScreeningVerificationImpact
-                        verification={vm.verification}
-                        resumeScore={vm.resumeScore}
-                        score={vm.score}
-                        onRecompute={() => recomputeRanking(review)}
-                        recomputing={recomputingRanking}
-                      />
+                        <TabsContent value="extraction" className="mt-0">
+                          <ResumeInfoPanel
+                            title="Extracted Information"
+                            variant="modal"
+                            focus="profile"
+                            skills={vm.skills}
+                            recognizedRoles={vm.recognizedRoles}
+                            unrecognizedRoles={vm.unrecognizedRoles}
+                            workExperience={vm.workExperience}
+                            education={vm.education}
+                            experienceYears={vm.yearsExperience}
+                            certifications={vm.certifications}
+                            personalInfo={vm.personalInfo}
+                            skillsRecognized={vm.skillsRecognized}
+                            unrecognizedCertifications={vm.unrecognizedCertifications}
+                          />
+                        </TabsContent>
 
-                      <div className="grid items-stretch gap-4 lg:grid-cols-3">
-                        <ResumeInfoPanel
-                          title="Key Information Extracted"
-                          variant="modal"
-                          skills={vm.skills}
-                          recognizedRoles={vm.recognizedRoles}
-                          unrecognizedRoles={vm.unrecognizedRoles}
-                          workExperience={vm.workExperience}
-                          education={vm.education}
-                          experienceYears={vm.yearsExperience}
-                          certifications={vm.certifications}
-                          personalInfo={vm.personalInfo}
-                          skillsRecognized={vm.skillsRecognized}
-                          unrecognizedCertifications={vm.unrecognizedCertifications}
-                        />
-                        <RequirementMatchPanel
-                          rows={vm.rows}
-                          experienceMinYears={vm.experienceMinYears}
-                        />
-                        <ScreeningResumeDocsMatchDetail
-                          docs={Object.values(reviewDocVerifications)}
-                          loading={reviewDocsLoading}
-                          resumeName={vm.personalInfo.name ?? review.name}
-                          resumeEducation={vm.education}
-                          resumeCertifications={vm.certifications}
-                        />
-                      </div>
+                        <TabsContent value="recognition" className="mt-0">
+                          <ResumeInfoPanel
+                            title="Recognized Entities"
+                            variant="modal"
+                            focus="entities"
+                            skills={vm.skills}
+                            recognizedRoles={vm.recognizedRoles}
+                            unrecognizedRoles={vm.unrecognizedRoles}
+                            workExperience={vm.workExperience}
+                            education={vm.education}
+                            experienceYears={vm.yearsExperience}
+                            certifications={vm.certifications}
+                            personalInfo={vm.personalInfo}
+                            skillsRecognized={vm.skillsRecognized}
+                            unrecognizedCertifications={vm.unrecognizedCertifications}
+                          />
+                        </TabsContent>
 
-                      <ScreeningSupportDocsGrid
-                        key={review.id}
-                        title="Supporting Document Verification"
-                        subtitle="Uploaded documents compared field-by-field against the claims in the applicant's resume."
-                        showResume={false}
-                        resumeName={review.resumeOriginalName || "Resume / CV"}
-                        resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
-                        onOpenResume={
-                          review.resumeUrl
-                            ? () => window.open(review.resumeUrl!, "_blank", "noopener")
-                            : undefined
-                        }
-                        docs={Object.values(reviewDocVerifications)}
-                        loading={reviewDocsLoading}
-                        reverifyingId={reverifyingDocId}
-                        onView={(d) =>
-                          window.open(
-                            applicantDocumentsApi.fileUrl(d.applicant_document_id),
-                            "_blank",
-                            "noopener",
-                          )
-                        }
-                        onDownload={(d) =>
-                          window.open(
-                            applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
-                            "_blank",
-                            "noopener",
-                          )
-                        }
-                        onReverify={reverifyDocument}
-                        onOverride={(d) => {
-                          setOverrideDocFor(d);
-                          setOverrideDocReason("Manually reviewed and verified by HR.");
-                        }}
-                      />
+                        <TabsContent value="matching" className="mt-0 space-y-4">
+                          <ScreeningVerificationImpact
+                            verification={vm.verification}
+                            resumeScore={vm.resumeScore}
+                            score={vm.score}
+                            onRecompute={() => recomputeRanking(review)}
+                            recomputing={recomputingRanking}
+                          />
 
-                      <ScreeningDetailsAccordion
-                        detail={detail}
-                        variant="modal"
-                        position={review.position}
-                        score={vm.score}
-                        vm={vm}
-                      />
+                          <RequirementMatchPanel
+                            rows={vm.rows}
+                            experienceMinYears={vm.experienceMinYears}
+                          />
+                        </TabsContent>
 
-                      {detail?.alternative_job && (
-                        <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
-                          <p className="font-medium text-warning-foreground">
-                            Recommended alternative: {detail.alternative_job.title} (
-                            {Math.round(detail.alternative_job.alternative_match_score ?? 0)}
-                            %)
-                          </p>
-                          {detail.alternative_job.reason && (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {detail.alternative_job.reason}
-                            </p>
+                        <TabsContent value="documents" className="mt-0 space-y-4">
+                          <ScreeningSupportDocsGrid
+                            key={review.id}
+                            title="Supporting Document Verification"
+                            subtitle="Uploaded documents compared field-by-field against the claims in the applicant's resume."
+                            showResume={false}
+                            resumeName={review.resumeOriginalName || "Resume / CV"}
+                            resumeSub={`PDF · Screened at ${Math.round(vm.score)}%`}
+                            onOpenResume={
+                              review.resumeUrl
+                                ? () => window.open(review.resumeUrl!, "_blank", "noopener")
+                                : undefined
+                            }
+                            docs={Object.values(reviewDocVerifications || {})}
+                            loading={reviewDocsLoading}
+                            reverifyingId={reverifyingDocId}
+                            onView={(d) =>
+                              window.open(
+                                applicantDocumentsApi.fileUrl(d.applicant_document_id),
+                                "_blank",
+                                "noopener",
+                              )
+                            }
+                            onDownload={(d) =>
+                              window.open(
+                                applicantDocumentsApi.fileUrl(d.applicant_document_id, true),
+                                "_blank",
+                                "noopener",
+                              )
+                            }
+                            onReverify={reverifyDocument}
+                            onOverride={(d) => {
+                              setOverrideDocFor(d);
+                              setOverrideDocReason("Manually reviewed and verified by HR.");
+                            }}
+                          />
+
+                          <ScreeningResumeDocsMatchDetail
+                            docs={Object.values(reviewDocVerifications || {})}
+                            loading={reviewDocsLoading}
+                            resumeName={vm.personalInfo.name ?? review.name}
+                            resumeEducation={vm.education}
+                            resumeCertifications={vm.certifications}
+                          />
+
+                          {detail?.alternative_job && (
+                            <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm">
+                              <p className="font-medium text-warning-foreground">
+                                Recommended alternative: {detail.alternative_job.title} (
+                                {Math.round(detail.alternative_job.alternative_match_score ?? 0)}
+                                %)
+                              </p>
+                              {detail.alternative_job.reason && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {detail.alternative_job.reason}
+                                </p>
+                              )}
+                            </div>
                           )}
-                        </div>
-                      )}
-
-                      {/* No recommendation box here by design: recommendations
-                          belong to the Final Evaluation stage. Screening ends
-                          with the details accordion above; Accept / Reject /
-                          Refer actions live in the dialog footer below. */}
+                        </TabsContent>
+                      </Tabs>
                     </>
                   );
                 })()}
@@ -16564,8 +17259,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
                       <Info className="h-4 w-4 shrink-0" />
                       This applicant is already at the{" "}
-                      <span className="font-semibold text-foreground">{review.stage}</span> stage
-                      —
+                      <span className="font-semibold text-foreground">{review.stage}</span> stage —
                       {review.stage === "Accepted"
                         ? " use Schedule interview to book them in."
                         : " no further accept, reject or referral actions can be taken here."}
@@ -17003,8 +17697,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </div>
                       {zoomEmbed.status !== "live" ? (
                         <p className="px-4 py-3 text-xs text-muted-foreground">
-                          Chat turns on once the embedded Zoom meeting is connected — the
-                          applicant can also use the Join link above.
+                          Chat turns on once the embedded Zoom meeting is connected — the applicant
+                          can also use the Join link above.
                         </p>
                       ) : (
                         <>
@@ -17373,8 +18067,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                   <p className="mt-1 text-xs text-muted-foreground">
                     {testingTest.name} — {testingTest.position} · {testTitle} · Passing{" "}
-                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all
-                    are answered.
+                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all are
+                    answered.
                   </p>
 
                   {/* Question */}
@@ -17473,8 +18167,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </div>
                   {!allAnswered && (
                     <p className="mt-2 text-right text-xs text-muted-foreground">
-                      {totalQ - answeredCount} question(s) left — the test auto-checks once all
-                      are answered.
+                      {totalQ - answeredCount} question(s) left — the test auto-checks once all are
+                      answered.
                     </p>
                   )}
                 </>
@@ -17491,8 +18185,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Practical Assessment</DialogTitle>
                 <DialogDescription>
-                  {testingPractical.name} — {testingPractical.position}. Hands-on practical exam
-                  based on the position; the assessor records it as Passed or Failed.
+                  {testingPractical.name} — {testingPractical.position}. Hands-on practical
+                  assessment based on the position; the assessor records it as Passed or Failed.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
@@ -17599,7 +18293,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     rows={3}
                     value={practicalRemarks}
                     onChange={(e) => setPracticalRemarks(e.target.value)}
-                    placeholder="Overall evaluation of the practical exam—"
+                    placeholder="Overall evaluation of the practical assessment"
                   />
                 </div>
 
@@ -17671,8 +18365,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                 <DialogDescription>
-                  {finalizing.name} — {finalizing.position}. The total score is calculated from
-                  the completed processes; HR makes the final decision and records the applicant's
+                  {finalizing.name} — {finalizing.position}. The total score is calculated from the
+                  completed processes; HR makes the final decision and records the applicant's
                   reply.
                 </DialogDescription>
               </DialogHeader>
@@ -17810,12 +18504,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <div className="flex items-center gap-1.5 font-semibold">
                             <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
                             <span>
-                              {preview.blocking_verification_issues} document verification discrepanc
+                              {preview.blocking_verification_issues} document verification
+                              discrepanc
                               {preview.blocking_verification_issues === 1 ? "y" : "ies"} detected
                             </span>
                           </div>
                           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                            You can resolve this in Supporting Documents (via Manual Override) or proceed to recommend for hire by acknowledging the warning.
+                            You can resolve this in Supporting Documents (via Manual Override) or
+                            proceed to recommend for hire by acknowledging the warning.
                           </p>
                         </div>
                       )}
@@ -17917,8 +18613,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <DialogHeader>
                     <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                     <DialogDescription>
-                      {row.name} — {row.position} · evaluated {row.date}. The recorded decision
-                      is locked; the applicant's offer reply is recorded on the right.
+                      {row.name} — {row.position} · evaluated {row.date}. The recorded decision is
+                      locked; the applicant's offer reply is recorded on the right.
                     </DialogDescription>
                   </DialogHeader>
 
@@ -18019,8 +18715,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <DialogTitle className="font-display text-2xl">Record acceptance</DialogTitle>
                 <DialogDescription>
                   {acceptOfferFor.name} accepted the offer for {acceptOfferFor.position}. Record how
-                  the reply arrived and the start-of-work date — it becomes the day-count anchor
-                  for New Hire Onboarding ("Days of Work").
+                  the reply arrived and the start-of-work date — it becomes the day-count anchor for
+                  New Hire Onboarding ("Days of Work").
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
@@ -18109,9 +18805,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <DialogDescription>
                   Override the discrepancy for{" "}
                   <span className="font-medium text-foreground">
-                    {overrideDocFor.title || overrideDocFor.original_name || `Document #${overrideDocFor.applicant_document_id}`}
+                    {overrideDocFor.title ||
+                      overrideDocFor.original_name ||
+                      `Document #${overrideDocFor.applicant_document_id}`}
                   </span>
-                  . This changes the status to Verified and removes the blocking issue so the applicant can be hired.
+                  . This changes the status to Verified and removes the blocking issue so the
+                  applicant can be hired.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-2">
@@ -18141,7 +18840,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </Button>
                 <Button
                   disabled={overrideDocBusy}
-                  onClick={() => void overrideDocumentDiscrepancy(overrideDocFor, overrideDocReason)}
+                  onClick={() =>
+                    void overrideDocumentDiscrepancy(overrideDocFor, overrideDocReason)
+                  }
                 >
                   {overrideDocBusy ? (
                     <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
@@ -18587,15 +19288,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </DialogContent>
       </Dialog>
       {/* Function 2: Move to Specific Stage Dialog */}
-      <Dialog open={!!moveToStageFor} onOpenChange={(open) => { if (!open) setMoveToStageFor(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={!!moveToStageFor}
+        onOpenChange={(open) => {
+          if (!open) setMoveToStageFor(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowRightCircle className="h-5 w-5 text-primary" />
               Move to Specific Stage
             </DialogTitle>
             <DialogDescription>
-              Administratively adjust {moveToStageFor?.name}&apos;s stage in the recruitment pipeline.
+              Administratively adjust {moveToStageFor?.name}&apos;s stage in the recruitment
+              pipeline.
             </DialogDescription>
           </DialogHeader>
 
@@ -18606,7 +19313,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <XCircle className="h-4 w-4" /> Applicant is currently Rejected
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  Move to Stage is not permitted for rejected candidates. To reconsider or re-evaluate this candidate, please use &quot;Reopen Application&quot;.
+                  Move to Stage is not permitted for rejected candidates. To reconsider or
+                  re-evaluate this candidate, please use &quot;Reopen Application&quot;.
                 </p>
               </div>
               <DialogFooter>
@@ -18645,22 +19353,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </SelectTrigger>
                   <SelectContent>
                     {RETURN_TARGET_STAGES.filter((s) => s.value !== "Offer").map((s) => {
-                      const STAGE_ORDER_MAP: Record<string, number> = {
-                        Screened: 0,
-                        Accepted: 1,
-                        "Interview Scheduled": 2,
-                        Assessed: 3,
-                        "Assessment Test": 4,
-                        "Practical Test": 5,
-                        "Final Evaluation": 6,
-                        Offer: 7,
-                      };
-                      const curIdx = STAGE_ORDER_MAP[moveToStageFor?.stage ?? ""] ?? 0;
-                      const tgtIdx = STAGE_ORDER_MAP[s.value] ?? 0;
-                      const dir = tgtIdx < curIdx ? " (⏪ Rollback)" : tgtIdx > curIdx ? " (⏩ Advance)" : " (Current)";
+                      const curIdx = APPLICANT_STAGE_ORDER[moveToStageFor?.stage ?? ""] ?? 0;
+                      const tgtIdx = APPLICANT_STAGE_ORDER[s.value] ?? 0;
+                      const relation =
+                        s.value === moveToStageFor?.stage
+                          ? " — current stage"
+                          : tgtIdx < curIdx
+                            ? " — rollback"
+                            : " — advance";
                       return (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}{dir}
+                        <SelectItem
+                          key={s.value}
+                          value={s.value}
+                          disabled={s.value === moveToStageFor?.stage}
+                        >
+                          {s.label}
+                          {relation}
                         </SelectItem>
                       );
                     })}
@@ -18669,18 +19377,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               </div>
 
               {(() => {
-                const STAGE_ORDER_MAP: Record<string, number> = {
-                  Screened: 0,
-                  Accepted: 1,
-                  "Interview Scheduled": 2,
-                  Assessed: 3,
-                  "Assessment Test": 4,
-                  "Practical Test": 5,
-                  "Final Evaluation": 6,
-                  Offer: 7,
-                };
-                const curIdx = STAGE_ORDER_MAP[moveToStageFor?.stage ?? ""] ?? 0;
-                const tgtIdx = STAGE_ORDER_MAP[moveToStageTarget] ?? 0;
+                const curIdx = APPLICANT_STAGE_ORDER[moveToStageFor?.stage ?? ""] ?? 0;
+                const tgtIdx = APPLICANT_STAGE_ORDER[moveToStageTarget] ?? 0;
 
                 if (tgtIdx < curIdx) {
                   return (
@@ -18689,7 +19387,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         <AlertTriangle className="h-3.5 w-3.5" /> Rollback Notice:
                       </p>
                       <p className="mt-0.5">
-                        Moving backward to <strong>{moveToStageTarget}</strong> will reset downstream test and evaluation records so the applicant can repeat the process cleanly.
+                        Moving backward to <strong>{moveToStageTarget}</strong> will reset the
+                        results recorded for that stage and every later stage, so the applicant
+                        repeats the process cleanly.
                       </p>
                     </div>
                   );
@@ -18700,14 +19400,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         <Info className="h-3.5 w-3.5" /> Advance Notice:
                       </p>
                       <p className="mt-0.5">
-                        Moving forward to <strong>{moveToStageTarget}</strong> requires that all prior stages (screening, interview, and test assessments) were completed and passed.
+                        Moving forward to <strong>{moveToStageTarget}</strong> requires that all
+                        prior stages (screening, interview, and test assessments) were completed and
+                        passed.
                       </p>
                     </div>
                   );
                 }
                 return (
                   <div className="rounded-md border bg-muted/30 p-2.5 text-xs text-muted-foreground">
-                    Candidate is already at {moveToStageTarget}. Choose a different target stage to move.
+                    Candidate is already at {moveToStageTarget}. Choose a different target stage to
+                    move.
                   </div>
                 );
               })()}
@@ -18751,15 +19454,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       </Dialog>
 
       {/* Function 3: Reopen Application Dialog */}
-      <Dialog open={!!reopenFor} onOpenChange={(open) => { if (!open) setReopenFor(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={!!reopenFor}
+        onOpenChange={(open) => {
+          if (!open) setReopenFor(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-5 w-5 text-emerald-600" />
               Reopen Application
             </DialogTitle>
             <DialogDescription>
-              Reconsider {reopenFor?.name} ({reopenFor?.id}) by returning them to an eligible pipeline stage.
+              Reconsider {reopenFor?.name} ({reopenFor?.id}) by returning them to an eligible
+              pipeline stage.
             </DialogDescription>
           </DialogHeader>
 
@@ -18770,7 +19479,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <Ban className="h-4 w-4" /> Applicant is Blocked
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  This applicant has an active recruitment restriction. You must unblock them before reopening their application.
+                  This applicant has an active recruitment restriction. You must unblock them before
+                  reopening their application.
                 </p>
               </div>
               <DialogFooter>
@@ -18800,19 +19510,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </SelectTrigger>
                   <SelectContent>
                     {(() => {
-                      const allowed = reopenFor?.allowedReturnStages && reopenFor.allowedReturnStages.length > 0
-                        ? reopenFor.allowedReturnStages
-                        : ["Screened", "Accepted"];
-                      return RETURN_TARGET_STAGES.filter((s) => allowed.includes(s.value)).map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ));
+                      const allowed =
+                        reopenFor?.allowedReturnStages && reopenFor.allowedReturnStages.length > 0
+                          ? reopenFor.allowedReturnStages
+                          : ["Screened", "Accepted"];
+                      return RETURN_TARGET_STAGES.filter((s) => allowed.includes(s.value)).map(
+                        (s) => (
+                          <SelectItem key={s.value} value={s.value}>
+                            {s.label}
+                          </SelectItem>
+                        ),
+                      );
                     })()}
                   </SelectContent>
                 </Select>
                 <p className="text-[11px] text-muted-foreground">
-                  Upcoming stages the applicant never qualified for are excluded.
+                  The stage where the applicant failed is included so it can be retaken. Later
+                  stages stay excluded until the applicant qualifies.
                 </p>
               </div>
 
@@ -18829,23 +19543,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </p>
               </div>
 
-              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-200">
-                <p className="font-medium flex items-center gap-1">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Reopening Effects:
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200">
+                <p className="font-semibold flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />{" "}
+                  Result history will be reset
                 </p>
                 <ul className="mt-1 list-disc pl-4 space-y-0.5 text-[11.5px]">
-                  <li>Clears the &quot;Rejected&quot; status and resets the 30-day cooldown.</li>
-                  <li>Wipes failed evaluation data at the target stage for a fresh evaluation.</li>
-                  <li>Restores candidate to the active recruitment list.</li>
+                  <li>
+                    The recorded result at the selected stage is deleted, including its score,
+                    answers and assessment records.
+                  </li>
+                  <li>The applicant must retake that stage; no previous result carries over.</li>
+                  <li>Later stages are cleared too, and the 30-day cooldown is lifted.</li>
                 </ul>
               </div>
 
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  disabled={reopenBusy}
-                  onClick={() => setReopenFor(null)}
-                >
+                <Button variant="outline" disabled={reopenBusy} onClick={() => setReopenFor(null)}>
                   Cancel
                 </Button>
                 <Button
@@ -18863,8 +19577,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       </Dialog>
 
       {/* Function 4: Correct Hiring Decision Dialog */}
-      <Dialog open={!!correctHiringFor} onOpenChange={(open) => { if (!open) setCorrectHiringFor(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={!!correctHiringFor}
+        onOpenChange={(open) => {
+          if (!open) setCorrectHiringFor(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-amber-600" />
@@ -18879,15 +19598,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <Label className="text-xs font-semibold">Correction Reason Type</Label>
               <Select
                 value={correctHiringType}
-                onValueChange={(v) => setCorrectHiringType(v as "mistaken_hire" | "no_show" | "reneged")}
+                onValueChange={(v) =>
+                  setCorrectHiringType(v as "mistaken_hire" | "no_show" | "reneged")
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select reason type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="no_show">Candidate No-Show (Didn't attend start date)</SelectItem>
+                  <SelectItem value="no_show">
+                    Candidate No-Show (Didn't attend start date)
+                  </SelectItem>
                   <SelectItem value="reneged">Reneged Offer (Accepted then declined)</SelectItem>
-                  <SelectItem value="mistaken_hire">Mistaken Hire (Erroneously marked as hired)</SelectItem>
+                  <SelectItem value="mistaken_hire">
+                    Mistaken Hire (Erroneously marked as hired)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -18935,8 +19660,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       </Dialog>
 
       {/* Function 5: Archive Applicant Dialog */}
-      <Dialog open={!!archiveFor} onOpenChange={(open) => { if (!open) setArchiveFor(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={!!archiveFor}
+        onOpenChange={(open) => {
+          if (!open) setArchiveFor(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Archive className="h-5 w-5 text-muted-foreground" />
@@ -18959,22 +19689,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             <div className="rounded-md border border-muted bg-muted/40 p-2.5 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">Archive Details:</p>
               <p className="mt-0.5">
-                Archived applicants do not appear in normal list views unless "Show Archived & Blocked" is toggled. No historical evaluations, test results, or documents are deleted.
+                Archived applicants do not appear in normal list views unless "Show Archived &
+                Blocked" is toggled. No historical evaluations, test results, or documents are
+                deleted.
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={archiveBusy}
-              onClick={() => setArchiveFor(null)}
-            >
+            <Button variant="outline" disabled={archiveBusy} onClick={() => setArchiveFor(null)}>
               Cancel
             </Button>
-            <Button
-              disabled={archiveBusy}
-              onClick={() => void confirmArchive()}
-            >
+            <Button disabled={archiveBusy} onClick={() => void confirmArchive()}>
               {archiveBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Archive Applicant
             </Button>
@@ -18983,8 +19708,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       </Dialog>
 
       {/* Function 6: Restore Applicant Dialog */}
-      <Dialog open={!!restoreFor} onOpenChange={(open) => { if (!open) setRestoreFor(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={!!restoreFor}
+        onOpenChange={(open) => {
+          if (!open) setRestoreFor(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArchiveRestore className="h-5 w-5 text-emerald-600" />
@@ -19006,17 +19736,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={restoreBusy}
-              onClick={() => setRestoreFor(null)}
-            >
+            <Button variant="outline" disabled={restoreBusy} onClick={() => setRestoreFor(null)}>
               Cancel
             </Button>
-            <Button
-              disabled={restoreBusy}
-              onClick={() => void confirmRestore()}
-            >
+            <Button disabled={restoreBusy} onClick={() => void confirmRestore()}>
               {restoreBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Restore Applicant
             </Button>
@@ -19025,15 +19748,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       </Dialog>
 
       {/* Function 7: Block Applicant Dialog */}
-      <Dialog open={!!blockFor} onOpenChange={(open) => { if (!open) setBlockFor(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={!!blockFor}
+        onOpenChange={(open) => {
+          if (!open) setBlockFor(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Ban className="h-5 w-5 text-destructive" />
               Block Applicant (Recruitment Restriction)
             </DialogTitle>
             <DialogDescription>
-              Restrict {blockFor?.name} ({blockFor?.email}) from applying or participating in recruitment.
+              Restrict {blockFor?.name} ({blockFor?.email}) from applying or participating in
+              recruitment.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -19048,7 +19777,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all_jobs">All Positions (Universal Restriction)</SelectItem>
-                  <SelectItem value="specific_job">This Position Only ({blockFor?.position})</SelectItem>
+                  <SelectItem value="specific_job">
+                    This Position Only ({blockFor?.position})
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -19079,16 +19810,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive">
               <p className="font-semibold">Restriction Policy:</p>
               <p className="mt-0.5">
-                Future applications matching this candidate (by email, phone, name, or address) will be blocked immediately upon submission.
+                Future applications matching this candidate (by email, phone, name, or address) will
+                be blocked immediately upon submission.
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={blockBusy}
-              onClick={() => setBlockFor(null)}
-            >
+            <Button variant="outline" disabled={blockBusy} onClick={() => setBlockFor(null)}>
               Cancel
             </Button>
             <Button
@@ -19104,8 +19832,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       </Dialog>
 
       {/* Function 8: Unblock Applicant Dialog */}
-      <Dialog open={!!unblockFor} onOpenChange={(open) => { if (!open) setUnblockFor(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog
+        open={!!unblockFor}
+        onOpenChange={(open) => {
+          if (!open) setUnblockFor(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
@@ -19130,11 +19863,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={unblockBusy}
-              onClick={() => setUnblockFor(null)}
-            >
+            <Button variant="outline" disabled={unblockBusy} onClick={() => setUnblockFor(null)}>
               Cancel
             </Button>
             <Button

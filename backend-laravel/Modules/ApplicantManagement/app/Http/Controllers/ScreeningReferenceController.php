@@ -68,6 +68,13 @@ class ScreeningReferenceController extends Controller
             'thresholds' => $health['thresholds'] ?? null,
         ];
 
+        // Per-position overrides keyed by Core HR position_id. A position with
+        // no entry falls back to the general configuration above.
+        $overrides = \Modules\Settings\Models\SystemSetting::where(
+            'setting_key',
+            'screening.position_configurations'
+        )->value('setting_value');
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -82,6 +89,8 @@ class ScreeningReferenceController extends Controller
                 // 'effective' = what screenings actually run with right now
                 'effective' => $effective,
                 'service_defaults' => $serviceDefaults,
+                // 'position_overrides' = { "<position_id>": configuration }
+                'position_overrides' => is_array($overrides) ? $overrides : [],
             ],
         ]);
     }
@@ -100,9 +109,12 @@ class ScreeningReferenceController extends Controller
             'configuration.criteria.*.enabled' => ['required', 'boolean'],
             'configuration.passing_score' => ['required', 'numeric', 'min:0', 'max:100'],
             'configuration.required_skills_coverage_min' => ['required', 'numeric', 'min:0', 'max:1'],
+            // Optional Core HR position — saves an override just for that role.
+            'position_id' => ['nullable', 'integer', 'exists:positions,position_id'],
         ]);
 
         $config = $validated['configuration'];
+        $positionId = isset($validated['position_id']) ? (int) $validated['position_id'] : null;
 
         // Enabled criteria weights must total exactly 100% — the NLP service
         // normalizes the rest, but HR should not be able to save nonsense.
@@ -118,20 +130,36 @@ class ScreeningReferenceController extends Controller
             ], 422);
         }
 
-        \Modules\Settings\Models\SystemSetting::setValue(
-            'screening.configuration',
-            $config,
-            $request->user()?->id
-        );
+        if ($positionId !== null) {
+            $overrides = \Modules\Settings\Models\SystemSetting::where(
+                'setting_key',
+                'screening.position_configurations'
+            )->value('setting_value');
+            $overrides = is_array($overrides) ? $overrides : [];
+            $overrides[(string) $positionId] = $config;
+
+            \Modules\Settings\Models\SystemSetting::setValue(
+                'screening.position_configurations',
+                $overrides,
+                $request->user()?->id
+            );
+        } else {
+            \Modules\Settings\Models\SystemSetting::setValue(
+                'screening.configuration',
+                $config,
+                $request->user()?->id
+            );
+        }
 
         AuditLogger::log(
-            action: 'Screening Configuration Saved',
+            action: $positionId !== null ? 'Screening Configuration Saved for Position' : 'Screening Configuration Saved',
             module: 'Applicant Management',
             severity: 'Info',
             targetType: 'Screening Configuration',
-            targetId: 'screening.configuration',
+            targetId: $positionId !== null ? "screening.position_configurations.{$positionId}" : 'screening.configuration',
             details: sprintf(
-                'Criteria weights saved (Skills %s%%, Experience %s%%, Education %s%%, Certifications %s%%) — passing score %s%%, coverage minimum %s%%.',
+                '%sCriteria weights saved (Skills %s%%, Experience %s%%, Education %s%%, Certifications %s%%) — passing score %s%%, coverage minimum %s%%.',
+                $positionId !== null ? "Position #{$positionId}: " : '',
                 $config['criteria']['Skills']['enabled'] ? $config['criteria']['Skills']['weight'] : 'off',
                 $config['criteria']['Work Experience']['enabled'] ? $config['criteria']['Work Experience']['weight'] : 'off',
                 $config['criteria']['Educational Background']['enabled'] ? $config['criteria']['Educational Background']['weight'] : 'off',
@@ -144,7 +172,59 @@ class ScreeningReferenceController extends Controller
         return response()->json([
             'success' => true,
             'data' => $config,
-            'message' => 'Screening configuration saved. It applies to every new screening run.',
+            'message' => $positionId !== null
+                ? 'Screening configuration saved for this position. It applies to every new screening run for this role.'
+                : 'Screening configuration saved. It applies to every new screening run.',
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* DELETE /api/v1/screening/configuration/{positionId}                 */
+    /* Drops the position override; the role inherits the general config.   */
+    /* ------------------------------------------------------------------ */
+
+    public function resetConfiguration(Request $request, int $positionId): JsonResponse
+    {
+        $overrides = \Modules\Settings\Models\SystemSetting::where(
+            'setting_key',
+            'screening.position_configurations'
+        )->value('setting_value');
+        $overrides = is_array($overrides) ? $overrides : [];
+
+        if (! array_key_exists((string) $positionId, $overrides)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'This position already uses the general configuration.',
+            ]);
+        }
+
+        unset($overrides[(string) $positionId]);
+
+        if ($overrides === []) {
+            \Modules\Settings\Models\SystemSetting::where(
+                'setting_key',
+                'screening.position_configurations'
+            )->delete();
+        } else {
+            \Modules\Settings\Models\SystemSetting::setValue(
+                'screening.position_configurations',
+                $overrides,
+                $request->user()?->id
+            );
+        }
+
+        AuditLogger::log(
+            action: 'Screening Configuration Reset for Position',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Screening Configuration',
+            targetId: "screening.position_configurations.{$positionId}",
+            details: "Position #{$positionId} now uses the general screening configuration."
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Position reset — it inherits the general screening configuration.',
         ]);
     }
 

@@ -382,17 +382,8 @@ class PromotionRequestController extends Controller
             $exitType = $data['exit_type'] ?? 'Terminated';
 
             DB::transaction(function () use ($employee, $promo, $data, $user, $exitType, $hr3) {
-                EmployeeExitRecord::updateOrCreate(
-                    ['employee_id' => $employee->employee_id],
-                    [
-                        'exit_type' => $exitType,
-                        'exit_date' => $data['effective_date'] ?? now()->toDateString(),
-                        'clearance_status' => 'Pending',
-                        'coe_status' => 'Pending',
-                        'notes' => $data['review_notes'] ?? ('Terminated via succession decision on request #' . $promo->promotion_request_id),
-                    ]
-                );
-
+                // Phase 3g: exit facts live on the employees row itself, so the
+                // status change and the exit columns are written in one save.
                 EmployeePositionHistory::create([
                     'employee_id' => $employee->employee_id,
                     'effective_date' => $data['effective_date'] ?? now()->toDateString(),
@@ -404,9 +395,23 @@ class PromotionRequestController extends Controller
 
                 Position::where('position_id', $employee->position_id)->decrement('filled_count');
 
+                EmployeeExitRecord::create([
+                    'employee_id' => $employee->employee_id,
+                    'exit_type' => $exitType,
+                    'exit_date' => $data['effective_date'] ?? now()->toDateString(),
+                    'clearance_status' => 'Pending',
+                    'coe_status' => 'Pending',
+                    'notes' => $data['review_notes'] ?? ('Terminated via succession decision on request #' . $promo->promotion_request_id),
+                ]);
+
                 ActivityObserver::withoutLogging(fn () => $employee->forceFill([
                     'status' => $exitType,
                     'supervisor_employee_id' => null,
+                    'exit_type' => $exitType,
+                    'exit_date' => $data['effective_date'] ?? now()->toDateString(),
+                    'clearance_status' => 'Pending',
+                    'coe_status' => 'Pending',
+                    'exit_notes' => $data['review_notes'] ?? ('Terminated via succession decision on request #' . $promo->promotion_request_id),
                 ])->save());
 
                 $promo->update([

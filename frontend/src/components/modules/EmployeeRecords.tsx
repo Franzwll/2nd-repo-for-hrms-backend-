@@ -10,6 +10,7 @@ import {
   FolderOpen,
   History,
   Inbox,
+  Lock,
   Pencil,
   Minus,
   Plus,
@@ -21,11 +22,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/portal/PageHeader";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { SortHead, useSort } from "@/components/portal/sortable";
-import { StatCard } from "@/components/portal/StatCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,7 +65,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Employee } from "@/data/hr";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { Skeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 
 import {
   auditLogApi,
@@ -106,6 +105,14 @@ const reportTypes = [
   "Tenure & Regularization Report",
   "New Hire & Turnover Report",
   "Record Completion & Compliance Report",
+];
+
+/** Export formats offered in the Generate Reports dialog, in menu order. */
+const REPORT_FORMAT_OPTIONS: { id: ReportFormat; label: string }[] = [
+  { id: "pdf", label: "PDF" },
+  { id: "docx", label: "DOCX" },
+  { id: "excel", label: "Excel" },
+  { id: "csv", label: "CSV" },
 ];
 
 const initials = (name: string) =>
@@ -813,8 +820,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const downloadGenerated = (g: GeneratedDoc) => {
     const run = () => {
       const emp =
-        list.find((e) => e.id === g.employeeCode) ??
-        list.find((e) => e.name === g.employeeName);
+        list.find((e) => e.id === g.employeeCode) ?? list.find((e) => e.name === g.employeeName);
       exportReport(
         {
           title: `${g.docType} - ${g.employeeName}`,
@@ -883,63 +889,110 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     <div>
       {gateDialog}
       {printDialog}
-      <PageHeader
-        title="Employee Records"
-        description="201 files, employment details, records analytics and document generation."
-        actions={
-          <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="-mx-1 mb-4 space-y-3 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center text-primary">
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11 fill-current">
+                {/* Clean Open Folder Back & Tab */}
+                <path d="M4 4a2 2 0 0 0-2 2v11.2l1.65-5.35A2.5 2.5 0 0 1 6.04 10H20V7.5a2 2 0 0 0-2-2h-6.76a2 2 0 0 1-1.42-.59l-.4-.4A2 2 0 0 0 8 4H4Z" />
+                {/* Bold Angled Front Flap */}
+                <path d="M6.04 11.5a1 1 0 0 0-.96.71l-1.92 6.23A1.5 1.5 0 0 0 4.6 20.5h14.62a1.5 1.5 0 0 0 1.45-1.14l1.68-6.72A1 1 0 0 0 21.38 11.5H6.04Z" />
+              </svg>
+            </span>
+            <div>
+              <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight sm:text-[2rem]">
+                Employee Records
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                201 files, employment details, records analytics and document generation.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start">
             <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
               <FileText className="mr-2 h-4 w-4" /> Generate reports
             </Button>
           </div>
-        }
-      />
+        </div>
 
-      <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total Employees"
-          value={list.length}
-          icon={Users}
-          tone="primary"
-          loading={!roster.loaded}
-          onClick={() => {
-            setTypeFilter("all");
-            setStatusFilter("all");
-          }}
-        />
-        <StatCard
-          label="Total requests"
-          value={requestCounts.total}
-          icon={Inbox}
-          tone="primary"
-          loading={requestCountsLoading}
-          onClick={() => {
-            setRequestStatusFilter("all");
-            setMainTab("requests");
-          }}
-        />
-        <StatCard
-          label="Awaiting fulfilment"
-          value={requestCounts.pending}
-          icon={Clock}
-          tone="caution"
-          loading={requestCountsLoading}
-          onClick={() => {
-            setRequestStatusFilter("pending");
-            setMainTab("requests");
-          }}
-        />
-        <StatCard
-          label="Fulfilled"
-          value={requestCounts.fulfilled}
-          icon={CheckCircle2}
-          tone="success"
-          loading={requestCountsLoading}
-          onClick={() => {
-            setRequestStatusFilter("Completed");
-            setMainTab("requests");
-          }}
-        />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              label: "Total Employees",
+              value: list.length,
+              icon: Users,
+              loading: !roster.loaded,
+              onClick: () => {
+                setTypeFilter("all");
+                setStatusFilter("all");
+              },
+            },
+            {
+              label: "Total requests",
+              value: requestCounts.total,
+              icon: Inbox,
+              loading: requestCountsLoading,
+              onClick: () => {
+                setRequestStatusFilter("all");
+                setMainTab("requests");
+              },
+            },
+            {
+              label: "Awaiting fulfilment",
+              value: requestCounts.pending,
+              icon: Clock,
+              loading: requestCountsLoading,
+              onClick: () => {
+                setRequestStatusFilter("pending");
+                setMainTab("requests");
+              },
+            },
+            {
+              label: "Fulfilled",
+              value: requestCounts.fulfilled,
+              icon: CheckCircle2,
+              loading: requestCountsLoading,
+              onClick: () => {
+                setRequestStatusFilter("Completed");
+                setMainTab("requests");
+              },
+            },
+          ].map((m) =>
+            m.loading ? (
+              <div
+                key={`skeleton-${m.label}`}
+                className="flex items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5"
+                aria-busy="true"
+              >
+                <Skeleton className="h-12 w-12 rounded-xl" />
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              </div>
+            ) : (
+              <button
+                key={m.label}
+                type="button"
+                onClick={m.onClick}
+                className="group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <m.icon className="h-6 w-6" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-medium text-muted-foreground">
+                    {m.label}
+                  </span>
+                  <span className="mt-1 block font-display text-[1.45rem] font-bold leading-none tabular-nums text-foreground">
+                    {m.value.toLocaleString()}
+                  </span>
+                </span>
+              </button>
+            ),
+          )}
+        </div>
       </div>
 
       <Tabs value={mainTab} onValueChange={setMainTab} className="mt-6">
@@ -956,36 +1009,25 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         </TabsList>
 
         <TabsContent value="list" className="mt-4">
-          <Card className="border-border/70">
-            <CardContent className="p-6">
+          <Card className="rounded-xl border-border/60 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                    <Users className="h-5 w-5 text-primary" /> Employee List
-                  </h2>
-                  {listView === "archived" ? (
-                    <p className="text-xs text-muted-foreground">
-                      Soft-archived 201 files (retained for statutory retention). Restore to return
-                      a record to the active list.
-                    </p>
-                  ) : selected.length > 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      {selected.length} selected for bulk generation.
-                    </p>
-                  ) : null}
-                </div>
-                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                  <Users className="h-4.5 w-4.5 text-primary" />
+                  Employee List
+                </h2>
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                  <div className="relative w-full min-w-0 sm:w-64">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="pl-9"
-                      placeholder="Search employee…"
+                      className="w-full pl-8"
+                      placeholder="Search employees…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                     />
                   </div>
                   <Select value={dept} onValueChange={setDept}>
-                    <SelectTrigger className="w-52">
+                    <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-44">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1001,7 +1043,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     value={listView}
                     onValueChange={(v) => setListView(v as "active" | "archived")}
                   >
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-36">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1009,39 +1051,66 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       <SelectItem value="archived">Archived · {archivedList.length}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    title={`Auto-archive settings (${archiveYears}+ years)`}
-                    aria-label="Auto-archive settings"
-                    onClick={() => {
-                      setArchiveDraft(archiveYears);
-                      setArchiveOpen(true);
-                    }}
-                  >
-                    <Archive className="h-4 w-4" />
-                  </Button>
-
-                  {listView === "active" && (
+                  {(search || dept !== "all" || listView !== "active") && (
                     <Button
+                      variant="ghost"
                       size="sm"
-                      disabled={selected.length === 0}
+                      className="h-9 px-2 text-xs text-muted-foreground"
                       onClick={() => {
-                        setBulkTypes([documentTypes[0]!]);
-                        setBulkUnlocked(false);
-                        setBulkPickOpen(true);
+                        setSearch("");
+                        setDept("all");
+                        setListView("active");
                       }}
                     >
-                      <Download className="mr-2 h-4 w-4" /> Bulk generate
+                      Clear filters
                     </Button>
                   )}
+                  <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+                    {listView === "active" && selected.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {selected.length} selected
+                      </span>
+                    )}
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      title={`Auto-archive settings (${archiveYears}+ years)`}
+                      aria-label="Auto-archive settings"
+                      onClick={() => {
+                        setArchiveDraft(archiveYears);
+                        setArchiveOpen(true);
+                      }}
+                    >
+                      <Archive className="h-4 w-4" />
+                    </Button>
+                    {listView === "active" && (
+                      <Button
+                        size="sm"
+                        disabled={selected.length === 0}
+                        onClick={() => {
+                          setBulkTypes([documentTypes[0]!]);
+                          setBulkUnlocked(false);
+                          setBulkPickOpen(true);
+                        }}
+                      >
+                        <Download className="mr-2 h-4 w-4" /> Bulk generate
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
+              {listView === "archived" && (
+                <p className="mt-3 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
+                  Soft-archived 201 files (retained for statutory retention). Restore to return a
+                  record to the active list.
+                </p>
+              )}
+
+              <div className="mt-3 overflow-x-auto">
                 <ListBody>
-                  <Table>
+                  <Table className="text-xs">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-10" />
@@ -1094,92 +1163,92 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       {!roster.loaded && <TableRowsSkeleton cols={8} rows={6} />}
                       {roster.loaded &&
                         employeePage.pageItems.map((e) => (
-                        <TableRow
-                          key={e.id}
-                          data-highlight-id={e.id}
-                          className={highlightRowClass(!!highlightId && e.id === highlightId)}
-                        >
-                          <TableCell>
-                            <Checkbox
-                              checked={selected.includes(e.id)}
-                              onCheckedChange={() => toggle(e.id)}
-                              disabled={listView === "archived"}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback className="bg-secondary text-[0.7rem]">
-                                  {initials(e.name)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="text-sm font-medium">{e.name}</p>
-                                <p className="text-xs text-muted-foreground">{e.id}</p>
+                          <TableRow
+                            key={e.id}
+                            data-highlight-id={e.id}
+                            className={highlightRowClass(!!highlightId && e.id === highlightId)}
+                          >
+                            <TableCell>
+                              <Checkbox
+                                checked={selected.includes(e.id)}
+                                onCheckedChange={() => toggle(e.id)}
+                                disabled={listView === "archived"}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback className="bg-secondary text-[0.7rem]">
+                                    {initials(e.name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="text-sm font-medium">{e.name}</p>
+                                  <p className="text-xs text-muted-foreground">{e.id}</p>
+                                </div>
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm">{e.position}</TableCell>
-                          <TableCell className="text-sm">{e.department}</TableCell>
-                          <TableCell className="text-xs">{e.employmentType}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {e.dateHired}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <Badge
-                                variant="outline"
-                                className={
-                                  e.status === "Active"
-                                    ? "border-success/30 bg-success/15 text-success"
-                                    : "border-muted-foreground/30 bg-muted text-muted-foreground"
-                                }
-                              >
-                                {e.status}
-                              </Badge>
-                              {listView === "archived" && (
+                            </TableCell>
+                            <TableCell className="text-sm">{e.position}</TableCell>
+                            <TableCell className="text-sm">{e.department}</TableCell>
+                            <TableCell className="text-xs">{e.employmentType}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {e.dateHired}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <Badge
                                   variant="outline"
-                                  className="border-gold/40 bg-gold-soft text-foreground"
+                                  className={
+                                    e.status === "Active"
+                                      ? "border-success/30 bg-success/15 text-success"
+                                      : "border-muted-foreground/30 bg-muted text-muted-foreground"
+                                  }
                                 >
-                                  Archived
+                                  {e.status}
                                 </Badge>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                              {listView === "active" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => open201File(e)}
-                                >
-                                  <FolderOpen className="mr-2 h-3.5 w-3.5" /> View Records
-                                </Button>
-                              )}
-                              {isSuper &&
-                                (listView === "archived" ? (
+                                {listView === "archived" && (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-gold/40 bg-gold-soft text-foreground"
+                                  >
+                                    Archived
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                {listView === "active" && (
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => restoreEmployee(e.id)}
+                                    onClick={() => open201File(e)}
                                   >
-                                    <ArchiveRestore className="mr-2 h-3.5 w-3.5" /> Restore
+                                    <FolderOpen className="mr-2 h-3.5 w-3.5" /> View Records
                                   </Button>
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => archiveEmployee(e.id)}
-                                  >
-                                    <Archive className="mr-2 h-3.5 w-3.5" /> Archive
-                                  </Button>
-                                ))}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                                )}
+                                {isSuper &&
+                                  (listView === "archived" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => restoreEmployee(e.id)}
+                                    >
+                                      <ArchiveRestore className="mr-2 h-3.5 w-3.5" /> Restore
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => archiveEmployee(e.id)}
+                                    >
+                                      <Archive className="mr-2 h-3.5 w-3.5" /> Archive
+                                    </Button>
+                                  ))}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                     </TableBody>
                   </Table>
                 </ListBody>
@@ -1199,26 +1268,25 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         </TabsContent>
 
         <TabsContent value="history" className="mt-4">
-          <Card className="border-border/70">
-            <CardContent className="p-6">
+          <Card className="rounded-xl border-border/60 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                    <History className="h-5 w-5 text-primary" /> Record History
-                  </h2>
-                </div>
-                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <h2 className="flex items-center gap-2 font-display text-base font-bold">
+                  <History className="h-4.5 w-4.5 text-primary" />
+                  Record History
+                </h2>
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                  <div className="relative w-full min-w-0 sm:w-64">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="pl-9"
+                      className="w-full pl-8"
                       placeholder="Search logs…"
                       value={logSearch}
                       onChange={(e) => setLogSearch(e.target.value)}
                     />
                   </div>
                   <Select value={logDept} onValueChange={setLogDept}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-44">
                       <SelectValue placeholder="All departments" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1231,7 +1299,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     </SelectContent>
                   </Select>
                   <Select value={logAction} onValueChange={setLogAction}>
-                    <SelectTrigger className="w-44">
+                    <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-36">
                       <SelectValue placeholder="All actions" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1241,12 +1309,26 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       <SelectItem value="Deleted">Deleted</SelectItem>
                     </SelectContent>
                   </Select>
+                  {(logSearch || logDept !== "all" || logAction !== "all") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 px-2 text-xs text-muted-foreground"
+                      onClick={() => {
+                        setLogSearch("");
+                        setLogDept("all");
+                        setLogAction("all");
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-3 overflow-x-auto">
                 <ListBody>
-                  <Table>
+                  <Table className="text-xs">
                     <TableHeader>
                       <TableRow>
                         <SortHead sortKey="timestamp" sort={logSort.sort} onSort={logSort.toggle}>
@@ -1273,30 +1355,32 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       {logsLoading && <TableRowsSkeleton cols={6} rows={5} />}
                       {!logsLoading &&
                         logPage.pageItems.map((l) => (
-                        <TableRow key={l.id}>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {l.timestamp}
-                          </TableCell>
-                          <TableCell className="text-sm">{l.actor}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={
-                                l.action === "Added"
-                                  ? "border-success/30 bg-success/15 text-success"
-                                  : l.action === "Edited"
-                                    ? "border-gold/40 bg-gold-soft text-foreground"
-                                    : "border-destructive/30 bg-destructive/15 text-destructive"
-                              }
-                            >
-                              {l.action}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm">{l.department}</TableCell>
-                          <TableCell className="text-sm">{l.target}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{l.notes}</TableCell>
-                        </TableRow>
-                      ))}
+                          <TableRow key={l.id}>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {l.timestamp}
+                            </TableCell>
+                            <TableCell className="text-sm">{l.actor}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  l.action === "Added"
+                                    ? "border-success/30 bg-success/15 text-success"
+                                    : l.action === "Edited"
+                                      ? "border-gold/40 bg-gold-soft text-foreground"
+                                      : "border-destructive/30 bg-destructive/15 text-destructive"
+                                }
+                              >
+                                {l.action}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">{l.department}</TableCell>
+                            <TableCell className="text-sm">{l.target}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {l.notes}
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       {!logsLoading && logPage.pageItems.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={6} className="py-8">
@@ -1958,21 +2042,34 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
             {reportTypes.map((r) => (
               <div
                 key={r}
-                className="flex items-center justify-between rounded-md border border-border p-3"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3 sm:flex-nowrap"
               >
                 <span className="text-sm">{r}</span>
-                <div className="flex gap-1.5">
-                  {(["pdf", "excel"] as ReportFormat[]).map((format) => (
-                    <Button
-                      key={format}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => exportCompanyReport(r, format)}
-                    >
-                      <Download className="mr-1.5 h-3.5 w-3.5" /> {format.toUpperCase()}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline" className="shrink-0 cursor-pointer">
+                      <Download className="mr-2 h-4 w-4" /> Generate
                     </Button>
-                  ))}
-                </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-60">
+                    {REPORT_FORMAT_OPTIONS.map((format) => (
+                      <DropdownMenuItem
+                        key={format.id}
+                        onClick={() => exportCompanyReport(r, format.id)}
+                      >
+                        <FileText className="mr-2 h-4 w-4" />
+                        <span className="flex items-center gap-1.5">
+                          Export as {format.label}{" "}
+                          <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => requestPrint(buildCompanyReport(r))}>
+                      <Printer className="mr-2 h-4 w-4" /> Print…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             ))}
           </div>
@@ -2023,11 +2120,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
               Cancel
             </Button>
             <Button onClick={saveDoc} disabled={docSaving}>
-              {docSaving
-                ? "Saving…"
-                : docDialog?.mode === "edit"
-                  ? "Save changes"
-                  : "Add document"}
+              {docSaving ? "Saving…" : docDialog?.mode === "edit" ? "Save changes" : "Add document"}
             </Button>
           </DialogFooter>
         </DialogContent>

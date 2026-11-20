@@ -115,4 +115,18 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Email Logo
+    |--------------------------------------------------------------------------
+    |
+    | Public URL of the brand logo shown in outgoing emails. Referencing a
+    | hosted image (instead of embedding a CID attachment) keeps the logo
+    | inline in Gmail/Outlook and avoids it showing up as an attachment.
+    | Defaults to the copy shipped in public/images.
+    |
+    */
+
+    'logo_url' => env('MAIL_LOGO_URL', null),
+
 ];

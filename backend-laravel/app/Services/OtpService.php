@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\OtpDeliveryException;
 use App\Mail\SendOtpMail;
 use App\Models\SystemUser;
 use Illuminate\Support\Facades\Cache;
@@ -13,6 +14,13 @@ class OtpService
 {
     private const TTL_SECONDS = 120;
     private const MAX_ATTEMPTS = 3;
+
+    /**
+     * How long a challenge stays resendable after its code expires. The code
+     * itself is only valid for TTL_SECONDS (enforced via `expires_at`); this
+     * just lets the user request a fresh one without signing in again.
+     */
+    private const RESEND_GRACE_SECONDS = 600;
 
     /**
      * Whether this specific account must pass OTP verification at login.
@@ -30,8 +38,10 @@ class OtpService
         $token = Str::random(64);
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
+        $key = 'auth.otp.' . $token;
+
         Cache::put(
-            'auth.otp.' . $token,
+            $key,
             [
                 'user_id' => $user->system_user_id,
                 'code_hash' => hash('sha256', $code),
@@ -41,10 +51,19 @@ class OtpService
                 // so downstream verify/resend skip their own challenge.
                 'captcha_passed' => true,
             ],
-            now()->addSeconds(self::TTL_SECONDS)
+            $this->retainUntil()
         );
 
-        $this->deliver($user, $code);
+        try {
+            $this->deliver($user, $code);
+        } catch (\Throwable $e) {
+            // No code reached the user, so don't leave a challenge behind
+            // that can never be completed.
+            Cache::forget($key);
+            report($e);
+
+            throw OtpDeliveryException::forUser($user->email, $e);
+        }
 
         return [
             'login_token' => $token,
@@ -74,12 +93,25 @@ class OtpService
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $payload['code_hash'] = hash('sha256', $code);
         $payload['attempts'] = 0;
+        // The new code gets its own full lifetime. Without this, verify()
+        // kept rejecting it once the *first* code's expires_at passed.
+        $payload['expires_at'] = now()->addSeconds(self::TTL_SECONDS)->timestamp;
 
-        Cache::put('auth.otp.' . $token, $payload, now()->addSeconds(self::TTL_SECONDS));
+        Cache::put('auth.otp.' . $token, $payload, $this->retainUntil());
 
         $user = SystemUser::find($payload['user_id']);
-        if ($user) {
+        if (! $user) {
+            return ['ok' => false];
+        }
+
+        try {
             $this->deliver($user, $code);
+        } catch (\Throwable $e) {
+            report($e);
+
+            // Keep the existing challenge: the stored hash is the new code, so
+            // a successful retry will still line up with what the user receives.
+            return ['ok' => false, 'mail_failed' => true];
         }
 
         return ['ok' => true];
@@ -90,9 +122,13 @@ class OtpService
         $key = 'auth.otp.' . $token;
         $payload = Cache::get($key);
 
-        if (! $payload || $payload['expires_at'] < now()->timestamp) {
-            Cache::forget($key);
+        if (! $payload) {
+            return null;
+        }
 
+        // Expired code: reject it but keep the challenge so the user can
+        // still resend until the grace window closes.
+        if ($payload['expires_at'] < now()->timestamp) {
             return null;
         }
 
@@ -109,7 +145,7 @@ class OtpService
             return null;
         }
 
-        Cache::put($key, $payload, now()->addSeconds(self::TTL_SECONDS));
+        Cache::put($key, $payload, $this->retainUntil());
 
         return null;
     }
@@ -130,18 +166,21 @@ class OtpService
         return self::TTL_SECONDS;
     }
 
+    private function retainUntil(): \DateTimeInterface
+    {
+        return now()->addSeconds(self::TTL_SECONDS + self::RESEND_GRACE_SECONDS);
+    }
+
     private function deliver(SystemUser $user, string $code): void
     {
         if (! app()->environment('production')) {
             Log::info("OTP issued for {$user->email}: >{$code}<");
         }
 
-        try {
-            Mail::to($user->email)->send(
-                new SendOtpMail($code, $user->full_name ?: $user->username, self::TTL_SECONDS)
-            );
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        // Deliberately not caught here: the caller decides how to report a
+        // delivery failure. Swallowing it made "OTP sent" a lie.
+        Mail::to($user->email)->send(
+            new SendOtpMail($code, $user->full_name ?: $user->username, self::TTL_SECONDS)
+        );
     }
 }

@@ -15,9 +15,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -241,7 +238,7 @@ export function ReportMenu({
 }: {
   /** Single live report (most callers). Builders may be async for server-paginated data. */
   report?: ReportData | ReportBuilder;
-  /** Predefined report list - renders one submenu per report (Recruitment, ESS). */
+  /** Predefined report list — renders a report picker dialog (Recruitment, Applicant, ESS). */
   reports?: ReportMenuOption[];
   recordCount?: number;
   label?: string;
@@ -255,6 +252,7 @@ export function ReportMenu({
   const { gateSensitive, gateDialog } = usePasswordGate();
   const { requestPrint: openPrintDialog, printDialog } = useSecuredPrint();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [pending, setPending] = useState<{
@@ -336,95 +334,128 @@ export function ReportMenu({
     <>
       {gateDialog}
       {printDialog}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size={size}
-            className={cn("gap-2", buttonClassName)}
-            disabled={preparing}
-          >
-            <Download className="h-4 w-4" /> {preparing ? "Preparing…" : label}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          {isMulti
-            ? reports!.map((option) => (
-                <DropdownMenuSub key={option.id}>
-                  <DropdownMenuSubTrigger>
-                    <FileText className="mr-2 h-4 w-4" />
-                    <span className="flex flex-col">
-                      <span>{option.title}</span>
-                      {option.description && (
-                        <span className="text-[11px] text-muted-foreground">
-                          {option.description}
-                        </span>
-                      )}
-                    </span>
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-56">
-                    {FORMATS.map((format) => (
-                      <DropdownMenuItem
-                        key={format.id}
-                        onClick={() =>
-                          void handleExport(() => option.build(), format.id, option.recordCount)
-                        }
-                      >
-                        <FileText className="mr-2 h-4 w-4" />
-                        <span className="flex items-center gap-1.5">
-                          Export as {format.label}{" "}
-                          <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                        </span>
-                      </DropdownMenuItem>
-                    ))}
-                    {showPrint && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => void handlePrint(() => option.build())}>
-                          <Printer className="mr-2 h-4 w-4" /> Print…
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              ))
-            : FORMATS.map((format) => (
-                <DropdownMenuItem
-                  key={format.id}
-                  onClick={() =>
-                    report &&
-                    void handleExport(
-                      () => (typeof report === "function" ? report() : report),
-                      format.id,
-                      recordCount,
-                    )
-                  }
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as {format.label} <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-              ))}
-          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-            Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
-            password.
-          </p>
-          {showPrint && !isMulti && (
-            <>
-              <DropdownMenuSeparator />
+      {isMulti ? (
+        <Button
+          variant="outline"
+          size={size}
+          className={cn("gap-2", buttonClassName)}
+          disabled={preparing}
+          onClick={() => setMenuOpen(true)}
+        >
+          <Download className="h-4 w-4" /> {preparing ? "Preparing…" : label}
+        </Button>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size={size}
+              className={cn("gap-2", buttonClassName)}
+              disabled={preparing}
+            >
+              <Download className="h-4 w-4" /> {preparing ? "Preparing…" : label}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            {FORMATS.map((format) => (
               <DropdownMenuItem
-                onClick={() => {
-                  if (!report) return;
-                  void handlePrint(() => (typeof report === "function" ? report() : report));
-                }}
+                key={format.id}
+                onClick={() =>
+                  report &&
+                  void handleExport(
+                    () => (typeof report === "function" ? report() : report),
+                    format.id,
+                    recordCount,
+                  )
+                }
               >
-                <Printer className="mr-2 h-4 w-4" /> Print…
+                <FileText className="mr-2 h-4 w-4" />
+                <span className="flex items-center gap-1.5">
+                  Export as {format.label} <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                </span>
               </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+            ))}
+            {showPrint && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!report) return;
+                    void handlePrint(() => (typeof report === "function" ? report() : report));
+                  }}
+                >
+                  <Printer className="mr-2 h-4 w-4" /> Print…
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {isMulti && (
+        <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="font-display text-2xl">{label}</DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+              {reports!.map((option) => (
+                <div
+                  key={option.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3 sm:flex-nowrap"
+                >
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium">{option.title}</p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 cursor-pointer"
+                        disabled={preparing}
+                      >
+                        <Download className="mr-2 h-4 w-4" /> Generate
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-60">
+                      {FORMATS.map((format) => (
+                        <DropdownMenuItem
+                          key={format.id}
+                          onClick={() =>
+                            void handleExport(() => option.build(), format.id, option.recordCount)
+                          }
+                        >
+                          <FileText className="mr-2 h-4 w-4" />
+                          <span className="flex items-center gap-1.5">
+                            Export as {format.label}{" "}
+                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                      {showPrint && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => void handlePrint(() => option.build())}>
+                            <Printer className="mr-2 h-4 w-4" /> Print…
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                className="cursor-pointer"
+                onClick={() => setMenuOpen(false)}
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       <SecureExportDialog
         open={dialogOpen}
         onOpenChange={(o) => {
@@ -532,10 +563,6 @@ export function MultiReportMenu({
               </span>
             </DropdownMenuItem>
           ))}
-          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-            Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
-            password.
-          </p>
           {showPrint && (
             <>
               <DropdownMenuSeparator />

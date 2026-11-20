@@ -45,13 +45,19 @@ class EmployeeOnboardingItem extends Model
         return $this->belongsTo(NewHire::class, 'new_hire_id', 'new_hire_id');
     }
 
-    /** The template item this was copied from (determines its phase). */
-    public function templateItem(): BelongsTo
+    /**
+     * The template item this was copied from (determines its phase).
+     *
+     * Phase 4a: template items now live in onboarding_checklist_templates
+     * .items_json, so this is resolved through the template item index
+     * instead of a database relation.
+     */
+    public function getTemplateItemAttribute(): ?OnboardingChecklistItem
     {
-        return $this->belongsTo(
-            OnboardingChecklistItem::class,
-            'template_item_id',
-            'template_item_id',
-        );
+        if ($this->template_item_id === null) {
+            return null;
+        }
+
+        return OnboardingChecklistTemplate::findItem((int) $this->template_item_id);
     }
 }

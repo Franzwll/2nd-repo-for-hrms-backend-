@@ -60,6 +60,7 @@ class JobPost extends Model
         'about',
         'picture',
         'blocks_json',
+        'platforms_json',
         'requires_practical',
         'requires_assessment',
     ];
@@ -70,6 +71,7 @@ class JobPost extends Model
         'skills_json' => 'array',
         'additional_json' => 'array',
         'blocks_json' => 'array',
+        'platforms_json' => 'array',
         /* Accepted screening levels ("any of these"). The scalar
            education_level / experience_level keep holding the weakest one. */
         'education_levels' => 'array',
@@ -96,9 +98,41 @@ class JobPost extends Model
         return $this->belongsTo(Position::class, 'position_id', 'position_id');
     }
 
-    public function platforms(): HasMany
+    public function getPlatformsAttribute(): \Illuminate\Support\Collection
     {
-        return $this->hasMany(JobPostPlatform::class, 'job_post_id', 'job_post_id');
+        if (\Illuminate\Support\Facades\Schema::hasTable('job_post_platforms')) {
+            if ($this->relationLoaded('platforms')) {
+                return $this->getRelation('platforms');
+            }
+            return $this->hasMany(JobPostPlatform::class, 'job_post_id', 'job_post_id')->get();
+        }
+
+        $raw = $this->platforms_json;
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true);
+        }
+        if (!is_array($raw)) {
+            return collect();
+        }
+
+        return collect($raw)->values()->map(function ($p, $idx) {
+            return new JobPostPlatform([
+                'job_post_platform_id' => $p['job_post_platform_id'] ?? ($idx + 1),
+                'job_post_id'          => $this->job_post_id,
+                'platform'             => $p['platform'] ?? '',
+                'status'               => $p['status'] ?? 'published',
+                'published_at'         => $p['published_at'] ?? null,
+                'created_at'           => $p['created_at'] ?? $this->created_at,
+            ]);
+        });
+    }
+
+    public function platforms()
+    {
+        if (\Illuminate\Support\Facades\Schema::hasTable('job_post_platforms')) {
+            return $this->hasMany(JobPostPlatform::class, 'job_post_id', 'job_post_id');
+        }
+        return $this->getPlatformsAttribute();
     }
 
     public function applicants(): HasMany

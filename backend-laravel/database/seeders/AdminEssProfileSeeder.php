@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class AdminEssProfileSeeder extends Seeder
@@ -69,7 +70,6 @@ class AdminEssProfileSeeder extends Seeder
         ]);
 
         // Work Schedules
-        DB::table('work_schedules')->where('employee_id', $empId)->delete();
         $days = [
             ['dow' => 1, 'name' => 'Executive Day Shift', 'start' => '08:00:00', 'end' => '17:00:00', 'loc' => 'HR Executive Office', 'rest' => 0],
             ['dow' => 2, 'name' => 'Executive Day Shift', 'start' => '08:00:00', 'end' => '17:00:00', 'loc' => 'HR Executive Office', 'rest' => 0],
@@ -79,8 +79,12 @@ class AdminEssProfileSeeder extends Seeder
             ['dow' => 6, 'name' => null, 'start' => null, 'end' => null, 'loc' => null, 'rest' => 1],
             ['dow' => 0, 'name' => null, 'start' => null, 'end' => null, 'loc' => null, 'rest' => 1],
         ];
+
+        $scheduleRows = [];
+        $schedId = 1;
         foreach ($days as $d) {
-            DB::table('work_schedules')->insert([
+            $scheduleRows[] = [
+                'work_schedule_id' => $schedId++,
                 'employee_id'    => $empId,
                 'day_of_week'    => $d['dow'],
                 'shift_name'     => $d['name'],
@@ -89,9 +93,22 @@ class AdminEssProfileSeeder extends Seeder
                 'location'       => $d['loc'],
                 'is_rest_day'    => $d['rest'],
                 'effective_from' => '2026-01-01',
-                'created_at'     => Carbon::now(),
-                'updated_at'     => Carbon::now(),
+                'created_at'     => Carbon::now()->toDateTimeString(),
+                'updated_at'     => Carbon::now()->toDateTimeString(),
+            ];
+        }
+
+        if (Schema::hasColumn('employees', 'schedule_json')) {
+            DB::table('employees')->where('employee_id', $empId)->update([
+                'schedule_json' => json_encode($scheduleRows),
             ]);
+        }
+
+        if (Schema::hasTable('work_schedules')) {
+            DB::table('work_schedules')->where('employee_id', $empId)->delete();
+            foreach ($scheduleRows as $r) {
+                DB::table('work_schedules')->insert($r);
+            }
         }
 
         // Leave Balances
@@ -143,9 +160,20 @@ class AdminEssProfileSeeder extends Seeder
         // Payroll Records & Items
         $existingPrs = DB::table('payroll_records')->where('employee_id', $empId)->pluck('payroll_record_id');
         if ($existingPrs->isNotEmpty()) {
-            DB::table('payroll_items')->whereIn('payroll_record_id', $existingPrs)->delete();
+            if (Schema::hasTable('payroll_items')) {
+                DB::table('payroll_items')->whereIn('payroll_record_id', $existingPrs)->delete();
+            }
             DB::table('payroll_records')->where('employee_id', $empId)->delete();
         }
+
+        $standardItems = [
+            ['type' => 'Earning', 'item_type' => 'Earning', 'label' => 'Basic Pay', 'amount' => 32500.00],
+            ['type' => 'Earning', 'item_type' => 'Earning', 'label' => 'Management Allowance', 'amount' => 3500.00],
+            ['type' => 'Deduction', 'item_type' => 'Deduction', 'label' => 'SSS Contribution', 'amount' => 1462.50],
+            ['type' => 'Deduction', 'item_type' => 'Deduction', 'label' => 'PhilHealth', 'amount' => 812.50],
+            ['type' => 'Deduction', 'item_type' => 'Deduction', 'label' => 'Pag-IBIG HDMF', 'amount' => 200.00],
+            ['type' => 'Deduction', 'item_type' => 'Deduction', 'label' => 'Withholding Tax', 'amount' => 3400.00],
+        ];
 
         foreach ([
             ['pid' => 1, 'start' => '2026-06-01', 'end' => '2026-06-15', 'payout' => '2026-06-20', 'gross' => 36000.00, 'net' => 30125.00, 'status' => 'Released'],
@@ -153,7 +181,7 @@ class AdminEssProfileSeeder extends Seeder
             ['pid' => 3, 'start' => '2026-07-01', 'end' => '2026-07-15', 'payout' => '2026-07-20', 'gross' => 36000.00, 'net' => 30125.00, 'status' => 'Released'],
             ['pid' => 4, 'start' => '2026-07-16', 'end' => '2026-07-31', 'payout' => '2026-08-05', 'gross' => 36000.00, 'net' => 30125.00, 'status' => 'Released'],
         ] as $pp) {
-            $prId = DB::table('payroll_records')->insertGetId([
+            $recordData = [
                 'employee_id'       => $empId,
                 'payroll_period_id' => $pp['pid'],
                 'pay_period_start'  => $pp['start'],
@@ -164,23 +192,22 @@ class AdminEssProfileSeeder extends Seeder
                 'status'            => $pp['status'],
                 'created_at'        => Carbon::now(),
                 'updated_at'        => Carbon::now(),
-            ]);
+            ];
+            if (Schema::hasColumn('payroll_records', 'items_json')) {
+                $recordData['items_json'] = json_encode($standardItems);
+            }
+            $prId = DB::table('payroll_records')->insertGetId($recordData);
 
-            foreach ([
-                ['type' => 'Earning', 'label' => 'Basic Pay', 'amount' => 32500.00],
-                ['type' => 'Earning', 'label' => 'Management Allowance', 'amount' => 3500.00],
-                ['type' => 'Deduction', 'label' => 'SSS Contribution', 'amount' => 1462.50],
-                ['type' => 'Deduction', 'label' => 'PhilHealth', 'amount' => 812.50],
-                ['type' => 'Deduction', 'label' => 'Pag-IBIG HDMF', 'amount' => 200.00],
-                ['type' => 'Deduction', 'label' => 'Withholding Tax', 'amount' => 3400.00],
-            ] as $it) {
-                DB::table('payroll_items')->insert([
-                    'payroll_record_id' => $prId,
-                    'item_type'         => $it['type'],
-                    'label'             => $it['label'],
-                    'amount'            => $it['amount'],
-                    'created_at'        => Carbon::now(),
-                ]);
+            if (Schema::hasTable('payroll_items')) {
+                foreach ($standardItems as $it) {
+                    DB::table('payroll_items')->insert([
+                        'payroll_record_id' => $prId,
+                        'item_type'         => $it['type'],
+                        'label'             => $it['label'],
+                        'amount'            => $it['amount'],
+                        'created_at'        => Carbon::now(),
+                    ]);
+                }
             }
         }
 
@@ -248,20 +275,37 @@ class AdminEssProfileSeeder extends Seeder
         }
 
         // Benefits
-        DB::table('employee_benefits')->where('employee_id', $empId)->delete();
-        foreach ([
+        $benefitsData = [
             ['benefit_name' => 'SSS', 'reference_value' => '34-9876543-2', 'note' => 'Active executive contributions', 'effective_date' => '2022-03-01', 'status' => 'Active'],
             ['benefit_name' => 'PhilHealth', 'reference_value' => '12-987654321-0', 'note' => 'Active executive member', 'effective_date' => '2022-03-01', 'status' => 'Active'],
             ['benefit_name' => 'Pag-IBIG', 'reference_value' => '1234-9876-5432', 'note' => 'Active + Executive MP2 Savings', 'effective_date' => '2022-03-01', 'status' => 'Active'],
             ['benefit_name' => 'BIR Tax Status', 'reference_value' => 'M — Married', 'note' => 'TIN 987-654-321', 'effective_date' => '2022-03-01', 'status' => 'Active'],
             ['benefit_name' => 'HMO', 'reference_value' => 'Maxicare Executive Diamond Plus', 'note' => 'Comprehensive coverage + Dependents', 'effective_date' => '2022-03-01', 'status' => 'Active'],
-        ] as $b) {
-            DB::table('employee_benefits')->insert([
-                'employee_id'     => $empId,
+        ];
+
+        $benefitsRows = [];
+        $benId = 1;
+        foreach ($benefitsData as $b) {
+            $benefitsRows[] = [
+                'employee_benefit_id' => $benId++,
+                'employee_id'         => $empId,
                 ...$b,
-                'created_at'      => Carbon::now(),
-                'updated_at'      => Carbon::now(),
+                'created_at'          => Carbon::now()->toDateTimeString(),
+                'updated_at'          => Carbon::now()->toDateTimeString(),
+            ];
+        }
+
+        if (Schema::hasColumn('employees', 'benefits_json')) {
+            DB::table('employees')->where('employee_id', $empId)->update([
+                'benefits_json' => json_encode($benefitsRows),
             ]);
+        }
+
+        if (Schema::hasTable('employee_benefits')) {
+            DB::table('employee_benefits')->where('employee_id', $empId)->delete();
+            foreach ($benefitsRows as $r) {
+                DB::table('employee_benefits')->insert($r);
+            }
         }
     }
 }

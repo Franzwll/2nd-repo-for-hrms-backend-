@@ -48,12 +48,20 @@ class ResetQuizAttempt extends Command
             return self::FAILURE;
         }
 
-        $attempts = DB::table('employee_learning_attempts')
+        $learning = DB::table('employee_learning')
             ->where('employee_id', (int) $employee->employee_id)
-            ->where('course_id', (int) $course->course_id);
+            ->where('course_id', (int) $course->course_id)
+            ->first(['employee_learning_id']);
 
-        $attemptCount = $attempts->clone()->count();
-        $failedCount = $attempts->clone()->where('passed', false)->count();
+        $attemptCount = DB::table('employee_learning_attempts')
+            ->where('employee_id', (int) $employee->employee_id)
+            ->where('course_id', (int) $course->course_id)
+            ->count();
+        $failedCount = DB::table('employee_learning_attempts')
+            ->where('employee_id', (int) $employee->employee_id)
+            ->where('course_id', (int) $course->course_id)
+            ->where('passed', false)
+            ->count();
 
         $employeeName = trim(($employee->first_name ?? '').' '.($employee->last_name ?? ''))
             ?: $employee->email;
@@ -71,16 +79,21 @@ class ResetQuizAttempt extends Command
             return self::SUCCESS;
         }
 
-        $deleted = $attempts->delete();
-        $reset = DB::table('employee_learning')
+        $deleted = DB::table('employee_learning_attempts')
             ->where('employee_id', (int) $employee->employee_id)
             ->where('course_id', (int) $course->course_id)
-            ->update([
-                'status' => 'In Progress',
-                'score' => null,
-                'completed_date' => null,
-                'completion_source' => null,
-            ]);
+            ->delete();
+        $reset = 0;
+        if ($learning) {
+            $reset = DB::table('employee_learning')
+                ->where('employee_learning_id', (int) $learning->employee_learning_id)
+                ->update([
+                    'status' => 'In Progress',
+                    'score' => null,
+                    'completed_date' => null,
+                    'completion_source' => null,
+                ]);
+        }
 
         $this->info("Deleted {$deleted} attempt(s).");
 

@@ -17,9 +17,11 @@ class ApplicantScreeningEntity extends Model
     ];
 
     protected $fillable = [
+        'entity_id',
         'applicant_id',
         'label',
         'value',
+        'created_at',
     ];
 
     public function applicant(): BelongsTo

@@ -18,8 +18,8 @@ class PracticalTestController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = PracticalTest::with('applicant.jobPost.department')
-            ->orderByDesc('test_date')
-            ->orderByDesc('practical_test_id');
+            ->orderByDesc('evaluation_date')
+            ->orderByDesc('evaluation_id');
 
         if ($applicantId = $request->query('applicant_id')) {
             $query->where('applicant_id', $applicantId);

@@ -217,6 +217,32 @@ function firstId(string $table, string $column, string $where = '1=1', array $bi
 }
 
 /**
+ * First interview facility id from the interview.facilities setting (Phase 4b
+ * inlined the facilities table into system_settings).
+ */
+function firstFacilityId(): ?int
+{
+    $raw = scalar("SELECT setting_value FROM system_settings WHERE setting_key = 'interview.facilities' LIMIT 1");
+    $rows = is_string($raw) ? json_decode($raw, true) : $raw;
+
+    if (! is_array($rows)) {
+        return null;
+    }
+
+    $ids = [];
+    foreach ($rows as $row) {
+        $id = (int) ($row['facility_id'] ?? 0);
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+    }
+
+    sort($ids);
+
+    return $ids[0] ?? null;
+}
+
+/**
  * Free (position, department) pairs for the one-post-per-pair rule: positions
  * whose own department has no job post yet. Falls back to any unused
  * position x department combination when fewer than $limit pairs exist.
@@ -606,7 +632,14 @@ function section_recruitment(): void
     $dbStatus = scalar('SELECT status FROM job_posts WHERE job_post_id = ?', [$jobId]);
     $dbActive = (int) scalar('SELECT active FROM job_posts WHERE job_post_id = ?', [$jobId]);
     record('recruitment', 'New job post — Save draft persists to DB', in_array($create['status'], [200, 201], true) && $dbStatus === 'Draft' && $dbActive === 0, "http={$create['status']} id={$jobId} db status={$dbStatus} active={$dbActive}");
-    record('recruitment', 'New job post — practical flag + platform rows persisted', (int) scalar('SELECT requires_practical FROM job_posts WHERE job_post_id = ?', [$jobId]) === 1 && (int) scalar('SELECT COUNT(*) FROM job_post_platforms WHERE job_post_id = ?', [$jobId]) >= 1, 'platforms=' . jdump(DB::table('job_post_platforms')->where('job_post_id', $jobId)->pluck('platform')->toArray()));
+    $hasPlatformTable = Schema::hasTable('job_post_platforms');
+    $platformCount = $hasPlatformTable
+        ? (int) scalar('SELECT COUNT(*) FROM job_post_platforms WHERE job_post_id = ?', [$jobId])
+        : count(json_decode((string) scalar('SELECT platforms_json FROM job_posts WHERE job_post_id = ?', [$jobId]), true) ?: []);
+    $platformList = $hasPlatformTable
+        ? DB::table('job_post_platforms')->where('job_post_id', $jobId)->pluck('platform')->toArray()
+        : collect(json_decode((string) scalar('SELECT platforms_json FROM job_posts WHERE job_post_id = ?', [$jobId]), true) ?: [])->pluck('platform')->toArray();
+    record('recruitment', 'New job post — practical flag + platform rows persisted', (int) scalar('SELECT requires_practical FROM job_posts WHERE job_post_id = ?', [$jobId]) === 1 && $platformCount >= 1, 'platforms=' . jdump($platformList));
 
     /* 2. Edit template (update job post) ---------------------------------- */
     $upd = api('PUT', "/job-posts/{$jobId}", [
@@ -626,7 +659,9 @@ function section_recruitment(): void
     $pubStatus = scalar('SELECT status FROM job_posts WHERE job_post_id = ?', [$jobId]);
     $pubActive = (int) scalar('SELECT active FROM job_posts WHERE job_post_id = ?', [$jobId]);
     $pubDate   = scalar('SELECT posted_date FROM job_posts WHERE job_post_id = ?', [$jobId]);
-    $pubPlatforms = DB::table('job_post_platforms')->where('job_post_id', $jobId)->where('status', 'published')->pluck('platform')->toArray();
+    $pubPlatforms = Schema::hasTable('job_post_platforms')
+        ? DB::table('job_post_platforms')->where('job_post_id', $jobId)->where('status', 'published')->pluck('platform')->toArray()
+        : collect(json_decode((string) scalar('SELECT platforms_json FROM job_posts WHERE job_post_id = ?', [$jobId]), true) ?: [])->where('status', 'published')->pluck('platform')->values()->toArray();
     record(
         'recruitment',
         'Publish job post (POST /job-posts/{id}/publish)',
@@ -830,8 +865,12 @@ function section_recruitment_cleanup(): void
 
     $appId = $CTX['recruit_applicant_id'] ?? null;
     if ($appId) {
-        DB::table('applicant_screening_scores')->where('applicant_id', $appId)->delete();
-        DB::table('applicant_screening_entities')->where('applicant_id', $appId)->delete();
+        if (Schema::hasTable('applicant_screening_scores')) {
+            DB::table('applicant_screening_scores')->where('applicant_id', $appId)->delete();
+        }
+        if (Schema::hasTable('applicant_screening_entities')) {
+            DB::table('applicant_screening_entities')->where('applicant_id', $appId)->delete();
+        }
         DB::table('applicant_screenings')->where('applicant_id', $appId)->delete();
         api('DELETE', "/applicants/{$appId}");
     }
@@ -871,7 +910,7 @@ function section_applicant(): void
     $pairs      = freePositionDepartmentPairs(1);
     $deptId     = $pairs[0]['department_id'] ?? null;
     $posId      = $pairs[0]['position_id'] ?? null;
-    $facilityId = firstId('facilities', 'facility_id');
+    $facilityId = firstFacilityId();
     $userId     = (int) ($GLOBALS['ME']['system_user_id'] ?? 0) ?: (int) firstId('system_users', 'system_user_id');
 
     if (! $deptId || ! $posId) {
@@ -1142,13 +1181,28 @@ function section_applicant_cleanup(): void
 
     $ids = array_values(array_filter([$CTX['apl_applicant_id'] ?? null, $CTX['apl_reject_id'] ?? null]));
     foreach ($ids as $id) {
-        DB::table('applicant_screening_scores')->where('applicant_id', $id)->delete();
-        DB::table('applicant_screening_entities')->where('applicant_id', $id)->delete();
+        if (Schema::hasTable('applicant_screening_scores')) {
+            DB::table('applicant_screening_scores')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('applicant_screening_entities')) {
+            DB::table('applicant_screening_entities')->where('applicant_id', $id)->delete();
+        }
         DB::table('applicant_screenings')->where('applicant_id', $id)->delete();
-        DB::table('applicant_assessments')->where('applicant_id', $id)->delete();
-        DB::table('assessment_tests')->where('applicant_id', $id)->delete();
-        DB::table('practical_tests')->where('applicant_id', $id)->delete();
-        DB::table('final_evaluations')->where('applicant_id', $id)->delete();
+        if (Schema::hasTable('applicant_evaluations')) {
+            DB::table('applicant_evaluations')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('applicant_assessments')) {
+            DB::table('applicant_assessments')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('assessment_tests')) {
+            DB::table('assessment_tests')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('practical_tests')) {
+            DB::table('practical_tests')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('final_evaluations')) {
+            DB::table('final_evaluations')->where('applicant_id', $id)->delete();
+        }
         DB::table('interviews')->where('applicant_id', $id)->delete();
         api('DELETE', "/applicants/{$id}");
     }
@@ -1219,7 +1273,12 @@ function section_onboarding(): void
     ]);
     $tplId = $tpl['json']['template_id'] ?? null;
     $CTX['tpl_id'] = $tplId;
-    $tplItems = $tplId ? (int) scalar('SELECT COUNT(*) FROM onboarding_checklist_items WHERE template_id = ?', [$tplId]) : 0;
+    // Phase 4a: template items are inlined in onboarding_checklist_templates.items_json.
+    $tplItems = 0;
+    if ($tplId) {
+        $tplJson = scalar('SELECT items_json FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]);
+        $tplItems = count(json_decode((string) $tplJson, true) ?: []);
+    }
     record('onboarding', 'Create checklist — template + items persisted', $tpl['status'] === 201 && $tplId !== null && $tplItems === 2, "http={$tpl['status']} template_id={$tplId} items={$tplItems}");
 
     // __ONBOARDING_PART_B__
@@ -1241,8 +1300,16 @@ function section_onboarding(): void
     $updatedTitle = scalar('SELECT title FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]);
     $updatedPhase = scalar('SELECT phase FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]);
     $updatedScope = json_decode((string) scalar('SELECT position_scope_json FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]), true);
-    $itemTexts = DB::table('onboarding_checklist_items')->where('template_id', $tplId)->orderBy('sort_order')->pluck('item_text')->toArray();
-    $itemOne = DB::table('onboarding_checklist_items')->where('template_id', $tplId)->where('item_text', $TAG . ' Item One Updated')->first();
+    $tplItemsJson = json_decode((string) scalar('SELECT items_json FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]), true) ?: [];
+    usort($tplItemsJson, fn ($a, $b) => ($a['sort_order'] ?? 0) <=> ($b['sort_order'] ?? 0));
+    $itemTexts = array_column($tplItemsJson, 'item_text');
+    $itemOne = null;
+    foreach ($tplItemsJson as $row) {
+        if (($row['item_text'] ?? null) === $TAG . ' Item One Updated') {
+            $itemOne = (object) $row;
+            break;
+        }
+    }
     record(
         'onboarding',
         'Edit checklist / configuration — title, phase, position scope + item fields saved',
@@ -1349,7 +1416,7 @@ function section_onboarding(): void
     /* 10. Delete checklist (no requests attached yet) --------------------------- */
     $del = api('DELETE', "/checklist-templates/{$tplId}");
     $tplGone = (int) scalar('SELECT COUNT(*) FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]);
-    $itemsGone = (int) scalar('SELECT COUNT(*) FROM onboarding_checklist_items WHERE template_id = ?', [$tplId]);
+    $itemsGone = (int) scalar('SELECT COUNT(*) FROM onboarding_checklist_templates WHERE template_id = ? AND items_json IS NOT NULL', [$tplId]);
     record('onboarding', 'Delete checklist — template + items removed (FK cascade)', $del['status'] === 200 && $tplGone === 0 && $itemsGone === 0, "http={$del['status']} template_remaining={$tplGone} items_remaining={$itemsGone}");
 
     /* 11. Requested checklist — create / edit / delete -------------------------- */
@@ -1719,13 +1786,28 @@ function section_cleanup_test_rows(): void
 
     $appIds = DB::table('applicants')->where('name', 'like', 'TEST-%')->pluck('applicant_id')->toArray();
     foreach ($appIds as $id) {
-        DB::table('applicant_screening_scores')->where('applicant_id', $id)->delete();
-        DB::table('applicant_screening_entities')->where('applicant_id', $id)->delete();
+        if (Schema::hasTable('applicant_screening_scores')) {
+            DB::table('applicant_screening_scores')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('applicant_screening_entities')) {
+            DB::table('applicant_screening_entities')->where('applicant_id', $id)->delete();
+        }
         DB::table('applicant_screenings')->where('applicant_id', $id)->delete();
-        DB::table('applicant_assessments')->where('applicant_id', $id)->delete();
-        DB::table('assessment_tests')->where('applicant_id', $id)->delete();
-        DB::table('practical_tests')->where('applicant_id', $id)->delete();
-        DB::table('final_evaluations')->where('applicant_id', $id)->delete();
+        if (Schema::hasTable('applicant_evaluations')) {
+            DB::table('applicant_evaluations')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('applicant_assessments')) {
+            DB::table('applicant_assessments')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('assessment_tests')) {
+            DB::table('assessment_tests')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('practical_tests')) {
+            DB::table('practical_tests')->where('applicant_id', $id)->delete();
+        }
+        if (Schema::hasTable('final_evaluations')) {
+            DB::table('final_evaluations')->where('applicant_id', $id)->delete();
+        }
         DB::table('interviews')->where('applicant_id', $id)->delete();
     }
     $deleted['applicants'] = DB::table('applicants')->whereIn('applicant_id', $appIds)->delete();

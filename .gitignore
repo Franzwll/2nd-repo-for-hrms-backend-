@@ -6,7 +6,10 @@ yarn-error.log
 nlp-service/uvicorn_*.log
 .kilo
 .opencode
-
+.impeccable
+.agent
+.agents/
+skills-lock.json
 
 # Laravel 4 specific
 bootstrap/compiled.php

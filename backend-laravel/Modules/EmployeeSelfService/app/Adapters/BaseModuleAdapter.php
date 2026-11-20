@@ -61,7 +61,7 @@ abstract class BaseModuleAdapter implements EssModuleAdapter
     {
         $routing = $request->routings()
             ->where('action', 'complete')
-            ->orderByDesc('ess_request_routing_id')
+            ->orderByDesc('ess_request_event_id')
             ->first();
 
         return is_array($routing?->result_payload) ? $routing->result_payload : [];

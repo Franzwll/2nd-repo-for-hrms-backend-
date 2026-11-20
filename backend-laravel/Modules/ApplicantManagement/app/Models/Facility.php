@@ -25,12 +25,14 @@ class Facility extends Model
         'is_active' => 'boolean',
     ];
 
-    /* ------------------------------------------------------------------ */
-    /* Relationships                                                         */
-    /* ------------------------------------------------------------------ */
-
     public function interviews(): HasMany
     {
         return $this->hasMany(Interview::class, 'facility_id', 'facility_id');
+    }
+
+    /** Compatibility helper */
+    public static function allFromSettings()
+    {
+        return static::all();
     }
 }

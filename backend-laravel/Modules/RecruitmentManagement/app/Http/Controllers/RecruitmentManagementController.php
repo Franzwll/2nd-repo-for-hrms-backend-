@@ -127,7 +127,7 @@ class RecruitmentManagementController extends Controller
     {
         // `position` is eager-loaded so the resource can resolve the Core HCM
         // test-requirement flags (owner) without N+1 queries.
-        $query = JobPost::with(['department', 'position', 'platforms', 'applicants'])
+        $query = JobPost::with(['department', 'position', 'applicants'])
             ->orderByDesc('created_at');
 
         if ($search = $request->query('search')) {
@@ -292,7 +292,7 @@ class RecruitmentManagementController extends Controller
         $this->syncPlatforms($jobPost, $platforms);
 
         return response()->json(
-            new JobPostResource($jobPost->load(['department', 'position', 'platforms'])),
+            new JobPostResource($jobPost->load(['department', 'position'])),
             201
         );
     }
@@ -303,7 +303,7 @@ class RecruitmentManagementController extends Controller
 
     public function show(int $job_post): JsonResponse
     {
-        $model = JobPost::with(['department', 'position', 'platforms', 'applicants'])->findOrFail($job_post);
+        $model = JobPost::with(['department', 'position', 'applicants'])->findOrFail($job_post);
 
         return response()->json(new JobPostResource($model));
     }
@@ -432,7 +432,7 @@ class RecruitmentManagementController extends Controller
             details: "Updated job post '{$model->title}' (status: {$model->status}).",
         );
 
-        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -512,7 +512,7 @@ class RecruitmentManagementController extends Controller
             'status' => $newActive ? 'Open' : 'Closed',
         ]);
 
-        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -539,7 +539,7 @@ class RecruitmentManagementController extends Controller
 
         $this->syncPlatforms($model, $data['platforms']);
 
-        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -820,17 +820,56 @@ class RecruitmentManagementController extends Controller
 
     private function syncPlatforms(JobPost $jobPost, array $platforms): void
     {
-        // Unpublish removed platforms
-        JobPostPlatform::where('job_post_id', $jobPost->job_post_id)
-            ->whereNotIn('platform', $platforms)
-            ->update(['status' => 'unpublished']);
+        if (\Illuminate\Support\Facades\Schema::hasTable('job_post_platforms')) {
+            // Unpublish removed platforms
+            JobPostPlatform::where('job_post_id', $jobPost->job_post_id)
+                ->whereNotIn('platform', $platforms)
+                ->update(['status' => 'unpublished']);
 
-        // Upsert active platforms
-        foreach ($platforms as $platform) {
-            JobPostPlatform::updateOrCreate(
-                ['job_post_id' => $jobPost->job_post_id, 'platform' => $platform],
-                ['status' => 'published', 'published_at' => now()]
-            );
+            // Upsert active platforms
+            foreach ($platforms as $platform) {
+                JobPostPlatform::updateOrCreate(
+                    ['job_post_id' => $jobPost->job_post_id, 'platform' => $platform],
+                    ['status' => 'published', 'published_at' => now()]
+                );
+            }
         }
+
+        // Also sync inlined platforms_json on job_posts
+        $raw = is_string($jobPost->platforms_json ?? null)
+            ? json_decode($jobPost->platforms_json, true)
+            : ($jobPost->platforms_json ?? []);
+
+        $current = [];
+        foreach (($raw ?? []) as $p) {
+            if (isset($p['platform'])) {
+                $current[$p['platform']] = $p;
+            }
+        }
+
+        foreach ($current as $name => &$item) {
+            if (!in_array($name, $platforms, true)) {
+                $item['status'] = 'unpublished';
+            }
+        }
+        unset($item);
+
+        foreach ($platforms as $platform) {
+            if (isset($current[$platform])) {
+                $current[$platform]['status'] = 'published';
+                $current[$platform]['published_at'] = now()->toISOString();
+            } else {
+                $current[$platform] = [
+                    'job_post_id'  => $jobPost->job_post_id,
+                    'platform'     => $platform,
+                    'status'       => 'published',
+                    'published_at' => now()->toISOString(),
+                    'created_at'   => now()->toISOString(),
+                ];
+            }
+        }
+
+        $jobPost->platforms_json = array_values($current);
+        $jobPost->save();
     }
 }

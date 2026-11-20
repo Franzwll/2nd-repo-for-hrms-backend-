@@ -3,13 +3,14 @@ import {
   Users,
   Megaphone,
   UserCheck,
+  UserCog,
   Building2,
   FolderOpen,
   Headset,
-  ShieldCheck,
   ScrollText,
   Settings,
   ClipboardCheck,
+  createLucideIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -83,40 +84,91 @@ export function navForRole(role: Role): NavItem[] {
     ];
   }
 
-  const shared: NavItem[] = [
-    { label: "Dashboard", to: base, icon: LayoutDashboard },
-    {
-      label: "Recruitment & Onboarding",
-      to: `${base}/applicants`,
-      icon: Megaphone,
-      children: recruitmentChildren(base),
-    },
-    {
-      label: "Core HCM",
-      to: `${base}/org-chart`,
-      icon: Building2,
-      children: hcmChildren(base),
-    },
-    { label: "Employee Records", to: `${base}/employees`, icon: FolderOpen },
-    { label: "ESS Management", to: `${base}/ess`, icon: Headset },
-    {
-      label: "My ESS",
-      to: `${base}/my-ess`,
-      icon: UserCheck,
-      children: myEssChildren(base),
-    },
-  ];
+  const myEssItem: NavItem = {
+    label: "My ESS",
+    to: `${base}/my-ess`,
+    icon: UserCheck,
+    children: myEssChildren(base),
+  };
+
+  const recruitmentItem: NavItem = {
+    label: "Recruitment & Onboarding",
+    to: `${base}/applicants`,
+    icon: Megaphone,
+    children: recruitmentChildren(base),
+  };
+
+  const coreHcmItem: NavItem = {
+    label: "Core HCM",
+    to: `${base}/org-chart`,
+    icon: Building2,
+    children: hcmChildren(base),
+  };
+
+  const employeeRecordsItem: NavItem = {
+    label: "Employee Records",
+    to: `${base}/employees`,
+    icon: FolderOpen,
+  };
+
+  const essManagementItem: NavItem = {
+    label: "ESS Management",
+    to: `${base}/ess`,
+    icon: UserCog,
+  };
+
+  const userManagementIcon = createLucideIcon("user-management-shield", [
+    [
+      "path",
+      {
+        d: "M12 2.5 4.5 5.5v6c0 5 3.2 9.6 7.5 11 4.3-1.4 7.5-6 7.5-11v-6L12 2.5Z",
+        key: "shield",
+      },
+    ],
+    [
+      "circle",
+      {
+        cx: "12",
+        cy: "9.25",
+        r: "2.5",
+        key: "head",
+      },
+    ],
+    [
+      "path",
+      {
+        d: "M7.75 16c.65-1.95 2.3-3.25 4.25-3.25s3.6 1.3 4.25 3.25",
+        key: "shoulders",
+      },
+    ],
+  ]);
+
+  if (role === "admin") {
+    return [
+      { label: "Dashboard", to: base, icon: LayoutDashboard },
+      myEssItem,
+      recruitmentItem,
+      coreHcmItem,
+      employeeRecordsItem,
+      essManagementItem,
+      { label: "Settings", to: `${base}/settings`, icon: Settings },
+    ];
+  }
 
   if (role === "superadmin") {
     return [
-      ...shared,
-      { label: "User Management", to: `${base}/users`, icon: ShieldCheck },
+      { label: "Dashboard", to: base, icon: LayoutDashboard },
+      recruitmentItem,
+      coreHcmItem,
+      employeeRecordsItem,
+      essManagementItem,
+      { label: "User Management", to: `${base}/users`, icon: userManagementIcon },
       { label: "Audit Logs", to: `${base}/audit`, icon: ScrollText },
       { label: "Settings", to: `${base}/settings`, icon: Settings },
     ];
   }
 
-  return [...shared, { label: "Settings", to: `${base}/settings`, icon: Settings }];
+  return [];
 }
 
 export const iconRegistry = { Users, UserCheck };

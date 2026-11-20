@@ -748,7 +748,7 @@ Pre-onboarding → Probationary → Regular
 | 36 | `role_permissions` | Role × module permission matrix |
 | 37 | `system_users` | Portal user accounts |
 | 38 | `notifications` | User notifications |
-| 39 | `user_login_activity` | Login history |
+| 39 | `audit_logs` (Auth/Login rows) | Login history |
 | 40 | `audit_logs` | Immutable audit trail |
 | 41 | `announcements` | System announcements |
 | 42 | `system_settings` | Key-value settings |

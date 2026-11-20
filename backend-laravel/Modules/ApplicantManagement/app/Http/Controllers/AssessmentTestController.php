@@ -20,8 +20,8 @@ class AssessmentTestController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = AssessmentTest::with('applicant.jobPost.department')
-            ->orderByDesc('test_date')
-            ->orderByDesc('assessment_test_id');
+            ->orderByDesc('evaluation_date')
+            ->orderByDesc('evaluation_id');
 
         if ($applicantId = $request->query('applicant_id')) {
             $query->where('applicant_id', $applicantId);

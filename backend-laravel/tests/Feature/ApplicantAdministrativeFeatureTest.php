@@ -251,10 +251,11 @@ class ApplicantAdministrativeFeatureTest extends TestCase
         $this->assertEquals('Fabricated credentials and abusive conduct', $applicant->blocked_reason);
 
         // Check audit history
-        $this->assertDatabaseHas('applicant_block_history', [
-            'applicant_id' => $applicant->applicant_id,
-            'action'       => 'blocked',
-            'reason'       => 'Fabricated credentials and abusive conduct',
+        $this->assertDatabaseHas('audit_logs', [
+            'target_type' => 'applicant',
+            'target_id'   => (string) $applicant->applicant_id,
+            'action'      => 'blocked',
+            'details'     => 'Fabricated credentials and abusive conduct',
         ]);
 
         // Attempting to apply again via landing or store is blocked
@@ -282,10 +283,11 @@ class ApplicantAdministrativeFeatureTest extends TestCase
         $this->assertFalse($applicant->is_blocked);
 
         // Audit history has unblock event preserved
-        $this->assertDatabaseHas('applicant_block_history', [
-            'applicant_id' => $applicant->applicant_id,
-            'action'       => 'unblocked',
-            'reason'       => 'Formal appeal reviewed and restriction lifted',
+        $this->assertDatabaseHas('audit_logs', [
+            'target_type' => 'applicant',
+            'target_id'   => (string) $applicant->applicant_id,
+            'action'      => 'unblocked',
+            'details'     => 'Formal appeal reviewed and restriction lifted',
         ]);
     }
 

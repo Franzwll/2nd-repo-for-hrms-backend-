@@ -30,18 +30,18 @@ class MockAttendanceProvider implements AttendanceProvider
 
     public function scheduleFor(int $employeeId): array
     {
-        return DB::table('work_schedules')
-            ->where('employee_id', $employeeId)
-            ->orderBy('day_of_week')
-            ->get()
-            ->map(fn ($r) => [
-                'day_of_week' => (int) $r->day_of_week,
-                'shift_name' => $r->shift_name,
-                'start_time' => $r->start_time,
-                'end_time' => $r->end_time,
-                'location' => $r->location,
-                'is_rest_day' => (bool) $r->is_rest_day,
-            ])->all();
+        $raw = DB::table('employees')->where('employee_id', $employeeId)->value('schedule_json');
+        $rows = json_decode((string) $raw, true) ?: [];
+        usort($rows, fn ($a, $b) => ((int) ($a['day_of_week'] ?? 0)) <=> ((int) ($b['day_of_week'] ?? 0)));
+
+        return array_map(fn ($r) => [
+            'day_of_week' => (int) ($r['day_of_week'] ?? 0),
+            'shift_name' => $r['shift_name'] ?? null,
+            'start_time' => $r['start_time'] ?? null,
+            'end_time' => $r['end_time'] ?? null,
+            'location' => $r['location'] ?? null,
+            'is_rest_day' => (bool) ($r['is_rest_day'] ?? false),
+        ], $rows);
     }
 
     public function leaveBalancesFor(int $employeeId): array

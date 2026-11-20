@@ -2,13 +2,23 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * Employee-facing timeline for an ESS request.
+ *
+ * Rows now live in `ess_request_events` with event_type = 'status'. The global
+ * scope keeps routing and attachment rows out, and the old primary key name is
+ * kept as an accessor for callers that still read it.
+ */
 class EssRequestStatusHistory extends Model
 {
-    protected $table = 'ess_request_status_histories';
-    protected $primaryKey = 'ess_request_status_history_id';
+    public const EVENT_TYPE = 'status';
+
+    protected $table = 'ess_request_events';
+    protected $primaryKey = 'ess_request_event_id';
 
     public $timestamps = false; // only created_at
 
@@ -23,6 +33,24 @@ class EssRequestStatusHistory extends Model
     protected $casts = [
         'created_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('status_events', function (Builder $query): void {
+            $query->where('event_type', self::EVENT_TYPE);
+        });
+
+        static::creating(function (EssRequestStatusHistory $history): void {
+            $history->event_type = self::EVENT_TYPE;
+            $history->created_at ??= now();
+        });
+    }
+
+    /** The old primary key name, still exposed to callers. */
+    public function getEssRequestStatusHistoryIdAttribute(): ?int
+    {
+        return $this->ess_request_event_id;
+    }
 
     public function request(): BelongsTo
     {

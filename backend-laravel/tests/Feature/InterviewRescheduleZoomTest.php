@@ -105,6 +105,41 @@ class InterviewRescheduleZoomTest extends TestCase
         Mail::assertNotSent(InterviewRescheduledMail::class);
     }
 
+    public function test_a_completed_interview_can_no_longer_be_rescheduled(): void
+    {
+        Mail::fake();
+        $token = $this->loginViaOtp();
+        $applicant = $this->createApplicant('Zoom Completed');
+
+        $created = $this->postJson('/api/v1/interviews', [
+            'applicant_id'     => $applicant->applicant_id,
+            'scheduled_date'   => '2026-11-02',
+            'scheduled_time'   => '09:00',
+            'mode'             => 'On-site',
+            'interviewer_name' => 'First Interviewer',
+        ], $this->authHeaders($token))->assertCreated()->json();
+
+        $this->putJson("/api/v1/interviews/{$created['interview_id']}", [
+            'status' => 'Completed',
+        ], $this->authHeaders($token))->assertOk();
+
+        $this->putJson("/api/v1/interviews/{$created['interview_id']}", [
+            'scheduled_date'   => '2026-11-05',
+            'scheduled_time'   => '14:30',
+            'mode'             => 'On-site',
+            'interviewer_name' => 'First Interviewer',
+            'status'           => 'Scheduled',
+        ], $this->authHeaders($token))->assertStatus(422);
+
+        // The original slot is untouched.
+        $this->assertDatabaseHas('interviews', [
+            'interview_id'   => $created['interview_id'],
+            'scheduled_date' => '2026-11-02',
+            'scheduled_time' => '09:00:00',
+            'status'         => 'Completed',
+        ]);
+    }
+
     public function test_switching_an_onsite_interview_to_virtual_creates_a_zoom_link(): void
     {
         Mail::fake();

@@ -91,14 +91,17 @@ class ReturnToPipelineTest extends TestCase
         ]);
 
         // Verify that all pipeline records after Screened were deleted
-        $this->assertDatabaseMissing('practical_tests', [
+        $this->assertDatabaseMissing('applicant_evaluations', [
             'applicant_id' => $applicant->applicant_id,
+            'eval_type'    => 'practical_test',
         ]);
-        $this->assertDatabaseMissing('assessment_tests', [
+        $this->assertDatabaseMissing('applicant_evaluations', [
             'applicant_id' => $applicant->applicant_id,
+            'eval_type'    => 'assessment_test',
         ]);
-        $this->assertDatabaseMissing('applicant_assessments', [
+        $this->assertDatabaseMissing('applicant_evaluations', [
             'applicant_id' => $applicant->applicant_id,
+            'eval_type'    => 'interview_assessment',
         ]);
         $this->assertDatabaseMissing('interviews', [
             'applicant_id' => $applicant->applicant_id,
@@ -172,19 +175,23 @@ class ReturnToPipelineTest extends TestCase
         $response->assertJsonPath('stage', 'Assessment Test');
 
         // Subsequent stages (Final Evaluation and Practical Test) must be deleted
-        $this->assertDatabaseMissing('final_evaluations', [
+        $this->assertDatabaseMissing('applicant_evaluations', [
             'applicant_id' => $applicant->applicant_id,
+            'eval_type'    => 'final_evaluation',
         ]);
-        $this->assertDatabaseMissing('practical_tests', [
+        $this->assertDatabaseMissing('applicant_evaluations', [
             'applicant_id' => $applicant->applicant_id,
+            'eval_type'    => 'practical_test',
         ]);
 
         // Prior stages (Assessment Test, Assessment, Interview) must remain intact
-        $this->assertDatabaseHas('assessment_tests', [
+        $this->assertDatabaseHas('applicant_evaluations', [
             'applicant_id' => $applicant->applicant_id,
+            'eval_type'    => 'assessment_test',
         ]);
-        $this->assertDatabaseHas('applicant_assessments', [
+        $this->assertDatabaseHas('applicant_evaluations', [
             'applicant_id' => $applicant->applicant_id,
+            'eval_type'    => 'interview_assessment',
         ]);
         $this->assertDatabaseHas('interviews', [
             'applicant_id' => $applicant->applicant_id,

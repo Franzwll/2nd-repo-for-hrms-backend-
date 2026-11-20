@@ -41,9 +41,9 @@ export function StatCard({
   const interactive = Boolean(to || onClick);
 
   const body = (
-    <CardContent className="p-5">
+    <CardContent className="flex h-full flex-col p-5">
       <div className="flex items-start justify-between gap-3">
-        <p className="eyebrow">{label}</p>
+        <p className="eyebrow min-h-8 leading-snug">{label}</p>
         <span className="flex items-center gap-1.5">
           {Icon && <Icon className={cn("h-4 w-4", toneClass)} />}
           {interactive && (
@@ -57,7 +57,7 @@ export function StatCard({
         <p className={cn("mt-2 font-display text-3xl font-semibold", toneClass)}>{value}</p>
       )}
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-      {action && <div className="mt-3">{action}</div>}
+      {action && <div className="mt-auto pt-3">{action}</div>}
     </CardContent>
   );
 

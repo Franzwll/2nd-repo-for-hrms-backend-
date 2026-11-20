@@ -81,14 +81,79 @@ class Applicant extends Model
         )->withTrashed();
     }
 
-    public function screeningEntities(): HasMany
+    public function getScreeningEntitiesAttribute(): \Illuminate\Support\Collection
     {
-        return $this->hasMany(ApplicantScreeningEntity::class, 'applicant_id', 'applicant_id');
+        $screening = $this->relationLoaded('latestScreening')
+            ? $this->latestScreening
+            : $this->latestScreening()->first();
+
+        $entities = $screening?->entities_json ?? [];
+        if (!is_array($entities)) {
+            return collect();
+        }
+
+        return collect($entities)->values()->map(function ($e, $index) use ($screening) {
+            return new ApplicantScreeningEntity([
+                'entity_id'    => $e['entity_id'] ?? ($index + 1),
+                'applicant_id' => $this->applicant_id,
+                'label'        => $e['label'] ?? '',
+                'value'        => $e['value'] ?? '',
+                'created_at'   => $e['created_at'] ?? $screening?->created_at ?? $this->created_at,
+            ]);
+        });
     }
 
-    public function screeningScores(): HasMany
+    public function getScreeningScoresAttribute(): \Illuminate\Support\Collection
     {
-        return $this->hasMany(ApplicantScreeningScore::class, 'applicant_id', 'applicant_id');
+        $screening = $this->relationLoaded('latestScreening')
+            ? $this->latestScreening
+            : $this->latestScreening()->first();
+
+        $scores = $screening?->score_breakdown_json ?? [];
+        if (!is_array($scores)) {
+            return collect();
+        }
+
+        $items = collect();
+        $index = 1;
+
+        foreach ($scores as $key => $val) {
+            if (is_array($val) && isset($val['criterion'])) {
+                $items->push(new ApplicantScreeningScore([
+                    'score_id'     => $val['score_id'] ?? $index++,
+                    'applicant_id' => $this->applicant_id,
+                    'criterion'    => $val['criterion'],
+                    'score'        => (float) ($val['score'] ?? $val['earned'] ?? 0),
+                    'created_at'   => $val['created_at'] ?? $screening?->created_at ?? $this->created_at,
+                ]));
+            } elseif (is_array($val)) {
+                $criterionName = ucfirst((string) $key);
+                if (strtolower($key) === 'experience') {
+                    $criterionName = 'Work Experience';
+                } elseif (strtolower($key) === 'education') {
+                    $criterionName = 'Educational Background';
+                }
+                $items->push(new ApplicantScreeningScore([
+                    'score_id'     => $val['score_id'] ?? $index++,
+                    'applicant_id' => $this->applicant_id,
+                    'criterion'    => $criterionName,
+                    'score'        => (float) ($val['earned'] ?? $val['score'] ?? 0),
+                    'created_at'   => $val['created_at'] ?? $screening?->created_at ?? $this->created_at,
+                ]));
+            }
+        }
+
+        return $items;
+    }
+
+    public function screeningEntities(): \Illuminate\Support\Collection
+    {
+        return $this->getScreeningEntitiesAttribute();
+    }
+
+    public function screeningScores(): \Illuminate\Support\Collection
+    {
+        return $this->getScreeningScoresAttribute();
     }
 
     public function screenings(): HasMany
@@ -110,7 +175,7 @@ class Applicant extends Model
     public function assessment(): HasOne
     {
         return $this->hasOne(ApplicantAssessment::class, 'applicant_id', 'applicant_id')
-                    ->latestOfMany('assessment_id');
+                    ->latestOfMany('evaluation_id');
     }
 
     public function assessments(): HasMany
@@ -126,7 +191,7 @@ class Applicant extends Model
     public function latestAssessmentTest(): HasOne
     {
         return $this->hasOne(AssessmentTest::class, 'applicant_id', 'applicant_id')
-                    ->latestOfMany('assessment_test_id');
+                    ->latestOfMany('evaluation_id');
     }
 
     public function practicalTests(): HasMany
@@ -137,13 +202,13 @@ class Applicant extends Model
     public function latestPracticalTest(): HasOne
     {
         return $this->hasOne(PracticalTest::class, 'applicant_id', 'applicant_id')
-                    ->latestOfMany('practical_test_id');
+                    ->latestOfMany('evaluation_id');
     }
 
     public function finalEvaluation(): HasOne
     {
         return $this->hasOne(FinalEvaluation::class, 'applicant_id', 'applicant_id')
-                    ->latestOfMany('final_evaluation_id');
+                    ->latestOfMany('evaluation_id');
     }
 
     public function finalEvaluations(): HasMany
@@ -158,8 +223,8 @@ class Applicant extends Model
 
     public function blockHistories(): HasMany
     {
-        return $this->hasMany(ApplicantBlockHistory::class, 'applicant_id', 'applicant_id')
-            ->orderByDesc('performed_at');
+        return $this->hasMany(ApplicantBlockHistory::class, 'target_id', 'applicant_id')
+            ->orderByDesc('occurred_at');
     }
 
     /* ------------------------------------------------------------------ */
