@@ -310,7 +310,7 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                   onClick={() => setRecordsModalOpen(true)}
                   className="gap-1.5 shadow-xs text-xs cursor-pointer"
                 >
-                  <FileText className="h-4 w-4 text-primary" /> View Records
+                  <FileText className="h-4 w-4 text-primary" /> View Schedule
                 </Button>
               </div>
             </div>
@@ -395,10 +395,6 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
                   <Clock className="h-4 w-4 text-primary" /> Attendance Records
                 </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Monthly calendar and full history of your time records. Select a day or row for
-                  details.
-                </p>
               </div>
               <Select
                 value={statusFilter}

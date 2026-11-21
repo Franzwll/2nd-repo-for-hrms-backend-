@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { essApi } from "@/lib/api";
 import { EmployeeEss } from "./EmployeeEss";
+import { EssPortalProvider } from "./EssPortalContext";
 import type { EssBasePath } from "./EssPortalContext";
 
 type LinkState =
@@ -123,9 +124,11 @@ export function AdminEssSelfService({ basePath }: { basePath: EssBasePath }) {
   }
 
   return (
-    <EmployeeEss
+    <EssPortalProvider
       basePath={basePath}
       viewerRole={basePath === "/superadmin" ? "superadmin" : "admin"}
-    />
+    >
+      <EmployeeEss />
+    </EssPortalProvider>
   );
 }

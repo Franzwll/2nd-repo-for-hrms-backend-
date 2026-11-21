@@ -50,7 +50,7 @@ const essChildren = (base: string) => [
   { label: "My Documents", to: `${base}/ess?category=Documents` },
   { label: "My Request", to: `${base}/my-requests` },
   { label: "My Feed", to: `${base}/ess?category=Recognition` },
-  { label: "HR AI Concierge", to: `${base}/ai` },
+  { label: "HR AI Assistant", to: `${base}/ai` },
 ];
 
 const myEssChildren = (base: string) => [

@@ -3,6 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { FileQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/portal/PageHeader";
+import { EssHeroBanner } from "@/components/modules/ess/EssHeroBanner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
@@ -136,7 +137,7 @@ export function EmployeeEss() {
         return "Live web clocking, weekly roster, and biometric records. File leave from My Request → Attendance.";
       case "Payroll":
       case "Payslip":
-        return "Net pay, payslips, and government contributions.";
+        return "Net pay, payslips, loans, benefits, and tax documents.";
       case "Performance":
       case "Promotion":
         return "Review your performance evaluation and learning progress. File career requests from My Request → Promotion.";
@@ -165,28 +166,33 @@ export function EmployeeEss() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={getPageTitle()}
-        description={getPageDescription()}
-        actions={
-          isDocumentsPage ? (
-            <Suspense fallback={null}>
-              <EssDocumentsExport />
-            </Suspense>
-          ) : isPayrollPage ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="cursor-pointer gap-1.5 shadow-xs"
-              onClick={() =>
-                navigate({ to: "/employee/my-requests/$module", params: { module: "payroll" } })
-              }
-            >
-              <FileQuestion className="h-4 w-4 text-primary" /> File inquiry
-            </Button>
-          ) : undefined
-        }
-      />
+      {/* Personalized greeting for Overview; standard PageHeader for category pages */}
+      {!categoryParam ? (
+        <EssHeroBanner />
+      ) : (
+        <PageHeader
+          title={getPageTitle()}
+          description={getPageDescription()}
+          actions={
+            isDocumentsPage ? (
+              <Suspense fallback={null}>
+                <EssDocumentsExport />
+              </Suspense>
+            ) : isPayrollPage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="cursor-pointer gap-1.5 shadow-xs"
+                onClick={() =>
+                  navigate({ to: "/employee/my-requests/$module", params: { module: "payroll" } })
+                }
+              >
+                <FileQuestion className="h-4 w-4 text-primary" /> File inquiry
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
 
       {/* ── Module Content with Skeleton Loading ── */}
       <Suspense fallback={<EssPageSkeleton />}>

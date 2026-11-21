@@ -229,7 +229,7 @@ export function EssAiAssistantModal({
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
-        text: `Hello ${firstName}! 👋 I am your Oxford Suites Makati HR AI Concierge.\n\nI can help you with:\n• Leave requests & remaining balances\n• Payroll cut-offs & payslip copies\n• Official COE & BIR 2316 requests\n• HMO insurance & government statutory benefits\n• Hotel policies, shifts & biometrics timekeeping\n\nWhat would you like to know today?`,
+        text: `Hello ${firstName}! 👋 I am your Oxford Suites Makati HR AI Assistant.\n\nI can help you with:\n• Leave requests & remaining balances\n• Payroll cut-offs & payslip copies\n• Official COE & BIR 2316 requests\n• HMO insurance & government statutory benefits\n• Hotel policies, shifts & biometrics timekeeping\n\nWhat would you like to know today?`,
         timestamp: timeStr,
       };
     }
@@ -310,13 +310,13 @@ export function EssAiAssistantModal({
       <DialogContent
         className="max-w-3xl w-[95vw] h-[85vh] max-h-[720px] p-0 gap-0 overflow-hidden bg-background border-border/80 shadow-2xl flex flex-col rounded-2xl [&>button]:hidden"
       >
-        <DialogTitle className="sr-only">Oxford Suites HR AI Concierge</DialogTitle>
+        <DialogTitle className="sr-only">Oxford Suites HR AI Assistant</DialogTitle>
         {/* Top Minimalist Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border/60 bg-card/60 backdrop-blur-md shrink-0">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px] font-semibold flex items-center gap-1 py-0.5">
-              <Sparkles className="h-3 w-3" /> Oxford HR AI Concierge
+              <Sparkles className="h-3 w-3" /> Oxford HR AI Assistant
             </Badge>
           </div>
 

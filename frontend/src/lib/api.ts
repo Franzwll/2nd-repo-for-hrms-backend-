@@ -2826,6 +2826,12 @@ export interface ApiPayrollData {
     earnings?: { label: string; amount: number; ytd: number }[];
     deductions_breakdown?: { label: string; amount: number; ytd: number }[];
   }[];
+  ytd_gross?: number;
+  ytd_tax_withheld?: number;
+  processing_payslip?: {
+    period: string;
+    payout_date: string | null;
+  } | null;
 }
 
 export interface ApiEssOverview {

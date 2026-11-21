@@ -167,19 +167,16 @@ function EmployeeDashboard() {
         title={`${greeting}, ${firstName}`}
         description={`${position} · ${todayLabel}`}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button asChild size="sm" className="cursor-pointer gap-1.5 shadow-xs">
-              <Link to="/employee/ess" search={{ category: "Clocking" }}>
-                <Clock className="h-4 w-4" />
-                {clockedIn ? "Clock out" : "Clock in"}
-                {overview?.today_attendance?.time_in &&
-                  overview.today_attendance.time_in !== "—" && (
-                    <span className="font-mono text-xs opacity-90">
-                      · {overview.today_attendance.time_in}
-                    </span>
-                  )}
-              </Link>
-            </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Attendance status label */}
+            <span className="text-sm text-muted-foreground">
+              {clockedIn
+                ? `Clock out · in at ${overview?.today_attendance?.time_in ?? ""}`
+                : overview?.today_attendance?.status === "Clocked Out" && overview?.today_attendance?.time_out
+                  ? `Clocked out at ${overview.today_attendance.time_out}`
+                  : "Not yet clocked in"}
+            </span>
+            <span className="text-border hidden sm:inline">·</span>
             <Button
               asChild
               size="sm"
@@ -360,7 +357,7 @@ function EmployeeDashboard() {
               </Link>
 
 
-              {/* 6: HR AI Concierge */}
+              {/* 6: HR AI Assistant */}
               <Link
                 to="/employee/ai"
                 className="rounded-lg border border-primary/30 bg-gradient-to-b from-primary/10 to-card hover:bg-primary/15 hover:border-primary py-2.5 px-2 flex flex-col items-center justify-center text-center gap-1.5 transition-all hover:shadow-2xs group cursor-pointer"

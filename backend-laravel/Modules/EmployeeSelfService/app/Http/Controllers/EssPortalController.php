@@ -1105,6 +1105,38 @@ class EssPortalController extends Controller
             }
         }
 
+        // YTD aggregates: gross earnings and tax withheld across all
+        // Released records whose period ends in the current calendar year.
+        $currentYear = $today->year;
+        $ytdGross = 0.0;
+        $ytdTaxWithheld = 0.0;
+        $processingPayslip = null;
+
+        if (! empty($payslips)) {
+            foreach ($dbPayslips as $pr) {
+                $prYear = Carbon::parse($pr->pay_period_end)->year;
+                if ($prYear === $currentYear && $pr->status === 'Released') {
+                    $ytdGross += (float) $pr->gross_pay;
+                    // Sum withholding tax items for this record.
+                    $items = $itemsByRecord->get($pr->payroll_record_id, collect());
+                    foreach ($items as $item) {
+                        if ($item->item_type === 'Deduction' && stripos($item->label, 'tax') !== false) {
+                            $ytdTaxWithheld += (float) $item->amount;
+                        }
+                    }
+                }
+                // Identify the first processing (Draft) payslip for the banner.
+                if ($pr->status === 'Draft' && ! $processingPayslip) {
+                    $processingPayslip = [
+                        'period' => Carbon::parse($pr->pay_period_start)->format('M j') . ' - ' . Carbon::parse($pr->pay_period_end)->format('M j'),
+                        'payout_date' => $pr->payout_date
+                            ? Carbon::parse($pr->payout_date)->format('M j')
+                            : null,
+                    ];
+                }
+            }
+        }
+
         return response()->json([
             'employee_name' => $employee->full_name,
             'position' => $employee->position?->title ?? '',
@@ -1130,6 +1162,9 @@ class EssPortalController extends Controller
                 'total' => $totalDeductions,
             ],
             'payslips' => $payslips,
+            'ytd_gross' => $ytdGross,
+            'ytd_tax_withheld' => $ytdTaxWithheld,
+            'processing_payslip' => $processingPayslip,
         ]);
     }
 

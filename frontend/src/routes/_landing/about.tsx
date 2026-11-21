@@ -259,6 +259,7 @@ function About() {
           </div>
 
           {/* Active Milestone Stage */}
+          {currentMilestone && (
           <div className="mt-8 grid gap-6 md:grid-cols-[220px_1fr] md:items-start">
             <div>
               <p className="font-mono text-xs uppercase tracking-widest text-gold">
@@ -281,6 +282,7 @@ function About() {
               </p>
             </div>
           </div>
+          )}
         </section>
       </div>
     </PublicShell>

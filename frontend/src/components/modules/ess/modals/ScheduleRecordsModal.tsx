@@ -271,7 +271,7 @@ export function ScheduleRecordsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="font-display text-lg">Attendance Records</DialogTitle>
+          <DialogTitle className="font-display text-lg">Weekly Schedule</DialogTitle>
           <DialogDescription>
             Monthly calendar and full history of your time records. Select a day or row for details.
           </DialogDescription>

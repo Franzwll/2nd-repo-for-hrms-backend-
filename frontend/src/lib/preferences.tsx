@@ -53,7 +53,7 @@ const FILIPINO: Record<string, string> = {
   "My Documents": "Aking mga Dokumento",
   "My Request": "Aking Kahilingan",
   "My Feed": "Aking Feed",
-  "HR AI Concierge": "HR AI Concierge",
+  "HR AI Assistant": "HR AI Assistant",
   "Organizational Chart": "Organizational Chart",
   "Department & Position": "Departamento at Posisyon",
   Onboarding: "Onboarding",
